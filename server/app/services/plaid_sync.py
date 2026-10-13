@@ -468,7 +468,7 @@ def create_item_from_public_token(sess: Session, *, public_token: str, user_id,
     item = sess.execute(select(PlaidItem).where(PlaidItem.item_id == item_id)).scalar_one_or_none()
     inst = (metadata or {}).get("institution") or {}
     if item is None:
-        item = PlaidItem(item_id=item_id, created_by=user_id, products=list(settings().plaid_products),
+        item = PlaidItem(item_id=item_id, created_by=user_id, products=[],  # filled from /accounts/get item meta
                          access_token_enc=b"", institution_id=inst.get("institution_id"),
                          institution_name=inst.get("name"))
         sess.add(item)

@@ -14,10 +14,15 @@ Four proxied CNAMEs (orange cloud ON). Targets come from Railway → service
 
 | Name | Type | Target | Proxy |
 |---|---|---|---|
-| `jfinances` | CNAME | Railway target for `web` (production) | proxied |
-| `jfinances-hooks` | CNAME | Railway target for `hooks` (production) | proxied |
-| `jfinances-sandbox` | CNAME | Railway target for `web` (sandbox) | proxied |
-| `jfinances-sandbox-hooks` | CNAME | Railway target for `hooks` (sandbox) | proxied |
+| `jfinances` | CNAME | `3b95hhzb.up.railway.app` (`web`, production) | proxied |
+| `jfinances-hooks` | CNAME | `3qcl1xl6.up.railway.app` (`hooks`, production) | proxied |
+| `jfinances-sandbox` | CNAME | `2rwwyp0l.up.railway.app` (`web`, sandbox) | proxied |
+| `jfinances-sandbox-hooks` | CNAME | `z0nl608z.up.railway.app` (`hooks`, sandbox) | proxied |
+| `_railway-verify.<each of the above>` | TXT | `railway-verify=…` from Railway | DNS only |
+
+All eight records exist (created 2026-10-13). If a service's custom domain is
+ever re-created in Railway, its CNAME target and TXT value change: copy the
+new ones from Railway → service → Settings → Networking.
 
 Future: `jfinances-api` / `jfinances-sandbox-api` → the same `web` services,
 for the iOS app (see `docs/90-roadmap.md`).
@@ -33,24 +38,34 @@ plaintext to Railway and must never be used.
 
 ## 3. Access application (dashboard)
 
-Zero Trust → Access → Applications → Add → Self-hosted.
+Managed as code by `ops/cloudflare_access.py` (idempotent; dry run by
+default, `--apply` to change; prints the AUD tags and the Railway commands).
+The token needs **Account → Access: Apps and Policies → Edit** and **Account →
+Access: Organizations, Identity Providers, and Groups → Read** on
+"Jimmy.mooney@gmail.com's Account" (which owns the zone and the `daedalustcg`
+team). Cloudflare returns an *empty list*, not an error, for lists a token
+cannot read, so an empty result is not proof that nothing exists.
+
+What the script sets, if you ever do it by hand (Zero Trust → Access →
+Applications → Add → Self-hosted):
 
 | Field | Value |
 |---|---|
 | Name | `jfinances` (and a second app `jfinances-sandbox`) |
 | Domain | `jfinances.sellingtcg.com` (path empty — the whole host) |
 | Session duration | 24 hours |
-| Identity providers | One-time PIN (and Google if/when added to the team) |
+| Identity providers | One-time PIN only, with instant auth (auto-redirect) |
 | App Launcher | off |
+| Cookie | HttpOnly, SameSite=Lax (the Plaid OAuth return is a cross-site GET) |
 
 Policies, in order:
 
-1. **Allow — household**: action *Allow*; include *Emails* →
-   `jimmy.mooney@gmail.com`, `<wife's gmail>`.
-2. **Bypass — health**: action *Bypass*; include *Everyone*; path `/healthz`.
-   Add this as a separate application scoped to `jfinances.sellingtcg.com/healthz`
-   if the UI does not let you scope a policy by path — Railway's healthcheck
-   must get a 200 from the app, not a Cloudflare login page.
+1. **jfinances household** (reusable policy): *Allow*; include *Emails* →
+   `jimmy.mooney@gmail.com`, `anna.b.mooney@gmail.com`.
+
+No bypass for `/healthz` is needed: Railway's healthcheck calls the container
+directly (Host `healthcheck.railway.app`), never through Cloudflare. Keeping
+the whole dashboard host behind Access means nothing on it is public.
 
 After saving, open the application → Overview → copy the **Application
 Audience (AUD) Tag** and set it as `CF_ACCESS_AUD` on the `web` service in
@@ -81,7 +96,8 @@ allowlist: Access proves *who*, the app decides *whether*.
 
 - [ ] Custom domain added on the Railway service, status "Valid"
 - [ ] Proxied CNAME in Cloudflare
-- [ ] `curl -sI https://<host>/healthz` returns 200 from the app
+- [ ] Railway shows the deployment SUCCESS (its healthcheck is internal)
+- [ ] hooks hosts: `curl -s https://<host>/healthz` returns 200 JSON
 - [ ] Access application created (dashboard hosts only), AUD set in Railway
 - [ ] `curl -sI https://<host>/api/v1/me` returns a 302 to cloudflareaccess.com
 - [ ] Railway-provided `*.up.railway.app` domain deleted from the service

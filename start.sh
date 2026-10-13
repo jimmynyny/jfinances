@@ -17,12 +17,12 @@ case "${SERVICE_ROLE:-}" in
     # --proxy-headers: Railway (and Cloudflare in front of it) terminates TLS;
     # without it every client IP in the logs is a load balancer.
     exec python -m uvicorn server.app.web:app \
-         --host 0.0.0.0 --port "${PORT:-8000}" \
+         --host 0.0.0.0 --port "${PORT:-8080}" \
          --workers "${WEB_WORKERS:-2}" --proxy-headers --forwarded-allow-ips='*'
     ;;
   hooks)
     exec python -m uvicorn server.app.hooks:app \
-         --host 0.0.0.0 --port "${PORT:-8000}" \
+         --host 0.0.0.0 --port "${PORT:-8080}" \
          --workers 1 --proxy-headers --forwarded-allow-ips='*'
     ;;
   worker)

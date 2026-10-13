@@ -1,6 +1,6 @@
 import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, Change, Holding, Holdings, InvestmentTransaction, Item, Job,
-  Liabilities, LiabilityDetail, LinkConfig, LinkSession, LinkToken, ManualCategory, Me, NetWorthPoint, NewApiToken,
+  Liabilities, LiabilityDetail, LinkConfig, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthPoint, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
 
@@ -205,6 +205,23 @@ function list<T>(v: unknown, f: (r: Raw) => T): T[] {
 /* Transport                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Cloudflare Access sessions last 24 h. After that, API calls from a tab left
+ * open come back as a redirect to the Access login. A GET reloads the page
+ * (Access signs the user in and returns them here); a write throws instead so
+ * nothing the user typed is thrown away. The timestamp stops a reload loop.
+ */
+function sessionExpired(method: string): never {
+  const KEY = "jf.reauth-at";
+  let last = 0;
+  try { last = Number(sessionStorage.getItem(KEY) ?? 0); } catch { /* storage blocked */ }
+  if (method === "GET" && Date.now() - last > 30_000) {
+    try { sessionStorage.setItem(KEY, String(Date.now())); } catch { /* storage blocked */ }
+    window.location.reload();
+  }
+  throw new ApiError(401, "auth.expired", "Your sign-in expired. Reload the page to sign in again.");
+}
+
 async function request<T = Raw>(method: string, path: string, body?: unknown, query?: Record<string, unknown>): Promise<T> {
   const url = new URL(BASE + path, window.location.origin);
   if (query) {
@@ -216,9 +233,11 @@ async function request<T = Raw>(method: string, path: string, body?: unknown, qu
   const res = await fetch(url.toString(), {
     method,
     credentials: "include", // the Cloudflare Access cookie rides along
+    redirect: "manual", // an expired Access session is a 302 to cloudflareaccess.com, not data
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.type === "opaqueredirect" || res.status === 0) sessionExpired(method);
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let data: unknown = null;
@@ -289,7 +308,7 @@ export const api = {
   relinkItem: async (id: string): Promise<LinkToken> => linkToken(await request("POST", `/items/${id}/relink`)),
   removeItem: async (id: string): Promise<Item> => item(await request("DELETE", `/items/${id}`)),
 
-  linkToken: async (item_id?: string): Promise<LinkToken> => linkToken(await request("POST", "/link/token", item_id ? { item_id } : {})),
+  linkToken: async (kind: LinkKind = "banking"): Promise<LinkToken> => linkToken(await request("POST", "/link/token", { kind })),
   linkSession: async (): Promise<LinkSession> => {
     const r = await request("GET", "/link/session");
     return { link_token: String(r.link_token), link_session_id: String(r.link_session_id), mode: (r.mode as LinkSession["mode"]) ?? "create", item_id: str(r.item_id) };
@@ -348,7 +367,8 @@ export const api = {
 function linkToken(r: Raw): LinkToken {
   return {
     link_token: String(r.link_token), expiration: str(r.expiration), link_session_id: String(r.link_session_id ?? ""),
-    mode: (r.mode as LinkToken["mode"]) ?? "create", redirect_uri: str(r.redirect_uri) ?? undefined,
+    mode: (r.mode as LinkToken["mode"]) ?? "create", kind: (r.kind as LinkKind | null) ?? null,
+    redirect_uri: str(r.redirect_uri) ?? undefined,
   };
 }
 

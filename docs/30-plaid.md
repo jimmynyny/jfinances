@@ -1,8 +1,34 @@
 # 30 — Plaid
 
 Products: **Transactions**, **Investments**, **Liabilities**. Country US.
+Which ones an Item gets depends on the Connect choice; see "Products" below.
 History on link: 730 days (Plaid's maximum). Client: `server/app/plaid_client.py`,
 a thin httpx wrapper (see the module docstring for why not the generated SDK).
+
+## Products: why there are two Connect choices
+
+`/link/token/create` takes `products` (every one must be supported or the
+institution is hidden from Link) and `required_if_supported_products`
+(added only when the institution and the selected accounts support them,
+and billed only then). Asking for all three as `products` would hide
+Robinhood and the 529 plans (no liabilities) and banks without brokerage.
+So the dashboard's Connect button asks what is being connected:
+
+| Choice | `kind` | requires | adds when supported |
+|---|---|---|---|
+| Bank, card or loan | `banking` | `transactions` | `liabilities`, `investments` |
+| Investment or retirement | `investments` | `investments` | `transactions`, `liabilities` |
+
+Chase with checking, cards and a mortgage → `banking` gives transactions +
+liabilities (+ investments if a J.P. Morgan brokerage account is selected).
+Robinhood or a 529 → `investments`. The plan lives in
+`plaid_client.LINK_KINDS`; `GET /api/v1/link/config` prints it.
+
+After linking, `/accounts/get` reports the Item's actual `products`, stored
+on `plaid_items.products`. Every job checks it first
+(`PlaidItem.has_product`): calling `/investments/*`, `/liabilities/get` or
+`/transactions/sync` on an Item without that product makes Plaid try to
+add it, which starts a new monthly charge.
 
 ## What to register in the Plaid dashboard
 
@@ -103,11 +129,10 @@ Times are settings (`NIGHTLY_SYNC_UTC` etc.) if they ever need to move.
 
 - Transactions, Investments, Liabilities: each is a per-Item monthly charge
   while the product is enabled on that Item. With ~25 items this is the bill.
-  Investments and Liabilities are only requested for items that have those
-  account types; Plaid still bills per product per item that was *initialised*
-  with the product, so link with only the products you need. Today Link asks
-  for all three; narrowing that per institution is a one-line change in
-  `PlaidClient.link_token_create`.
+  Plaid bills per product per Item that was *initialised* with it. Link
+  requires one product per Connect choice and adds the others only where
+  the selected accounts support them, and jobs never call a product the
+  Item lacks (that would initialise it). See "Products" above.
 - `/accounts/balance/get` (real-time) is per call. Never scheduled.
 - `/accounts/get`, `/transactions/sync`, `/investments/*`, `/liabilities/get`
   are included in the product price.

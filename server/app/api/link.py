@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -14,8 +14,9 @@ from ..auth.human import Principal
 from ..config import settings
 from ..db import get_session
 from ..jobs.queue import enqueue
+from ..jobs.sync_item import enqueue_item_refresh
 from ..models import LinkSession, PlaidItem
-from ..plaid_client import PlaidError, plaid
+from ..plaid_client import LINK_KINDS, PlaidError, link_product_plan, plaid
 from ..services import plaid_sync
 from ._common import ApiError, item_json, parse_uuid
 
@@ -35,6 +36,8 @@ def _new_link_session(sess: Session, user_id, data: dict[str, Any], item: PlaidI
 
 class TokenIn(BaseModel):
     item_id: str | None = None
+    #: Which Connect button was pressed. Ignored in update mode (item_id set).
+    kind: Literal["banking", "investments"] = "banking"
 
 
 @router.post("/link/token")
@@ -49,12 +52,14 @@ def create_token(body: TokenIn | None = None, p: Principal = Depends(dashboard_o
             raise ApiError(404, "not_found", "item not found")
         access_token = plaid_sync.access_token_for(item)
     try:
-        data = plaid().link_token_create(user_id=str(p.user_id), access_token=access_token)
+        data = plaid().link_token_create(user_id=str(p.user_id), access_token=access_token, kind=body.kind)
+    except ValueError as e:
+        raise ApiError(400, "bad_request", str(e)) from e
     except PlaidError as e:
         raise ApiError(502, "plaid_error", f"{e.error_code}: {e.body.get('error_message')}") from e
     ls = _new_link_session(sess, p.user_id, data, item=item)
     return {"link_token": data["link_token"], "expiration": data.get("expiration"),
-            "link_session_id": str(ls.id), "mode": ls.mode,
+            "link_session_id": str(ls.id), "mode": ls.mode, "kind": None if item else body.kind,
             "redirect_uri": settings().plaid_redirect_uri}
 
 
@@ -88,9 +93,7 @@ def exchange(body: ExchangeIn, p: Principal = Depends(dashboard_only), sess: Ses
         ls = sess.get(LinkSession, parse_uuid(body.link_session_id))
         if ls is not None and ls.user_id == p.user_id:
             ls.consumed_at = datetime.now(UTC)
-    enqueue(sess, "sync_item", {"item_id": str(item.id)})
-    enqueue(sess, "refresh_investments", {"item_id": str(item.id)})
-    enqueue(sess, "refresh_liabilities", {"item_id": str(item.id)})
+    enqueue_item_refresh(sess, item)
     return item_json(item)
 
 
@@ -118,5 +121,12 @@ def update_complete(body: ExchangeIn | None = None, p: Principal = Depends(dashb
 @router.get("/link/config")
 def link_config(_: Principal = Depends(current_user)):
     s = settings()
+    kinds = {}
+    for k in LINK_KINDS:
+        try:
+            req, extra = link_product_plan(k, s.plaid_products)
+        except ValueError:
+            continue
+        kinds[k] = {"products": req, "required_if_supported_products": extra}
     return {"redirect_uri": s.plaid_redirect_uri, "webhook_url": s.plaid_webhook_url,
-            "products": s.plaid_products, "plaid_env": s.plaid_env}
+            "products": s.plaid_products, "kinds": kinds, "plaid_env": s.plaid_env}

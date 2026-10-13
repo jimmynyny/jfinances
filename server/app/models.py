@@ -111,6 +111,12 @@ class PlaidItem(TimestampMixin, Base):
 
     accounts: Mapped[list[Account]] = relationship(back_populates="item")
 
+    def has_product(self, product: str) -> bool:
+        """True when Plaid initialised `product` on this Item. Calling a
+        product endpoint for an Item without it makes Plaid try to add the
+        product, which starts billing for it, so every job checks first."""
+        return product in (self.products or [])
+
 
 ACCOUNT_KINDS = ("plaid", "manual")
 MANUAL_CATEGORIES = ("real_estate", "vehicle", "cash", "other_asset", "other_liability")

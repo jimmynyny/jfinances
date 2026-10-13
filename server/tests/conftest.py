@@ -43,3 +43,16 @@ def pg_url() -> str | None:
             return url
     except Exception:  # noqa: BLE001
         return None
+
+
+def migrate(url: str, *, fresh: bool = False) -> None:
+    """Bring the test database to head (optionally from scratch) so a suite
+    never depends on another suite having migrated first."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    ini = Path(__file__).resolve().parents[1] / "alembic.ini"
+    env = {**os.environ, "DATABASE_URL": url, "APP_ENV": "local"}
+    if fresh:
+        subprocess.check_call([sys.executable, "-m", "alembic", "-c", str(ini), "downgrade", "base"], env=env)
+    subprocess.check_call([sys.executable, "-m", "alembic", "-c", str(ini), "upgrade", "head"], env=env)

@@ -50,10 +50,11 @@ before on other projects.
 | Services | `Postgres`, `web`, `hooks`, `worker` — in both environments |
 | Builder | Dockerfile at repo root (multi-stage: node builds the SPA, python runs) |
 | Start | `./start.sh` dispatches on `SERVICE_ROLE` |
-| Pre-deploy (web only) | `python -m server.tools.release` — Alembic `upgrade head` + sanity checks |
-| Healthcheck | `web` and `hooks`: `GET /healthz` → 200 JSON. `worker`: none (no HTTP) |
+| Pre-deploy (every service) | `python -m server.tools.release` — boot checks for that `SERVICE_ROLE`, then Alembic `upgrade head` under a Postgres advisory lock |
+| Healthcheck | `web` and `hooks`: `GET /healthz` → 200 JSON, called by Railway directly (not through Cloudflare). `worker`: none (no HTTP) |
+| Port | `web` and `hooks` listen on `PORT=8080`, the target port of their custom domains |
 | Deploys | **Manual**: `railway up --service <web|hooks|worker> --ci`. Not linked to GitHub. |
-| Backups | Postgres volume: daily + weekly schedules (set in Railway → Postgres → Backups) |
+| Backups | Postgres volume: weekly + monthly schedules today; daily recommended (Railway → Postgres → Backups, per environment) |
 
 Hostnames (Cloudflare proxied CNAME → Railway, SSL Full (Strict)):
 
@@ -87,7 +88,7 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `PUBLIC_BASE_URL` | ✓ |  |  | `https://jfinances.sellingtcg.com` — builds the OAuth redirect URI |
 | `HOOKS_BASE_URL` | ✓ | ✓ | ✓ | `https://jfinances-hooks.sellingtcg.com` — Plaid webhook base |
 | `API_HOST` | ✓ |  |  | Hostname that uses bearer-token auth instead of Access (future iOS) |
-| `PORT` | ✓ | ✓ |  | Injected by Railway |
+| `PORT` | ✓ | ✓ |  | `8080`, set explicitly to match the custom domains' target port |
 
 Boot validation (`config.validate_for_boot()`): in `APP_ENV=production` the
 web service refuses to start if `CF_ACCESS_AUD`, `CF_ACCESS_TEAM`,
@@ -125,8 +126,21 @@ never parse headers themselves.
 
 ## 5. Plaid integration
 
-Products: `transactions`, `investments`, `liabilities`. Link requests
-`days_requested=730`. `webhook` on every link token is
+Products: `transactions`, `investments`, `liabilities` (`PLAID_PRODUCTS`).
+Plaid hides any institution that lacks one of the *required* products, so
+each Connect choice requires exactly one and asks for the rest only where
+supported (`required_if_supported_products`, billed only when added):
+
+| Connect choice (`kind`) | `products` | `required_if_supported_products` |
+|---|---|---|
+| `banking` — bank, card or loan | `transactions` | `liabilities`, `investments` |
+| `investments` — brokerage, 401(k), IRA, 529 | `investments` | `transactions`, `liabilities` |
+
+Jobs only call a product's endpoints when the Item reports that product
+(`PlaidItem.has_product`), because calling them on an Item without the
+product makes Plaid add it and start billing.
+
+Link requests `days_requested=730`. `webhook` on every link token is
 `{HOOKS_BASE_URL}/plaid/webhook`. `redirect_uri` is
 `{PUBLIC_BASE_URL}/link/oauth` and must be registered in the Plaid dashboard
 (Team Settings → API → Allowed redirect URIs) for both hostnames.
@@ -207,7 +221,7 @@ All routes require a principal except `/healthz`. Errors are
 | `POST /items/{id}/sync` | enqueue `sync_item` |
 | `POST /items/{id}/relink` | `{link_token}` in update mode |
 | `DELETE /items/{id}` | `/item/remove` and mark removed |
-| `POST /link/token` | `{item_id?}` → `{link_token, expiration}` |
+| `POST /link/token` | `{kind?: banking|investments, item_id?}` → `{link_token, expiration, link_session_id, mode, kind}` |
 | `POST /link/exchange` | `{public_token, metadata?}` → item summary |
 | `GET /transactions?from&to&account_id&q&category&pending&page&page_size` | paged list, newest first |
 | `PATCH /transactions/{id}` | `{user_category?, notes?}` |
@@ -240,7 +254,8 @@ start.sh              SERVICE_ROLE dispatch
 pyproject.toml        python deps (uv)
 server/app/           FastAPI apps, auth, plaid, jobs, models
 server/alembic/       migrations
-server/tools/         release.py (migrate + checks), seed.py
+server/tools/         release.py (migrate + checks), seed.py, sandbox_smoke.py
+ops/                  cloudflare_access.py (Access policy + apps as code)
 frontend/             Vite SPA
 packages/ui/          design system (@mooney/ui)
 docs/                 you are here

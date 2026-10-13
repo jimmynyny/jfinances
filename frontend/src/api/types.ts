@@ -275,11 +275,16 @@ export interface SyncStatus {
   webhooks: WebhookEvent[];
 }
 
+/** Which Connect button was used. Each asks Plaid for one required product so
+ *  no institution is hidden from Link (see docs/30-plaid.md, "Products"). */
+export type LinkKind = "banking" | "investments";
+
 export interface LinkToken {
   link_token: string;
   expiration: string | null;
   link_session_id: string;
   mode: "create" | "update";
+  kind?: LinkKind | null;
   redirect_uri?: string;
 }
 
@@ -294,6 +299,7 @@ export interface LinkConfig {
   redirect_uri: string;
   webhook_url: string;
   products: string[];
+  kinds?: Partial<Record<LinkKind, { products: string[]; required_if_supported_products: string[] }>>;
   plaid_env: string;
 }
 

@@ -16,7 +16,7 @@ from jwt.algorithms import ECAlgorithm
 from server.app import db
 from server.app.config import reset_settings_cache
 from server.app.services import plaid_webhooks as wv
-from server.tests.conftest import pg_url
+from server.tests.conftest import migrate, pg_url
 
 URL = pg_url()
 pytestmark = pytest.mark.skipif(URL is None, reason="TEST_DATABASE_URL not reachable")
@@ -43,6 +43,7 @@ def client(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", URL)
     reset_settings_cache()
     db.reset_engine_cache()
+    migrate(URL)
     from server.app.hooks import app
     with TestClient(app) as c:
         yield c

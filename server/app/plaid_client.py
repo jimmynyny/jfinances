@@ -27,6 +27,32 @@ class PlaidError(Exception):
         super().__init__(f"{self.error_type}/{self.error_code}: {body.get('error_message')}")
 
 
+
+#: What each "Connect" button asks Plaid for.
+#:
+#: Plaid hides every institution that does not support ALL of `products`, so
+#: each kind requires exactly one product. The rest go in
+#: `required_if_supported_products`: Plaid adds them only when the institution
+#: AND the accounts the user selects support them, and bills them only then.
+#: Requiring all three at once would hide Robinhood and the 529 plans (no
+#: liabilities) and investment-less banks from Link.
+LINK_KINDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "banking": ("transactions", ("liabilities", "investments")),
+    "investments": ("investments", ("transactions", "liabilities")),
+}
+
+
+def link_product_plan(kind: str, enabled: list[str]) -> tuple[list[str], list[str]]:
+    """(products, required_if_supported_products) for a link kind, limited to
+    the products PLAID_PRODUCTS enables."""
+    if kind not in LINK_KINDS:
+        raise ValueError(f"unknown link kind {kind!r}; expected one of {sorted(LINK_KINDS)}")
+    primary, extras = LINK_KINDS[kind]
+    if primary not in enabled:
+        raise ValueError(f"link kind {kind!r} needs the {primary!r} product, which PLAID_PRODUCTS disables")
+    return [primary], [p for p in extras if p in enabled]
+
+
 class PlaidClient:
     def __init__(self, *, base_url: str | None = None, client_id: str | None = None,
                  secret: str | None = None, transport: httpx.BaseTransport | None = None,
@@ -49,7 +75,7 @@ class PlaidClient:
 
     # --- link ---------------------------------------------------------------
     def link_token_create(self, *, user_id: str, access_token: str | None = None,
-                          products: list[str] | None = None) -> dict[str, Any]:
+                          kind: str = "banking") -> dict[str, Any]:
         s = settings()
         body: dict[str, Any] = {
             "user": {"client_user_id": user_id},
@@ -63,8 +89,12 @@ class PlaidClient:
             body["access_token"] = access_token          # update mode
             body["update"] = {"account_selection_enabled": True}
         else:
-            body["products"] = products or s.plaid_products
-            body["transactions"] = {"days_requested": s.plaid_days_requested}
+            products, extras = link_product_plan(kind, s.plaid_products)
+            body["products"] = products
+            if extras:
+                body["required_if_supported_products"] = extras
+            if "transactions" in products + extras:
+                body["transactions"] = {"days_requested": s.plaid_days_requested}
         return self.post("/link/token/create", body)
 
     def item_public_token_exchange(self, public_token: str) -> dict[str, Any]:

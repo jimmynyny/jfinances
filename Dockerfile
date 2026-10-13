@@ -28,5 +28,5 @@ COPY --from=frontend /build/frontend/dist ./frontend/dist
 RUN uv sync --frozen --no-dev && chmod +x start.sh && chown -R app:app /app
 ENV PATH="/app/.venv/bin:$PATH" SPA_DIR=/app/frontend/dist
 USER app
-EXPOSE 8000
+EXPOSE 8080
 CMD ["./start.sh"]

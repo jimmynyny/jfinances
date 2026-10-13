@@ -3,20 +3,25 @@ Runs migrations, boots the web app with DEV_LOGIN_EMAIL, links a fake item
 through a stubbed Plaid client, syncs, snapshots, and reads the overview."""
 from __future__ import annotations
 
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 from server.app import db
 from server.app.config import reset_settings_cache
-from server.tests.conftest import pg_url
+from server.tests.conftest import migrate, pg_url
 
 URL = pg_url()
 pytestmark = pytest.mark.skipif(URL is None, reason="TEST_DATABASE_URL not reachable")
 
+
+
+def _jobs():
+    from sqlalchemy import select
+
+    from server.app.db import session
+    from server.app.models import Job
+    with session() as sess:
+        return sess.execute(select(Job.kind, Job.status)).all()
 
 class FakePlaid:
     def __init__(self):
@@ -32,7 +37,10 @@ class FakePlaid:
         return {"institution": {"name": "First Platypus Bank"}}
 
     def accounts_get(self, token):
-        return {"item": {"institution_id": "ins_1", "institution_name": "First Platypus Bank"},
+        # Like real Plaid: the Item reports the products Link initialised. A banking link to
+        # this institution got liabilities (it has a card) but not investments.
+        return {"item": {"institution_id": "ins_1", "institution_name": "First Platypus Bank",
+                         "products": ["transactions", "liabilities"]},
                 "accounts": [
                     {"account_id": "acc-chk", "name": "Plaid Checking", "mask": "0000", "type": "depository",
                      "subtype": "checking",
@@ -76,11 +84,7 @@ def client(monkeypatch):
     monkeypatch.setenv("DEV_LOGIN_EMAIL", "jimmy@example.com")
     reset_settings_cache()
     db.reset_engine_cache()
-    ini = Path(__file__).resolve().parents[1] / "alembic.ini"
-    subprocess.check_call([sys.executable, "-m", "alembic", "-c", str(ini), "downgrade", "base"],
-                          env={**__import__("os").environ, "DATABASE_URL": URL, "APP_ENV": "local"})
-    subprocess.check_call([sys.executable, "-m", "alembic", "-c", str(ini), "upgrade", "head"],
-                          env={**__import__("os").environ, "DATABASE_URL": URL, "APP_ENV": "local"})
+    migrate(URL, fresh=True)
     fake = FakePlaid()
     import server.app.plaid_client as pc
     monkeypatch.setattr(pc, "_client", fake)
@@ -107,7 +111,11 @@ def test_full_flow(client):
     ran = 0
     while loop_once():
         ran += 1
-    assert ran >= 3
+    # sync_item + refresh_liabilities. No refresh_investments: the Item does not
+    # have that product, and calling it would make Plaid add (and bill) it.
+    assert ran >= 2
+    kinds = {r[0] for r in _jobs()}
+    assert "refresh_investments" not in kinds and {"sync_item", "refresh_liabilities"} <= kinds
 
     status = client.get("/api/v1/sync/status").json()
     assert not [j for j in status["jobs"] if j["status"] == "failed"], status["jobs"]

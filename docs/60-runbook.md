@@ -24,8 +24,8 @@ and exits non-zero on failure.
 Verify:
 
 ```bash
-curl -s https://jfinances.sellingtcg.com/healthz        # 200 JSON, NOT an Access login page? then Access is off
-curl -s https://jfinances-hooks.sellingtcg.com/healthz  # 200
+curl -sI https://jfinances.sellingtcg.com/              # 302 to daedalustcg.cloudflareaccess.com: Access is on
+curl -s https://jfinances-hooks.sellingtcg.com/healthz  # 200 JSON (hooks is outside Access)
 railway logs --service worker | grep "worker started"
 ```
 
@@ -48,7 +48,9 @@ are forward-only; write a new migration rather than downgrading.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `boot check failed: PLAID_SECRET is unset or a placeholder` and the service exits 78 | variable still `REPLACE_ME` | set it, redeploy |
-| `/healthz` returns an HTML login page | Access covers `/healthz` | add a bypass policy for `/healthz` on the Access app |
+| `/healthz` on the dashboard host returns a login page | expected: the whole dashboard host is behind Access | check health in Railway (internal healthcheck) or on the hooks host |
+| Link does not list Robinhood / a 529 plan | used "Bank, card or loan" | choose "Investment or retirement" (requires only the investments product) |
+| Deploy fails in pre-deploy with exit 78 | that service's boot check failed | `railway logs --service <svc>`; the `config:` lines name the variable |
 | API returns `auth.bad_access_jwt` | `CF_ACCESS_AUD` does not match the app's AUD tag, or `CF_ACCESS_TEAM` wrong | copy the AUD from Zero Trust → Applications → the app → Overview |
 | API returns `auth.not_allowed` (403) | email passed Access but is not in `ALLOWED_USERS` | add it, redeploy web (seeding runs at boot) or `railway run --service web python -m server.tools.seed` |
 | Item shows `login_required` | bank asked for re-auth / MFA | Settings → Relink; Plaid Link opens in update mode |
@@ -82,8 +84,9 @@ Unlink: Settings → the item → Unlink. Backend: `/item/remove` at Plaid, item
 
 ## 6. Backups and restore
 
-Railway → Postgres service → Backups: schedules Daily (kept 6 days) and
-Weekly (kept 27 days) must both be on. Manual backup before anything scary.
+Railway → Postgres service → Backups: Weekly (kept 27 days) and Monthly
+(kept 89 days) are on; Daily (kept 6 days) is recommended so a bad day
+costs at most a day of balance history. Manual backup before anything scary.
 Restore: pick the backup → Restore → Railway stages a new volume → Deploy.
 Restores land in the same project and environment only. After a restore,
 run `POST /api/v1/sync/all` to catch up; cursors in the restored rows make
@@ -120,7 +123,7 @@ export DATABASE_URL=postgresql://localhost/jfinances_dev APP_ENV=local DEV_LOGIN
        ALLOWED_USERS=you@example.com PLAID_ENV=sandbox PLAID_CLIENT_ID=… PLAID_SECRET=… \
        TOKEN_ENCRYPTION_KEY=$(python -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
 uv run alembic -c server/alembic.ini upgrade head
-SERVICE_ROLE=web   ./start.sh                 # :8000
+SERVICE_ROLE=web   ./start.sh                 # :8080
 SERVICE_ROLE=worker ./start.sh                # another shell
 uv run pytest                                 # TEST_DATABASE_URL=… to include integration tests
 ```

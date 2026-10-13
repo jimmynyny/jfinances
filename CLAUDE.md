@@ -10,6 +10,8 @@ anything structural.
 - **Never** add anything that writes to a financial institution. Read-only app.
 - **Never** auto-deploy from GitHub. Deploys are `railway up --service <name> --ci`, per service, sandbox first.
 - `worker` runs **one** replica. Do not scale it.
+- Never call a Plaid product endpoint for an Item that lacks the product (`PlaidItem.has_product`): Plaid would add and bill it.
+- Cloudflare Access is managed by `ops/cloudflare_access.py`; change it there, not by hand.
 - Keep `web`, `hooks`, `worker` independent: shared code is fine, shared process is not.
 
 ## Shipping
@@ -18,7 +20,7 @@ git push
 railway environment sandbox && railway up --service web --ci   # etc.
 railway environment production && railway up --service web --ci
 ```
-`web` runs migrations in its pre-deploy step. Ship `web` before `worker` when a migration matters.
+Every service runs migrations in its pre-deploy step (`server.tools.release`, advisory-locked), so there is no required deploy order. Keep migrations backward compatible with the code still running in the other services.
 
 ## Code
 - Python: `uv run ruff check server && uv run pytest` before pushing.

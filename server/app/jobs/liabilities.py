@@ -13,7 +13,7 @@ from .sync_item import _item
 @handler("refresh_liabilities")
 def refresh_liabilities(sess: Session, payload: dict) -> None:
     item = _item(sess, payload)
-    if item is None:
+    if item is None or not item.has_product("liabilities"):
         return
     try:
         plaid_sync.refresh_liabilities(sess, item)
@@ -27,5 +27,5 @@ def refresh_liabilities(sess: Session, payload: dict) -> None:
 @handler("refresh_liabilities_all")
 def refresh_liabilities_all(sess: Session, payload: dict) -> None:
     for it in sess.execute(select(PlaidItem).where(PlaidItem.status == "active")).scalars():
-        if any(a.type in ("credit", "loan") for a in it.accounts):
+        if it.has_product("liabilities"):
             enqueue(sess, "refresh_liabilities", {"item_id": str(it.id)})

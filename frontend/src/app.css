@@ -36,3 +36,7 @@
 .jf-theme:focus-visible { box-shadow: var(--mu-focus); }
 .jf-center { min-height: 60vh; display: grid; place-items: center; }
 .jf-about { max-width: 640px; }
+
+/* Connect chooser: opens in place of the button, no backdrop (docs/70). */
+.jf-connect-choice { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--mu-s2); }
+.jf-connect-choice__label { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--mu-ink-3); }

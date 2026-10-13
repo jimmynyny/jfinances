@@ -111,24 +111,26 @@ Calls `/item/remove`; returns the item with `status:"removed"`.
 ## Link
 
 ### POST /link/token (dashboard_only)
-Body: `{"item_id"?: "…"}` (present = update mode).
+Body: `{"kind"?: "banking"|"investments", "item_id"?: "…"}`. `kind` (default `banking`)
+picks the product plan (docs/30 "Products"); `item_id` present = update mode, `kind` ignored.
 ```json
 {"link_token":"link-production-…","expiration":"…","link_session_id":"…","mode":"create",
- "redirect_uri":"https://jfinances.sellingtcg.com/link/oauth"}
+ "kind":"banking","redirect_uri":"https://jfinances.sellingtcg.com/link/oauth"}
 ```
+`400 bad_request` for an unknown kind or one whose required product `PLAID_PRODUCTS` disables.
 
 ### GET /link/session (dashboard_only)
 The newest unconsumed, unexpired link session for this user, for the OAuth return page:
 `{"link_token":"…","link_session_id":"…","mode":"create|update","item_id":null}`
 
 ### POST /link/exchange → 201 (dashboard_only)
-Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…"}` → item. Queues the three jobs.
+Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…"}` → item. Queues `sync_item`, plus `refresh_investments` / `refresh_liabilities` only if the Item has those products.
 
 ### POST /link/update-complete (dashboard_only)
 Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (status `active`).
 
 ### GET /link/config
-`{"redirect_uri":"…","webhook_url":"…","products":[…],"plaid_env":"production"}`
+`{"redirect_uri":"…","webhook_url":"…","products":[…],"kinds":{"banking":{"products":["transactions"],"required_if_supported_products":["liabilities","investments"]},"investments":{…}},"plaid_env":"production"}`
 
 ## Transactions
 

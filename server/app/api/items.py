@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..auth.deps import current_user, dashboard_only
 from ..auth.human import Principal
 from ..db import get_session
-from ..jobs.queue import enqueue
+from ..jobs.sync_item import enqueue_item_refresh
 from ..models import PlaidItem
 from ..plaid_client import PlaidError, plaid
 from ..services import plaid_sync
@@ -36,9 +36,7 @@ def sync(item_id: str, _: Principal = Depends(current_user), sess: Session = Dep
     it = _get(sess, item_id)
     if it.status == "removed":
         raise ApiError(409, "conflict", "item was unlinked")
-    queued = enqueue(sess, "sync_item", {"item_id": str(it.id)})
-    enqueue(sess, "refresh_investments", {"item_id": str(it.id)})
-    enqueue(sess, "refresh_liabilities", {"item_id": str(it.id)})
+    queued = enqueue_item_refresh(sess, it)
     return {"queued": queued is not None, "item": item_json(it)}
 
 

@@ -3,11 +3,25 @@ import { usePlaidLink, type PlaidLinkOnExit, type PlaidLinkOnSuccess } from "rea
 import { Button, useToast, type ButtonProps } from "@mooney/ui";
 import { api, ApiError } from "../api/client";
 import { useInvalidateMoney } from "../api/hooks";
+import type { LinkKind } from "../api/types";
 import { clearStashedLink, stashLink, type StashedLink } from "../lib/plaidLink";
+
+const KINDS: Record<LinkKind, { label: string; hint: string }> = {
+  banking: {
+    label: "Bank, card or loan",
+    hint: "Checking, savings, credit cards, mortgages and loans. Brokerage accounts at the same bank come along if you select them.",
+  },
+  investments: {
+    label: "Investment or retirement",
+    hint: "Brokerage, 401(k), IRA and 529 accounts, e.g. Robinhood or a state 529 plan.",
+  },
+};
 
 interface Props extends Omit<ButtonProps, "onClick" | "children"> {
   /** When set, opens Link in update mode for this item (re-link). */
   itemId?: string;
+  /** Skip the "what are you connecting?" choice and link this kind directly. */
+  kind?: LinkKind;
   children?: ReactNode;
   onLinked?: () => void;
 }
@@ -20,9 +34,10 @@ interface Props extends Omit<ButtonProps, "onClick" | "children"> {
  * The Plaid hook lives in a child that only mounts once a token exists, so a
  * page with several of these buttons embeds link-initialize.js once, when used.
  */
-export function ConnectButton({ itemId, children, onLinked, ...btn }: Props) {
+export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Props) {
   const [link, setLink] = useState<StashedLink | null>(null);
   const [busy, setBusy] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const { toast, error } = useToast();
   const invalidate = useInvalidateMoney();
 
@@ -57,10 +72,11 @@ export function ConnectButton({ itemId, children, onLinked, ...btn }: Props) {
     [error],
   );
 
-  async function start() {
+  async function start(k?: LinkKind) {
+    setChoosing(false);
     setBusy(true);
     try {
-      const lt = itemId ? await api.relinkItem(itemId) : await api.linkToken();
+      const lt = itemId ? await api.relinkItem(itemId) : await api.linkToken(k ?? kind ?? "banking");
       const s: StashedLink = { token: lt.link_token, sessionId: lt.link_session_id, mode: lt.mode, itemId: itemId ?? null };
       stashLink(s);
       setLink(s);
@@ -71,10 +87,26 @@ export function ConnectButton({ itemId, children, onLinked, ...btn }: Props) {
     }
   }
 
+  // Create mode without a fixed kind: the choice opens in place, from the button.
+  if (choosing) {
+    return (
+      <span className="jf-connect-choice" role="group" aria-label="What are you connecting?">
+        <span className="jf-connect-choice__label">Connect</span>
+        {(Object.keys(KINDS) as LinkKind[]).map((k) => (
+          <Button key={k} size={btn.size} title={KINDS[k].hint} onClick={() => void start(k)}>
+            {KINDS[k].label}
+          </Button>
+        ))}
+        <Button size={btn.size} variant="quiet" onClick={() => setChoosing(false)}>Cancel</Button>
+      </span>
+    );
+  }
+
+  const onClick = () => (itemId || kind ? void start() : setChoosing(true));
   return (
     <>
-      <Button variant={itemId ? "quiet" : "primary"} {...btn} loading={busy || !!link} onClick={start}>
-        {children ?? (itemId ? "Re-link" : "Connect account")}
+      <Button variant={itemId ? "quiet" : "primary"} {...btn} loading={busy || !!link} onClick={onClick}>
+        {children ?? (itemId ? "Re-link" : kind === "investments" ? "Connect investment account" : "Connect account")}
       </Button>
       {link && <PlaidOpener token={link.token} onSuccess={onSuccess} onExit={onExit} />}
     </>

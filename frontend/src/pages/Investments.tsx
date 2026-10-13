@@ -34,7 +34,7 @@ export function InvestmentsPage() {
     <Page>
       <PageHeader title="Investments" subtitle={q.data ? <>{accounts.length} accounts · <Money value={q.data.total_value} cents={false} /> total</> : <Skeleton width={160} />} />
       {q.data && accounts.length === 0 && (
-        <EmptyState glyph="∿" title="No investment accounts yet" description="Brokerages, 401(k)s and 529s show up here once connected with the Investments product." action={<ConnectButton />} />
+        <EmptyState glyph="∿" title="No investment accounts yet" description="Brokerages, 401(k)s and 529s show up here once connected with the Investments product." action={<ConnectButton kind="investments" />} />
       )}
       {/* A one-slice donut is just a number; the header already shows the total. */}
       {(byAccount.length > 1 || byType.length > 1) && (

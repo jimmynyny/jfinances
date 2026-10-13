@@ -39,7 +39,9 @@ service, set these by hand.
 |---|---|---|---|
 | Builder | Dockerfile | Dockerfile | Dockerfile |
 | Start command | `./start.sh` | `./start.sh` | `./start.sh` |
-| Pre-deploy | `python -m server.tools.release` | — | — |
+| Pre-deploy | `python -m server.tools.release` | same | same |
+| `PORT` variable | `8080` | `8080` | — |
+| Custom domain target port | 8080 | 8080 | — |
 | Healthcheck | `/healthz`, 120 s | `/healthz`, 120 s | — |
 | Restart policy | ON_FAILURE ×5 | ON_FAILURE ×5 | ALWAYS |
 | Replicas | 1 | 1 | **1 — never more** (the scheduler would double-fire) |
@@ -59,12 +61,12 @@ railway environment sandbox
 #    the same image; the dashboard stays up while the worker ships.
 railway up --service worker --ci
 railway up --service hooks  --ci
-railway up --service web    --ci     # runs migrations in pre-deploy, then swaps
+railway up --service web    --ci     # every service migrates in pre-deploy, then swaps
 
 # 4. verify
 railway deployment list --service web --json | head -40
 curl -s https://jfinances-sandbox-hooks.sellingtcg.com/healthz
-curl -sI https://jfinances-sandbox.sellingtcg.com/healthz   # 200 from the app, not a Cloudflare login page
+curl -sI https://jfinances-sandbox.sellingtcg.com/          # 302 to daedalustcg.cloudflareaccess.com = Access is on
 
 # 5. repeat for production
 railway environment production
@@ -74,9 +76,12 @@ railway up --service worker --ci && railway up --service hooks --ci && railway u
 `--ci` streams the build and exits non-zero on failure, which is what you
 want from a script. `--detach` returns at "queued" and tells you nothing.
 
-Order matters when a migration changes a table the worker reads: ship `web`
-first (it runs the migration), then `worker`. When a migration only adds
-columns the order does not matter.
+Every service runs `python -m server.tools.release` as its pre-deploy step:
+boot checks for that service's role, then `alembic upgrade head` under a
+Postgres advisory lock. Whichever service deploys first migrates; the rest
+find the schema at head. So there is no required deploy order, as long as
+migrations stay backward compatible with the code still running elsewhere
+(add tables/columns now, drop them in a later release).
 
 ### Rollback
 
@@ -91,9 +96,11 @@ so rotating the DB password in Railway propagates automatically.
 
 ### Backups (required — this is personal financial data)
 
-Railway → `Postgres` service → **Backups** tab → enable **Daily** and
-**Weekly**. Daily keeps 6 days, weekly keeps 27 days. Do this in **both**
-environments. Backups are incremental copy-on-write and cost cents.
+Railway → `Postgres` service → **Backups** tab. As of 2026-10-13 **Weekly**
+(kept 27 days) and **Monthly** (kept 89 days) are on. Adding **Daily** (kept
+6 days) is recommended: transactions can be re-pulled from Plaid, but daily
+balance snapshots (the net-worth history) and your edits cannot. Do this in
+**both** environments. Backups are incremental copy-on-write and cost cents.
 
 Restore: same tab → pick a backup → Restore → review the staged change →
 Deploy. The old volume stays attached-but-unmounted so nothing is lost.
@@ -117,7 +124,20 @@ develops remotely, so this stands in for a local environment.
 ## Removing the Railway-provided domain
 
 A `*.up.railway.app` domain bypasses Cloudflare and therefore Access.
-Once the custom domains are green in Cloudflare, delete any Railway-provided
-domain from each service's Settings → Networking. `hooks` in production
-currently has `hooks-production-3bcd.up.railway.app` from initial testing;
-delete it after the Cloudflare hostname works.
+Delete any Railway-provided domain from each service's Settings →
+Networking (the CLI cannot delete domains). `hooks` in production has
+`hooks-production-3bcd.up.railway.app` from initial testing; delete it.
+
+## Sandbox end-to-end check
+
+Proves Plaid credentials, exchange + encryption, the worker, and the signed
+Plaid → Cloudflare → hooks path, without a browser. Sandbox only (it refuses
+production):
+
+```bash
+railway ssh --service worker --environment sandbox -- \
+    python -m server.tools.sandbox_smoke --email jimmy.mooney@gmail.com
+```
+
+It leaves a First Platypus Bank item linked so the sandbox dashboard has
+data; unlink it in Settings when you are done with it.
