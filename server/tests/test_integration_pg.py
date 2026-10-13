@@ -167,3 +167,21 @@ def test_reorder_accounts(client):
     assert client.put("/api/v1/accounts/order", json={"account_ids": [a, a]}).status_code == 400
     assert client.put("/api/v1/accounts/order",
                       json={"account_ids": [a, "00000000-0000-0000-0000-000000000000"]}).status_code == 404
+
+
+def test_account_trend_is_daily_and_ends_at_current_balance(client):
+    from datetime import UTC, datetime, timedelta
+
+    from server.app.models import BalanceSnapshot
+
+    r = client.post("/api/v1/accounts/manual", json={"name": "Trend car", "manual_category": "vehicle", "value": "900"})
+    acct_id = r.json()["id"]
+    today = datetime.now(UTC).date()
+    with db.session() as sess:  # an older manual value, 10 days back
+        sess.add(BalanceSnapshot(account_id=acct_id, as_of=today - timedelta(days=10),
+                                 current_balance=1000, source="manual"))
+    rows = {a["id"]: a for a in client.get("/api/v1/accounts").json()["accounts"]}
+    trend = rows[acct_id]["trend"]
+    assert len(trend) == 11 and trend[0] == "1000.00" and trend[-1] == "900.00"
+    overview_rows = {a["id"]: a for g in client.get("/api/v1/overview").json()["groups"] for a in g["accounts"]}
+    assert overview_rows[acct_id]["trend"] == trend

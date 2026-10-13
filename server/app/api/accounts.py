@@ -16,7 +16,8 @@ from ..db import get_session
 from ..models import MANUAL_CATEGORIES, Account, BalanceSnapshot, PlaidItem, is_liability_for
 from ..plaid_client import PlaidError
 from ..services import plaid_sync
-from ._common import ApiError, account_json, parse_uuid
+from ..services.trends import balance_trends
+from ._common import ApiError, account_json, money, parse_uuid
 
 router = APIRouter()
 
@@ -32,8 +33,9 @@ def _get(sess: Session, account_id: str) -> Account:
 @router.get("/accounts")
 def list_accounts(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     rows = sess.execute(select(Account).options(selectinload(Account.item))
-                        .order_by(Account.display_order, Account.name)).scalars()
-    return {"accounts": [account_json(a) for a in rows]}
+                        .order_by(Account.display_order, Account.name)).scalars().all()
+    trends = balance_trends(sess, [a.id for a in rows], current={a.id: a.current_balance for a in rows})
+    return {"accounts": [{**account_json(a), "trend": [money(v) for v in trends.get(a.id, [])]} for a in rows]}
 
 
 class AccountPatch(BaseModel):

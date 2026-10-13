@@ -128,4 +128,15 @@ SERVICE_ROLE=worker ./start.sh                # another shell
 uv run pytest                                 # TEST_DATABASE_URL=… to include integration tests
 ```
 
+For design and debugging, load a realistic household, never real data: 20
+accounts in every group, two years of daily balances, transactions, holdings,
+liability details, and PNC in `login_required`. It refuses to run unless
+`APP_ENV=local` and the database is on localhost. Do not run the worker
+against it: the demo items have fake tokens, so every Plaid call fails and the
+items flip to an error state.
+
+```bash
+uv run python -m server.tools.demo_seed --reset
+```
+
 Webhooks cannot reach a laptop; use the sandbox Railway environment for that.

@@ -68,6 +68,13 @@ Account object:
  "institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
 ```
 
+
+Every account row here and in `GET /overview` carries `trend`: up to 90 daily
+balances, oldest to newest, as decimal strings with the same sign as
+`current_balance`. Gaps carry the previous value forward and the last point
+is the live balance, so a sparkline ends at the number printed beside it
+(`server/app/services/trends.py`).
+
 ### PUT /accounts/order
 Drag-and-drop reorder. Body `{"account_ids":["…","…"]}`: one group's accounts,
 top to bottom, hidden ones included; each gets `display_order` = its index.

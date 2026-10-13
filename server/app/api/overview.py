@@ -12,6 +12,7 @@ from ..auth.human import Principal
 from ..db import get_session
 from ..models import Account, BalanceSnapshot, PlaidItem
 from ..services import networth
+from ..services.trends import balance_trends
 from ._common import account_json, money, ts
 
 router = APIRouter()
@@ -72,13 +73,15 @@ def overview(_: Principal = Depends(current_user), sess: Session = Depends(get_s
             str(networth.pct_change(net, then[2])) if networth.pct_change(net, then[2]) is not None else None),
             "since": month_ago.isoformat()}
 
+    trends = balance_trends(sess, [a.id for a, _ in pairs], current={a.id: a.current_balance for a, _ in pairs})
     groups = []
     for g in networth.grouped(rows):
         g_then = None
         groups.append({
             "key": g["key"], "label": g["label"], "is_liability": g["is_liability"],
             "total": money(g["total"]), "change_1m": g_then,
-            "accounts": [account_json(by_id[r.id]) for r in g["accounts"]],
+            "accounts": [{**account_json(by_id[r.id]),
+                          "trend": [money(v) for v in trends.get(by_id[r.id].id, [])]} for r in g["accounts"]],
         })
     # Per-group month change from snapshots.
     sub = (select(BalanceSnapshot.account_id, func.max(BalanceSnapshot.as_of).label("d"))
