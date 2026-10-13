@@ -299,6 +299,8 @@ export const api = {
     account(await request("PUT", `/accounts/${id}/value`, { ...body, value: dec(body.value) })),
   deleteManualAccount: (id: string) => request<void>("DELETE", `/accounts/${id}`),
   refreshAccount: async (id: string): Promise<Account> => account(await request("POST", `/accounts/${id}/refresh`)),
+  /** One group's accounts, top to bottom (hidden ones included). */
+  reorderAccounts: (ids: string[]) => request<{ ok: boolean; count: number }>("PUT", "/accounts/order", { account_ids: ids }),
 
   items: async (): Promise<Item[]> => list((await request("GET", "/items")).items, item),
   syncItem: async (id: string): Promise<{ queued: boolean; item: Item }> => {

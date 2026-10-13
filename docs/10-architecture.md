@@ -214,6 +214,7 @@ All routes require a principal except `/healthz`. Errors are
 | `GET /networth/history?range=1m|3m|6m|1y|all` | `[{date, assets, liabilities, net}]` from `balance_snapshots` |
 | `GET /accounts` | all accounts incl. hidden, with item status and `last_updated` |
 | `PATCH /accounts/{id}` | `{name?, is_hidden?, display_order?}` |
+| `PUT /accounts/order` | `{account_ids}`: one group, top to bottom → drag-and-drop reorder |
 | `POST /accounts/manual` | `{name, manual_category, value, iso_currency?}` → account + snapshot |
 | `PUT /accounts/{id}/value` | `{value, as_of?, note?}` manual accounts only |
 | `POST /accounts/{id}/refresh` | real-time balance, rate limited |

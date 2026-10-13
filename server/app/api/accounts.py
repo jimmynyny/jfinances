@@ -56,6 +56,29 @@ def patch_account(account_id: str, body: AccountPatch, _: Principal = Depends(cu
     return account_json(a)
 
 
+class OrderIn(BaseModel):
+    #: One group's accounts, top to bottom. Positions are written as 0..n-1.
+    account_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.put("/accounts/order")
+def reorder_accounts(body: OrderIn, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Drag-and-drop reorder: set display_order for the listed accounts in one
+    transaction. Groups sort independently, so the dashboard sends one group's
+    full list (hidden accounts included) after each drop."""
+    ids = [parse_uuid(i, "account_ids") for i in body.account_ids]
+    if len(set(ids)) != len(ids):
+        raise ApiError(400, "bad_request", "account_ids contains duplicates")
+    rows = {a.id: a for a in sess.execute(select(Account).where(Account.id.in_(ids))).scalars()}
+    missing = [str(i) for i in ids if i not in rows]
+    if missing:
+        raise ApiError(404, "not_found", f"unknown account ids: {', '.join(missing)}")
+    for position, account_id in enumerate(ids):
+        rows[account_id].display_order = position
+    sess.flush()
+    return {"ok": True, "count": len(ids)}
+
+
 class ManualAccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     manual_category: Literal["real_estate", "vehicle", "cash", "other_asset", "other_liability"]

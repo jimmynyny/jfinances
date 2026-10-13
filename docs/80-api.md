@@ -68,6 +68,12 @@ Account object:
  "institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
 ```
 
+### PUT /accounts/order
+Drag-and-drop reorder. Body `{"account_ids":["…","…"]}`: one group's accounts,
+top to bottom, hidden ones included; each gets `display_order` = its index.
+→ `{"ok":true,"count":3}`. `400` on duplicates, `404` naming unknown ids.
+Groups sort independently, so sending one group never disturbs another.
+
 ### PATCH /accounts/{id}
 Body: `{"name"?: str, "is_hidden"?: bool, "display_order"?: int}` → account.
 

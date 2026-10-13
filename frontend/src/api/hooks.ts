@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Range, Summary, TransactionQuery } from "./types";
+import type { Account, Range, Summary, TransactionQuery } from "./types";
 
 /** Query keys in one place so invalidation is grep-able. */
 export const qk = {
@@ -49,6 +49,27 @@ export function useInvalidateMoney() {
 export function useUpdateAccount() {
   const inv = useInvalidateMoney();
   return useMutation({ mutationFn: (v: { id: string; patch: Parameters<typeof api.updateAccount>[1] }) => api.updateAccount(v.id, v.patch), onSuccess: inv });
+}
+/** Drag-and-drop reorder. Optimistic: the list moves on drop, rolls back on error. */
+export function useReorderAccounts() {
+  const qc = useQueryClient();
+  const inv = useInvalidateMoney();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.reorderAccounts(ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: qk.accounts });
+      const prev = qc.getQueryData<Account[]>(qk.accounts);
+      if (prev) {
+        const pos = new Map(ids.map((id, i) => [id, i] as const));
+        qc.setQueryData<Account[]>(qk.accounts, prev.map((a) => (pos.has(a.id) ? { ...a, display_order: pos.get(a.id)! } : a)));
+      }
+      return { prev };
+    },
+    onError: (_e, _ids, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.accounts, ctx.prev);
+    },
+    onSettled: inv,
+  });
 }
 export function useCreateManual() {
   const inv = useInvalidateMoney();

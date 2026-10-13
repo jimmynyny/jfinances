@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
+  type Announcements, type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button, Checkbox, Drawer, EmptyState, IconButton, Input, Money, Page, PageHeader, Panel, Skeleton, useToast } from "@mooney/ui";
-import { useAccounts, useRefreshAccount, useSetManualValue, useUpdateAccount } from "../api/hooks";
+import { useAccounts, useRefreshAccount, useReorderAccounts, useSetManualValue, useUpdateAccount } from "../api/hooks";
 import type { Account } from "../api/types";
 import { ApiError } from "../api/client";
-import { AccountRow } from "../components/AccountRow";
+import { AccountRow, GripIcon } from "../components/AccountRow";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
 import { groupAccounts, upIsGood } from "../lib/groups";
@@ -14,23 +21,33 @@ export function AccountsPage() {
   const [showHidden, setShowHidden] = useState(true);
   const update = useUpdateAccount();
   const refresh = useRefreshAccount();
+  const reorder = useReorderAccounts();
   const setValue = useSetManualValue();
   const { toast, error } = useToast();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   if (q.error) return <Page><ErrorNote error={q.error} retry={() => q.refetch()} /></Page>;
 
-  const accounts = (q.data ?? []).filter((a) => showHidden || !a.is_hidden);
+  const all = q.data ?? [];
+  const accounts = all.filter((a) => showHidden || !a.is_hidden);
   const groups = groupAccounts(accounts);
+  const fullGroups = groupAccounts(all);
 
-  async function move(a: Account, dir: -1 | 1) {
-    const siblings = groups.find((g) => g.accounts.some((x) => x.id === a.id))?.accounts ?? [];
-    const i = siblings.findIndex((x) => x.id === a.id);
-    const j = i + dir;
-    if (j < 0 || j >= siblings.length) return;
-    const other = siblings[j]!;
-    const ai = a.display_order === other.display_order ? other.display_order + dir : other.display_order;
-    const oi = a.display_order === other.display_order ? a.display_order : a.display_order;
-    await Promise.all([update.mutateAsync({ id: a.id, patch: { display_order: ai } }), update.mutateAsync({ id: other.id, patch: { display_order: oi } })]);
+  /** Drop inside one group. The server gets the group's FULL order: accounts
+   *  hidden from view keep their slots, the visible ones fill the rest. */
+  function onDragEnd(groupKey: string, visible: Account[], e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const ids = visible.map((a) => a.id);
+    const moved = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+    const full = fullGroups.find((g) => g.key === groupKey)?.accounts.map((a) => a.id) ?? ids;
+    const shown = new Set(ids);
+    let k = 0;
+    const order = full.map((id) => (shown.has(id) ? moved[k++]! : id));
+    reorder.mutate(order, { onError: (err) => error(err instanceof ApiError ? err.message : "Could not save the new order") });
   }
 
   return (
@@ -45,15 +62,21 @@ export function AccountsPage() {
       )}
       {groups.map((g) => (
         <Panel key={g.key} flush caption={g.label} actions={<Money value={g.total} cents={false} mono={false} style={{ fontWeight: 600 }} />}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            accessibility={{ announcements: announcements(g.accounts), screenReaderInstructions: { draggable: DRAG_HELP } }}
+            onDragEnd={(e) => onDragEnd(g.key, g.accounts, e)}
+          >
+            <SortableContext items={g.accounts.map((a) => a.id)} strategy={verticalListSortingStrategy}>
           {g.accounts.map((a) => (
-            <AccountRow
+            <SortableAccount
               key={a.id}
               account={a}
               upIsGood={upIsGood(g.key)}
               actions={
-                <div className="mu-row" style={{ flexWrap: "nowrap" }}>
-                  <IconButton label="Move up" size="sm" variant="ghost" onClick={() => void move(a, -1)}>↑</IconButton>
-                  <IconButton label="Move down" size="sm" variant="ghost" onClick={() => void move(a, 1)}>↓</IconButton>
+                <>
                   {a.kind === "plaid" && (
                     <IconButton
                       label="Refresh balance"
@@ -66,10 +89,12 @@ export function AccountsPage() {
                     </IconButton>
                   )}
                   <Button size="sm" variant="quiet" onClick={() => setEditing(a)}>Edit</Button>
-                </div>
+                </>
               }
             />
           ))}
+            </SortableContext>
+          </DndContext>
         </Panel>
       ))}
 
@@ -122,5 +147,41 @@ function EditForm({ account, onSave }: { account: Account; onSave: (patch: { nam
       </div>
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>
+  );
+}
+
+const DRAG_HELP =
+  "To reorder an account, focus its grip and press space or enter to pick it up. " +
+  "Use the up and down arrow keys to move it, space or enter to drop it, or escape to cancel.";
+
+function announcements(accounts: Account[]): Announcements {
+  const name = (id: string | number) => accounts.find((a) => a.id === String(id))?.name ?? "account";
+  const pos = (id: string | number) => `position ${accounts.findIndex((a) => a.id === String(id)) + 1} of ${accounts.length}`;
+  return {
+    onDragStart: ({ active }) => `Picked up ${name(active.id)}, ${pos(active.id)}.`,
+    onDragOver: ({ active, over }) => (over ? `${name(active.id)} is now at ${pos(over.id)}.` : undefined),
+    onDragEnd: ({ active, over }) => (over ? `Dropped ${name(active.id)} at ${pos(over.id)}.` : `Dropped ${name(active.id)}.`),
+    onDragCancel: ({ active }) => `Cancelled. ${name(active.id)} stays where it was.`,
+  };
+}
+
+/** An account row that drags by its grip only, so text stays selectable and
+ *  the Edit and refresh buttons keep working normally. */
+function SortableAccount({ account, upIsGood: good, actions }: { account: Account; upIsGood: boolean; actions: ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: account.id });
+  return (
+    <AccountRow
+      account={account}
+      upIsGood={good}
+      actions={actions}
+      rowRef={setNodeRef}
+      dragging={isDragging}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      handle={
+        <button type="button" className="jf-grip" ref={setActivatorNodeRef} aria-label={`Reorder ${account.name}`} {...attributes} {...listeners}>
+          <GripIcon />
+        </button>
+      }
+    />
   );
 }

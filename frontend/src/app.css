@@ -1,6 +1,19 @@
 /* App-level layout rules that are specific to jfinances, not the design system. */
 
-.jf-acct { display: grid; grid-template-columns: 1fr auto auto; gap: var(--mu-s3); align-items: center; padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); min-width: 0; }
+.jf-acct { display: flex; align-items: center; gap: var(--mu-s3); padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); min-width: 0; background: var(--mu-panel); position: relative; }
+.jf-acct__info { flex: 1 1 auto; min-width: 0; }
+.jf-acct__spark, .jf-acct__bal, .jf-acct__actions { flex: none; }
+.jf-acct__actions { display: flex; align-items: center; gap: var(--mu-s1); }
+.jf-acct--dragging { z-index: 2; box-shadow: var(--mu-shadow); opacity: 0.96; }
+/* Drag handle: pixel grip. touch-action none so a finger drags instead of scrolling. */
+.jf-grip { all: unset; flex: none; display: grid; place-items: center; width: 24px; height: 32px; margin-left: calc(-1 * var(--mu-s2)); color: var(--mu-ink-3); cursor: grab; touch-action: none; }
+.jf-grip:hover { color: var(--mu-ink); }
+.jf-grip:focus-visible { box-shadow: var(--mu-focus); color: var(--mu-accent); }
+.jf-acct--dragging .jf-grip { cursor: grabbing; color: var(--mu-accent); }
+@media (max-width: 640px) {
+  .jf-acct { gap: var(--mu-s2); padding: var(--mu-s2) var(--mu-s3); }
+  .jf-acct__spark { display: none; }
+}
 .jf-acct:first-of-type { border-top: 0; }
 .jf-acct__name { font-size: var(--mu-fs-md); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jf-acct__meta { display: flex; gap: var(--mu-s2); align-items: center; }

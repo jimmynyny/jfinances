@@ -151,3 +151,19 @@ def test_full_flow(client):
     assert gone["status"] == "removed"
     ov2 = client.get("/api/v1/overview").json()
     assert ov2["net_worth"] == "410000.00"
+
+
+def test_reorder_accounts(client):
+    def manual(name):
+        r = client.post("/api/v1/accounts/manual", json={"name": name, "manual_category": "vehicle", "value": "1000"})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    a, b, c = manual("Car A"), manual("Car B"), manual("Car C")
+    r = client.put("/api/v1/accounts/order", json={"account_ids": [c, a, b]})
+    assert r.status_code == 200 and r.json() == {"ok": True, "count": 3}
+    names = [x["name"] for x in client.get("/api/v1/accounts").json()["accounts"] if x["name"].startswith("Car ")]
+    assert names == ["Car C", "Car A", "Car B"]
+    assert client.put("/api/v1/accounts/order", json={"account_ids": [a, a]}).status_code == 400
+    assert client.put("/api/v1/accounts/order",
+                      json={"account_ids": [a, "00000000-0000-0000-0000-000000000000"]}).status_code == 404
