@@ -50,7 +50,7 @@ export interface Account {
   institution_name: string | null;
   institution_id: string | null;
   item_status: ItemStatus | null;
-  /** Not provided by the backend today; populated client-side if ever fetched from /accounts/{id}/history. */
+  /** Up to 90 daily balances, oldest to newest, same sign as current_balance (GET /accounts, /overview). */
   trend?: number[];
   change_1m?: Change | null;
 }
@@ -163,13 +163,21 @@ export interface TransactionQuery {
 export interface SummaryRow {
   key: string;
   label: string;
+  /** Net with Plaid's sign: positive = net money out. */
   total: number;
+  /** Money in, positive. */
+  inflow: number;
+  /** Money out, positive. */
+  outflow: number;
   count: number;
 }
 
 export interface Summary {
   group_by: "category" | "month" | "account";
+  /** Month rows are chronological; category/account rows biggest net outflow first. */
   rows: SummaryRow[];
+  /** Transfers between own accounts and card payments are excluded unless asked for. */
+  transfers: "excluded" | "included";
 }
 
 export interface Holding {

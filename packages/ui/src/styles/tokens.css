@@ -17,7 +17,7 @@
   --mu-panel-2:     #f8f8f5;   /* inset wells, table header, hover wash */
   --mu-ink:         #17191c;   /* primary text */
   --mu-ink-2:       #4e5259;   /* secondary text */
-  --mu-ink-3:       #8a8f98;   /* muted: axis labels, captions, placeholders */
+  --mu-ink-3:       #666b73;   /* muted: axis labels, captions, meta — AA 4.55:1+ on every light surface */
   --mu-line:        #d8d8d1;   /* hairline borders */
   --mu-line-strong: #17191c;   /* pressable outlines */
   --mu-grid:        #e6e6e0;   /* chart gridlines, one step off surface */
@@ -27,6 +27,7 @@
   --mu-accent:      #e4531b;   /* signal orange: focus, selection, primary action, hero series */
   --mu-accent-ink:  #ffffff;
   --mu-accent-wash: #fbe9e0;   /* soft tint behind selected rows / tiles */
+  --mu-accent-text: #b8400f;   /* the accent when it is TEXT (badges, links): 5.0:1+ on light surfaces */
 
   /* ---- money semantics (never the accent) ---- */
   --mu-pos:         #1b7a3d;   /* gains, inflow */
@@ -49,16 +50,24 @@
   --mu-series-6: #008300;
   --mu-series-other: #a3a7ad;
 
+  /* ---- pixel layer (docs/70 § Pixel layer) ---- */
+  --mu-pixel-off: #e9e8e2;   /* an unlit cell: one step off the panel */
+  --mu-div-pos:   #2a78d6;   /* diverging gain arm, blue  — validated vs --mu-div-neg (CVD ΔE 27) */
+  --mu-div-neg:   #b32318;   /* diverging loss arm, red */
+  --mu-reg:       #a3a7ad;   /* registration marks at instrument-panel corners */
+
   /* ---- type ---- */
+  --mu-font-pixel: "Doto Variable", "Doto", var(--mu-font-mono);
   --mu-font-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mu-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --mu-fs-xs: 11px;
+  --mu-fs-xs: 12px;          /* floor for mono captions and meta lines */
   --mu-fs-sm: 12.5px;
   --mu-fs-md: 14px;
   --mu-fs-lg: 16px;
   --mu-fs-xl: 20px;
   --mu-fs-2xl: 28px;
   --mu-fs-hero: 40px;
+  --mu-fs-readout: 60px;      /* the one LED readout per view */
   --mu-lh-tight: 1.15;
   --mu-lh: 1.45;
 
@@ -98,9 +107,9 @@
     --mu-page:        #0f1012;
     --mu-panel:       #161719;
     --mu-panel-2:     #1d1e21;
-    --mu-ink:         #f1f1ec;
-    --mu-ink-2:       #b8bbc0;
-    --mu-ink-3:       #80848b;
+    --mu-ink:         #f7f7f3;
+    --mu-ink-2:       #d2d5da;
+    --mu-ink-3:       #a3a7ae;
     --mu-line:        #2a2c30;
     --mu-line-strong: #f1f1ec;
     --mu-grid:        #232529;
@@ -108,9 +117,10 @@
     --mu-accent:      #ff6a34;
     --mu-accent-ink:  #17191c;
     --mu-accent-wash: #33211a;
-    --mu-pos:         #3fbf6a;
+    --mu-accent-text: #ff6a34;
+    --mu-pos:         #4cd07a;
     --mu-pos-wash:    #16281c;
-    --mu-neg:         #ef6a5f;
+    --mu-neg:         #ff7d72;
     --mu-neg-wash:    #2e1816;
     --mu-series-1: #3987e5;
     --mu-series-2: #199e70;
@@ -119,6 +129,10 @@
     --mu-series-5: #d55181;
     --mu-series-6: #008300;
     --mu-series-other: #5b5f66;
+    --mu-pixel-off: #25272b;
+    --mu-div-pos:   #3987e5;
+    --mu-div-neg:   #e34948;
+    --mu-reg:       #4a4d53;
   }
 }
 :root[data-theme="dark"] {
@@ -126,9 +140,9 @@
   --mu-page:        #0f1012;
   --mu-panel:       #161719;
   --mu-panel-2:     #1d1e21;
-  --mu-ink:         #f1f1ec;
-  --mu-ink-2:       #b8bbc0;
-  --mu-ink-3:       #80848b;
+  --mu-ink:         #f7f7f3;
+  --mu-ink-2:       #d2d5da;
+  --mu-ink-3:       #a3a7ae;
   --mu-line:        #2a2c30;
   --mu-line-strong: #f1f1ec;
   --mu-grid:        #232529;
@@ -136,9 +150,10 @@
   --mu-accent:      #ff6a34;
   --mu-accent-ink:  #17191c;
   --mu-accent-wash: #33211a;
-  --mu-pos:         #3fbf6a;
+  --mu-accent-text: #ff6a34;
+  --mu-pos:         #4cd07a;
   --mu-pos-wash:    #16281c;
-  --mu-neg:         #ef6a5f;
+  --mu-neg:         #ff7d72;
   --mu-neg-wash:    #2e1816;
   --mu-series-1: #3987e5;
   --mu-series-2: #199e70;
@@ -147,6 +162,10 @@
   --mu-series-5: #d55181;
   --mu-series-6: #008300;
   --mu-series-other: #5b5f66;
+  --mu-pixel-off: #25272b;
+  --mu-div-pos:   #3987e5;
+  --mu-div-neg:   #e34948;
+  --mu-reg:       #4a4d53;
 }
 
 @media (prefers-reduced-motion: reduce) {

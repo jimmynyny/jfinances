@@ -60,6 +60,7 @@ function account(r: Raw): Account {
     institution_id: str(r.institution_id),
     item_status: (r.item_status as Account["item_status"]) ?? null,
     change_1m: change(r.change_1m),
+    trend: Array.isArray(r.trend) ? (r.trend as unknown[]).map(toNumber).filter((x): x is number => x !== null) : undefined,
   };
 }
 
@@ -329,9 +330,16 @@ export const api = {
   },
   updateTransaction: async (id: string, patch: { user_category?: string | null; notes?: string | null }): Promise<Transaction> =>
     transaction(await request("PATCH", `/transactions/${id}`, patch)),
-  transactionSummary: async (q: { from?: string; to?: string; account_id?: string; group_by: Summary["group_by"] }): Promise<Summary> => {
+  transactionSummary: async (q: { from?: string; to?: string; account_id?: string; group_by: Summary["group_by"]; include_transfers?: boolean }): Promise<Summary> => {
     const r = await request("GET", "/transactions/summary", undefined, q);
-    return { group_by: (r.group_by as Summary["group_by"]) ?? q.group_by, rows: list(r.rows, (x) => ({ key: String(x.key), label: String(x.label ?? x.key), total: n0(x.total), count: n0(x.count) })) };
+    return {
+      group_by: (r.group_by as Summary["group_by"]) ?? q.group_by,
+      rows: list(r.rows, (x) => ({
+        key: String(x.key), label: String(x.label ?? x.key), total: n0(x.total),
+        inflow: n0(x.inflow), outflow: n0(x.outflow), count: n0(x.count),
+      })),
+      transfers: r.transfers === "included" ? "included" : "excluded",
+    };
   },
   transactionCategories: async (): Promise<string[]> => {
     const r = await request("GET", "/transactions/categories");

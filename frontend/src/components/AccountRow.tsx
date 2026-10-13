@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
-import { Badge, Delta, Money, Sparkline, formatRelative } from "@mooney/ui";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import { Badge, Delta, Money, PixelSparkline, formatRelative } from "@mooney/ui";
 import type { Account } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
 
@@ -11,29 +11,41 @@ interface Props {
   showStatus?: boolean;
   /** Leading drag handle (Accounts page). */
   handle?: ReactNode;
+  /** Open the account detail. The name is the keyboard target; a click anywhere else on the row (not a control) works too. */
+  onOpen?: () => void;
   /** Sortable wiring from dnd-kit. */
   rowRef?: (el: HTMLElement | null) => void;
   style?: CSSProperties;
   dragging?: boolean;
 }
 
-export function AccountRow({ account: a, upIsGood = true, actions, showStatus = true, handle, rowRef, style, dragging }: Props) {
+export function AccountRow({ account: a, upIsGood = true, actions, showStatus = true, handle, onOpen, rowRef, style, dragging }: Props) {
   const needs = a.item_status && a.item_status !== "active";
-  const cls = ["jf-acct", a.is_hidden && "jf-acct--hidden", dragging && "jf-acct--dragging"].filter(Boolean).join(" ");
+  const cls = ["jf-acct", a.is_hidden && "jf-acct--hidden", dragging && "jf-acct--dragging", onOpen && "jf-acct--open"].filter(Boolean).join(" ");
+  const onRowClick = onOpen
+    ? (e: MouseEvent<HTMLDivElement>) => {
+        if ((e.target as Element).closest("button, a, input, select, textarea, label")) return;
+        onOpen();
+      }
+    : undefined;
   return (
-    <div className={cls} ref={rowRef} style={style}>
+    <div className={cls} ref={rowRef} style={style} onClick={onRowClick}>
       {handle}
       <div className="jf-acct__info">
-        <div className="jf-acct__name">{a.name}</div>
+        {onOpen ? (
+          <button type="button" className="jf-acct__name jf-acct__openbtn" onClick={onOpen}>{a.name}</button>
+        ) : (
+          <div className="jf-acct__name">{a.name}</div>
+        )}
         <div className="jf-acct__meta mu-caption">
           <span>{a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? ` ··${a.mask}` : ""}</span>
-          {a.subtype && <span>· {a.subtype}</span>}
+          {a.subtype && <span>· {a.subtype.replace(/_/g, " ")}</span>}
           {showStatus && (needs || a.kind === "manual") && <Badge tone={itemStatusTone(a.item_status)}>{itemStatusLabel(a.kind === "manual" ? null : a.item_status)}</Badge>}
           {a.is_hidden && <Badge dot={false}>hidden</Badge>}
         </div>
       </div>
       {a.trend && a.trend.length > 1 && (
-        <div className="jf-acct__spark"><Sparkline values={a.trend} width={88} height={24} semantic={false} /></div>
+        <div className="jf-acct__spark"><PixelSparkline values={a.trend} width={96} height={23} color="var(--mu-ink-2)" /></div>
       )}
       <div className="jf-acct__bal">
         <Money value={a.current_balance ?? 0} currency={a.iso_currency} mono={false} />

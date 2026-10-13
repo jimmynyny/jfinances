@@ -28,6 +28,9 @@ export const useSummary = (q: { from?: string; to?: string; account_id?: string;
   useQuery({ queryKey: qk.summary(q), queryFn: () => api.transactionSummary(q), placeholderData: (prev) => prev });
 export const useCategories = () => useQuery({ queryKey: qk.categories, queryFn: api.transactionCategories, staleTime: 10 * 60_000 });
 export const useHoldings = () => useQuery({ queryKey: qk.holdings, queryFn: api.holdings });
+export const useInvestmentActivity = () => useQuery({ queryKey: [...qk.holdings, "activity"], queryFn: () => api.holdingsTransactions({ limit: 200 }) });
+export const useAccountHistory = (id: string | null, range: Range) =>
+  useQuery({ queryKey: ["accounts", id, "history", range], queryFn: () => api.accountHistory(id!, range), enabled: !!id, placeholderData: (prev) => prev });
 export const useLiabilities = () => useQuery({ queryKey: qk.liabilities, queryFn: api.liabilities });
 export const useSyncStatus = (pollMs = 30_000) => useQuery({ queryKey: qk.sync, queryFn: api.syncStatus, refetchInterval: pollMs });
 export const useApiTokens = () => useQuery({ queryKey: qk.tokens, queryFn: api.apiTokens });

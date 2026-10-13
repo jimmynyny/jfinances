@@ -22,13 +22,15 @@ export function Drawer({ open, onClose, title, children, footer }: DrawerProps) 
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    const first = ref.current?.querySelector<HTMLElement>("input, select, textarea, button:not(.mu-drawer__close)");
-    first?.focus();
+    // Focus the first form field; with none (a read-only sheet), the sheet itself,
+    // so a focus ring never lands on a control the person did not choose.
+    const first = ref.current?.querySelector<HTMLElement>("input, select, textarea");
+    (first ?? ref.current)?.focus();
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div ref={ref} className="mu-drawer" role="dialog" aria-modal="false" aria-label={typeof title === "string" ? title : undefined}>
+    <div ref={ref} className="mu-drawer" role="dialog" aria-modal="false" tabIndex={-1} aria-label={typeof title === "string" ? title : undefined}>
       <div className="mu-drawer__head">
         <div className="mu-drawer__title">{title}</div>
         <IconButton label="Close" variant="ghost" size="sm" className="mu-drawer__close" onClick={onClose}>

@@ -12,8 +12,15 @@ body {
   font-size: var(--mu-fs-md);
   line-height: var(--mu-lh);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
+/* Dark: let the OS smooth normally. Grayscale "antialiased" thins light-on-dark
+ * strokes on macOS and reads muddy; compared side by side at 100% (docs/70). */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
+}
+:root[data-theme="dark"] body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
 
 h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: var(--mu-lh-tight); }
 h1 { font-size: var(--mu-fs-2xl); letter-spacing: -0.01em; }
@@ -21,7 +28,7 @@ h2 { font-size: var(--mu-fs-xl); }
 h3 { font-size: var(--mu-fs-lg); }
 p { margin: 0; }
 a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-a:hover { color: var(--mu-accent); }
+a:hover { color: var(--mu-accent-text); }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: none; box-shadow: var(--mu-focus); }

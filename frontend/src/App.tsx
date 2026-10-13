@@ -81,7 +81,7 @@ export function App() {
           {it.label}
         </NavLink>
       )}
-      title={title}
+      title={<span className="mu-bracket">{title.toLowerCase()}</span>}
       topbar={<SyncIndicator />}
       footer={
         <>

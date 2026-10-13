@@ -20,7 +20,7 @@ export function SyncIndicator() {
   }
   return (
     <Link to="/settings" className="mu-topbar__status" style={{ textDecoration: "none" }}>
-      <span>{live.length} connection{live.length === 1 ? "" : "s"}</span>
+      <span className="jf-sync__count">{live.length} connection{live.length === 1 ? "" : "s"}</span>
       {attention.length > 0 ? (
         <Badge tone="warn">{attention.length} need{attention.length === 1 ? "s" : ""} attention</Badge>
       ) : running > 0 ? (

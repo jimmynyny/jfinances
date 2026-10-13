@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@mooney/ui";
+import "@mooney/ui/fonts.css"; // self-hosted IBM Plex + Doto: no font CDN requests
 import "@mooney/ui/styles.css";
 import "./app.css";
 import { App } from "./App";

@@ -13,24 +13,35 @@
 @media (max-width: 640px) {
   .jf-acct { gap: var(--mu-s2); padding: var(--mu-s2) var(--mu-s3); }
   .jf-acct__spark { display: none; }
+  /* Phone: a row is grip + name + balance. Refresh and Edit live in the detail
+   * drawer that a tap on the row opens, so nothing is lost. */
+  .jf-acct--open .jf-acct__actions { display: none; }
 }
 .jf-acct:first-of-type { border-top: 0; }
 .jf-acct__name { font-size: var(--mu-fs-md); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jf-acct__meta { display: flex; gap: var(--mu-s2); align-items: center; }
+/* The row opens a detail drawer: the name is the keyboard target, the row the mouse target. */
+.jf-acct--open { cursor: pointer; }
+.jf-acct--open:hover { background: var(--mu-panel-2); }
+.jf-acct__openbtn { all: unset; cursor: pointer; display: block; max-width: 100%; }
+.jf-acct__openbtn:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--mu-ink-3); }
+.jf-acct__openbtn:focus-visible { box-shadow: var(--mu-focus); }
+.jf-acct__meta { display: flex; flex-wrap: wrap; gap: 2px var(--mu-s2); align-items: center; }
+.jf-acct__meta > span { white-space: nowrap; }
 .jf-acct__bal { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 .jf-acct__bal .mu-money { font-size: var(--mu-fs-md); }
 .jf-acct--hidden { opacity: 0.5; }
 
 .jf-group { display: flex; flex-direction: column; }
 .jf-group__head { display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s3); padding: var(--mu-s3) var(--mu-s4); background: var(--mu-panel-2); border-bottom: var(--mu-border); }
-.jf-group__title { display: flex; align-items: baseline; gap: var(--mu-s3); font-weight: 600; }
-.jf-group__toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: var(--mu-s2); }
+.jf-group__title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px var(--mu-s3); font-weight: 600; min-width: 0; }
+.jf-group__toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: var(--mu-s2); min-width: 0; flex: 1 1 auto; }
+.jf-group__head > .mu-money { flex: none; }
 .jf-group__toggle:focus-visible { box-shadow: var(--mu-focus); }
 
 .jf-split { display: grid; grid-template-columns: 1fr; gap: 4px; }
 .jf-split__bar { display: flex; height: 8px; gap: 2px; background: var(--mu-grid); }
 .jf-split__seg { height: 100%; }
-.jf-split__rows { display: grid; grid-template-columns: 10px 1fr auto; gap: var(--mu-s1) var(--mu-s2); align-items: center; font-size: var(--mu-fs-sm); margin-top: var(--mu-s2); }
+.jf-split__rows { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 6px var(--mu-s2); align-items: center; font-size: var(--mu-fs-sm); margin-top: var(--mu-s1); }
 .jf-split__rows .mu-money { font-size: var(--mu-fs-sm); }
 
 .jf-summary-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--mu-s3); padding: var(--mu-s2) 0; }
@@ -53,3 +64,57 @@
 /* Connect chooser: opens in place of the button, no backdrop (docs/70). */
 .jf-connect-choice { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--mu-s2); }
 .jf-connect-choice__label { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--mu-ink-3); }
+
+/* Overview hero: the readout sits on the chart's left edge, both inside one instrument panel. */
+.jf-hero .mu-panel__body { display: flex; flex-direction: column; gap: var(--mu-s3); }
+.jf-hero__chart { margin-top: var(--mu-s1); }
+/* A plain big figure (Plex, not the pixel face: one readout per view). */
+.jf-figure { display: flex; flex-direction: column; gap: var(--mu-s3); }
+.jf-figure__value { font-size: var(--mu-fs-2xl); font-weight: 600; letter-spacing: -0.01em; line-height: 1.1; font-variant-numeric: proportional-nums; display: flex; align-items: baseline; gap: var(--mu-s2); }
+.jf-figure__unit { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); font-weight: 400; color: var(--mu-ink-3); letter-spacing: 0; }
+
+/* Transactions summary: spending and income as cell meters, never negative bars. */
+.jf-cats { gap: 6px; }
+.jf-cats__head { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); padding-top: var(--mu-s2); border-top: var(--mu-border); }
+.jf-cats__head:first-child { border-top: 0; padding-top: 0; }
+.jf-cats__row { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--mu-s2); align-items: center; font-size: var(--mu-fs-sm); }
+.jf-cats__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jf-cats__note { margin-top: var(--mu-s3); font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); }
+
+/* Phone width: the top bar keeps the title and the one badge that matters. */
+@media (max-width: 560px) { .jf-sync__count { display: none; } }
+/* A table's name column keeps a readable measure; the table scrolls inside its panel instead. */
+.jf-cell-account { min-width: 170px; }
+/* Meters in a list share one track length: the value label gets a fixed column. */
+.jf-cats .mu-pmeter__val { min-width: 62px; text-align: right; }
+/* Settings: a connection's name, then the products Plaid initialised on it. */
+.jf-inst { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.jf-inst__products { display: flex; flex-wrap: wrap; gap: 4px; }
+.jf-inst__status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 180px; max-width: 420px; }
+/* Transactions on a phone: date, description (with its category), amount. */
+.jf-txn-name { min-width: 170px; }
+.jf-txn-name__cat { display: none; margin-top: 4px; }
+@media (max-width: 640px) {
+  .jf-col-cat { display: none; }
+  .jf-txn-name__cat { display: block; }
+}
+/* Tables on a phone keep the name and the money; detail columns return at 641px+. */
+@media (max-width: 640px) {
+  .jf-col-wide { display: none; }
+  td.jf-col-name { min-width: 140px; }
+}
+/* Row actions sit at the right edge on wide screens. */
+.jf-actions { justify-content: flex-end; flex-wrap: nowrap; }
+/* Settings tables on a phone: each row becomes a stacked card, so the actions
+ * (Sync now, Re-link, Unlink, Update value, Revoke) are never off-screen. */
+@media (max-width: 640px) {
+  .jf-stack-sm.mu-table-wrap { overflow: visible; }
+  .jf-stack-sm table, .jf-stack-sm tbody, .jf-stack-sm tr, .jf-stack-sm td { display: block; width: 100%; }
+  .jf-stack-sm thead { display: none; }
+  .jf-stack-sm tbody tr { padding: var(--mu-s2) 0; border-bottom: var(--mu-border); }
+  .jf-stack-sm tbody tr:last-child { border-bottom: 0; }
+  .jf-stack-sm td, .jf-stack-sm td.mu-td--num { border-bottom: 0; padding: 3px var(--mu-s3); white-space: normal; text-align: left; }
+  .jf-stack-sm tr:hover td { background: transparent; }
+  .jf-stack-sm .jf-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .jf-stack-sm .jf-inst, .jf-stack-sm .jf-inst__status { min-width: 0; max-width: none; }
+}

@@ -1,0 +1,16 @@
+/* @mooney/ui — self-hosted faces. No request leaves for a font CDN: this is a
+ * finance app and the faces ship with the bundle (also keeps a strict CSP
+ * simple). Latin subsets only.
+ *
+ *   IBM Plex Sans  — the interface
+ *   IBM Plex Mono  — labels, captions, tabular figures
+ *   Doto (variable, ROND 0 = square dots) — readouts only: the one hero figure
+ *     per view and a few large stat values. Never body text, never tables.
+ */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource-variable/doto/full.css";

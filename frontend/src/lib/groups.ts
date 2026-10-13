@@ -83,6 +83,7 @@ export function itemStatusLabel(status: string | null | undefined): string {
 export function monthLabel(key: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(key);
   if (!m) return key;
+  // "Oct ’26", never "Oct 26" (which reads as the 26th of October).
   const d = new Date(Number(m[1]), Number(m[2]) - 1, 1);
-  return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  return `${d.toLocaleDateString("en-US", { month: "short" })} ’${m[1]!.slice(2)}`;
 }

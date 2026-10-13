@@ -24,8 +24,17 @@ export interface AreaChartProps<T extends AreaPoint = AreaPoint> {
   formatValue?: (v: number) => string;
   /** Long format for the tooltip. */
   formatTooltipValue?: (v: number) => string;
-  /** Dotted pixel fill under the line (the house style). `wash` is a flat 10% fill. */
-  fill?: "dots" | "wash" | "none";
+  /**
+   * `dots` (the house style, alias `pixels`): a dot-matrix of whole square
+   * cells under the first series, quantized to the cell grid and fading in
+   * steps toward the baseline. `wash` is a flat 10% fill.
+   */
+  fill?: "dots" | "pixels" | "wash" | "none";
+  /** Cell edge and gap for the dot-matrix fill, px. */
+  cell?: number;
+  cellGap?: number;
+  /** Tick ruler under the baseline: minor ticks per day/week, major at labels. */
+  ruler?: boolean;
   /** Label the last point of each series. */
   endLabels?: boolean;
   /** Hold the previous render at reduced opacity while data reloads. */
@@ -53,6 +62,9 @@ export function AreaChart<T extends AreaPoint>({
   formatValue = (v) => formatMoneyCompact(v),
   formatTooltipValue,
   fill = "dots",
+  cell = 3,
+  cellGap = 2,
+  ruler = true,
   endLabels = true,
   stale,
   zeroBaseline = false,
@@ -60,7 +72,9 @@ export function AreaChart<T extends AreaPoint>({
   ariaLabel = "Area chart",
 }: AreaChartProps<T>) {
   const [ref, width] = useMeasure<HTMLDivElement>();
-  const pid = usePatternId("mu-dots");
+  const pid = usePatternId("mu-cells");
+  const clipId = `${pid}-clip`;
+  const maskId = `${pid}-fade`;
   const [hover, setHover] = useState<number | null>(null);
 
   const plot = useMemo(() => {
@@ -105,6 +119,48 @@ export function AreaChart<T extends AreaPoint>({
     });
   }, [series, data, plot]);
 
+  // Dot-matrix fill for the first series: per column of cells, light every
+  // whole cell from the line down to the baseline. The clip is a staircase on
+  // the cell grid, so no cell is ever cut; the fade is stepped, not smooth.
+  const pitch = cell + cellGap;
+  const matrix = useMemo(() => {
+    const pixelFill = fill === "dots" || fill === "pixels";
+    const pts = paths[0]?.pts ?? [];
+    if (!pixelFill || pts.length < 2 || plot.w <= 0) return null;
+    const rows = Math.floor((plot.h + cellGap) / pitch);
+    const bottom = rows * pitch;
+    const cols = Math.floor((plot.w + cellGap) / pitch);
+    let d = "";
+    let top = bottom;
+    let j = 0;
+    for (let c = 0; c < cols; c++) {
+      const xc = c * pitch + cell / 2;
+      if (xc < pts[0]![0] || xc > pts[pts.length - 1]![0]) continue;
+      while (j < pts.length - 2 && pts[j + 1]![0] < xc) j++;
+      const [x0, y0] = pts[j]!;
+      const [x1, y1] = pts[j + 1]!;
+      const y = x1 === x0 ? y0 : y0 + ((xc - x0) / (x1 - x0)) * (y1 - y0);
+      const yTop = Math.ceil(y / pitch) * pitch;
+      if (yTop >= bottom) continue;
+      top = Math.min(top, yTop);
+      d += `M${c * pitch} ${yTop}h${pitch}v${bottom - yTop}h${-pitch}z`;
+    }
+    const bandRows = Math.max(1, Math.ceil((bottom - top) / pitch / 5));
+    const opac = [0.92, 0.7, 0.5, 0.34, 0.22];
+    const bands = opac.map((o, k) => ({ y: top + k * bandRows * pitch, h: k === opac.length - 1 ? bottom : bandRows * pitch, o }));
+    return { d, bands, bottom };
+  }, [fill, paths, plot.w, plot.h, pitch, cell, cellGap]);
+
+  // Ruler ticks under the baseline: one per point when there is room, else per week or month.
+  const rulerPath = useMemo(() => {
+    if (!ruler || data.length < 2) return "";
+    const spacing = plot.w / (data.length - 1);
+    const step = spacing >= 5 ? 1 : spacing * 7 >= 5 ? 7 : 30;
+    let d = "";
+    for (let i = 0; i < data.length; i += step) d += `M${Math.round(plot.sx(plot.xs[i]!)) + 0.5} ${plot.h + 1}v3`;
+    return d;
+  }, [ruler, data.length, plot]);
+
   // x ticks: ~5 evenly spaced dates
   const xTicks = useMemo(() => {
     const n = data.length;
@@ -141,9 +197,18 @@ export function AreaChart<T extends AreaPoint>({
       {width > 0 && (
         <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height}>
           <defs>
-            <pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse">
-              <rect width="1.5" height="1.5" x="1" y="1" fill="currentColor" />
-            </pattern>
+            {matrix && (
+              <>
+                {/* fill set on the cell itself: currentColor in a pattern resolves from the pattern's own ancestors */}
+                <pattern id={pid} width={pitch} height={pitch} patternUnits="userSpaceOnUse">
+                  <rect width={cell} height={cell} style={{ fill: paths[0]!.color }} shapeRendering="crispEdges" />
+                </pattern>
+                <clipPath id={clipId}><path d={matrix.d} /></clipPath>
+                <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={plot.w} height={plot.h + 1}>
+                  {matrix.bands.map((b, k) => <rect key={k} x={0} y={b.y} width={plot.w} height={b.h} fill="#fff" fillOpacity={b.o} />)}
+                </mask>
+              </>
+            )}
           </defs>
           <g transform={`translate(${M.left + Y_LABEL_W},${M.top})`}>
             {/* grid + y ticks */}
@@ -159,10 +224,13 @@ export function AreaChart<T extends AreaPoint>({
             {xTicks.map((t, i) => (
               <text key={i} className="mu-chart__tick" x={t.x} y={plot.h + 16} textAnchor={i === 0 ? "start" : i === xTicks.length - 1 ? "end" : "middle"}>{t.label}</text>
             ))}
+            {/* ruler + dot-matrix fill */}
+            {rulerPath && <path className="mu-chart__ruler" d={rulerPath} />}
+            {xTicks.length > 0 && ruler && <path className="mu-chart__ruler mu-chart__ruler--major" d={xTicks.map((t) => `M${Math.round(t.x) + 0.5} ${plot.h + 1}v6`).join("")} />}
+            {matrix && <rect x={0} y={0} width={plot.w} height={matrix.bottom} fill={`url(#${pid})`} clipPath={`url(#${clipId})`} mask={`url(#${maskId})`} />}
             {/* areas */}
             {paths.map((p) => (
               <g key={p.s.key} style={{ color: p.color }}>
-                {fill === "dots" && p.area && <path className="mu-chart__area" d={p.area} fill={`url(#${pid})`} opacity={chartTheme.dotOpacity} />}
                 {fill === "wash" && p.area && <path className="mu-chart__area" d={p.area} fill={p.color} opacity={chartTheme.washOpacity} />}
                 <path className="mu-chart__line" d={p.line} stroke={p.color} />
                 {endLabels && p.pts.length > 0 && (() => {

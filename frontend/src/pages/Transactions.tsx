@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  Badge, BarChart, Button, Checkbox, DataTable, Drawer, Input, Meter, Money, Page, PageHeader, Panel, Segmented, Select, Skeleton,
+  Badge, Button, Checkbox, DataTable, Drawer, Input, Money, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
@@ -60,11 +60,13 @@ export function TransactionsPage() {
         <div className="jf-txn-name">
           <span>{t.merchant_name ?? t.name}</span>
           <small>{t.account_name ?? accountName.get(t.account_id) ?? ""}{t.pending ? " · pending" : ""}</small>
+          {/* Phone: the category column is hidden, so the category rides under the name. */}
+          <span className="jf-txn-name__cat"><Badge dot={false} tone={t.user_category ? "accent" : "neutral"}>{(t.category ?? "uncategorized").toLowerCase().replace(/_/g, " ")}</Badge></span>
         </div>
       ),
     },
     {
-      key: "category", header: "Category", width: 180,
+      key: "category", header: "Category", width: 180, className: "jf-col-cat",
       cell: (t) => (
         <span className="mu-row" style={{ flexWrap: "nowrap", gap: 6 }}>
           <Badge dot={false} tone={t.user_category ? "accent" : "neutral"}>{(t.category ?? "uncategorized").toLowerCase().replace(/_/g, " ")}</Badge>
@@ -76,13 +78,26 @@ export function TransactionsPage() {
 
   const total = tx.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const sumTotal = rows.reduce((s, r) => s + Math.abs(r.total), 0) || 1;
 
-  // Month rows come keyed "YYYY-MM"; total keeps Plaid's sign (positive = net outflow).
+  // Months: money in and money out are separate sums from the API, so a month
+  // shows both columns (a single net total could only ever be one or the other).
   const monthData = useMemo(() => {
     if (summaryBy !== "month") return [];
-    return rows.map((r) => ({ label: monthLabel(r.key), outflow: Math.max(0, r.total), inflow: Math.max(0, -r.total) }));
+    return rows.map((r) => ({ label: monthLabel(r.key), short: monthLabel(r.key).split(" ")[0]!, inflow: r.inflow, outflow: r.outflow }));
   }, [rows, summaryBy]);
+
+  // Categories: where money went (outflow) and, separately, where it came from.
+  // Income never draws as a negative spending bar.
+  const { spending, income, outTotal, inTotal } = useMemo(() => {
+    const spending = rows.filter((r) => r.outflow > 0 && r.outflow >= r.inflow).sort((a, b) => b.outflow - a.outflow);
+    const income = rows.filter((r) => r.inflow > r.outflow).sort((a, b) => b.inflow - a.inflow);
+    return {
+      spending, income,
+      outTotal: spending.reduce((t, r) => t + r.outflow, 0),
+      inTotal: income.reduce((t, r) => t + r.inflow, 0),
+    };
+  }, [rows]);
+  const catName = (label: string) => label.toLowerCase().replace(/_/g, " ");
 
   return (
     <Page>
@@ -146,17 +161,42 @@ export function TransactionsPage() {
 
         <Panel caption="summary" actions={<Segmented size="sm" options={[{ value: "category", label: "by category" }, { value: "month", label: "by month" }]} value={summaryBy} onChange={setSummaryBy} />}>
           {summary.isLoading ? <Skeleton lines={6} /> : summaryBy === "category" ? (
-            <div className="mu-stack" style={{ gap: 6 }}>
-              {rows.slice(0, 12).map((r) => (
-                <div key={r.key} style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 8, alignItems: "center", fontSize: "var(--mu-fs-sm)" }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label.toLowerCase().replace(/_/g, " ")} <span className="mu-caption">· {r.count}</span></span>
-                  <Meter ratio={Math.abs(r.total) / sumTotal} label={formatMoney(Math.abs(r.total), { cents: false })} tone={r.total > 0 ? "neg" : "pos"} />
+            <div className="mu-stack jf-cats">
+              <div className="jf-cats__head"><span>money out</span><Money value={outTotal} cents={false} /></div>
+              {spending.slice(0, 12).map((r) => (
+                <div key={r.key} className="jf-cats__row">
+                  <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
+                  <PixelMeter size="sm" cells={16} tone="ink" ratio={outTotal > 0 ? r.outflow / outTotal : 0} label={formatMoney(r.outflow, { cents: false })} ariaLabel={`${catName(r.label)} spending`} />
                 </div>
               ))}
-              {rows.length === 0 && <span className="mu-caption">nothing in range</span>}
+              {spending.length === 0 && <span className="mu-caption">no spending in range</span>}
+              {income.length > 0 && (
+                <>
+                  <div className="jf-cats__head"><span>money in</span><Money value={inTotal} cents={false} /></div>
+                  {income.map((r) => (
+                    <div key={r.key} className="jf-cats__row">
+                      <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
+                      <PixelMeter size="sm" cells={16} tone="series" color="var(--mu-div-pos)" ratio={inTotal > 0 ? r.inflow / inTotal : 0} label={formatMoney(r.inflow, { cents: false })} ariaLabel={`${catName(r.label)} income`} />
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
-          ) : (
-            <BarChart data={monthData} series={[{ key: "inflow", label: "In" }, { key: "outflow", label: "Out" }]} height={220} stale={summary.isFetching} />
+          ) : monthData.length > 0 ? (
+            // In/out as the validated diverging pair (blue in, red out), never red vs green.
+            <PixelBars
+              data={monthData}
+              series={[{ key: "inflow", label: "In", color: "var(--mu-div-pos)" }, { key: "outflow", label: "Out", color: "var(--mu-div-neg)" }]}
+              stale={summary.isFetching}
+              ariaLabel="Money in and out by month"
+            />
+          ) : <span className="mu-caption">nothing in range</span>}
+          {summary.data && (
+            <p className="jf-cats__note">
+              {summary.data.transfers === "excluded"
+                ? "Excludes transfers between your accounts and card payments."
+                : "Includes transfers between your accounts and card payments."}
+            </p>
           )}
         </Panel>
       </div>

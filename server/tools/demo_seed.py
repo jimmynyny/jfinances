@@ -368,7 +368,8 @@ def main() -> int:
                             sess.add(InvestmentTransaction(
                                 account_id=acct.id,
                                 plaid_investment_transaction_id=f"demo-div-{acct.mask}-{sec_key}-{m}",
-                                security_id=sec.id, date=day + timedelta(days=12), name=f"DIVIDEND {sec.ticker}",
+                                security_id=sec.id, date=min(day + timedelta(days=12), TODAY),
+                                name=f"DIVIDEND {sec.ticker}",
                                 type="cash", subtype="dividend", quantity=Decimal("0"), amount=d2(-div), price=None,
                                 fees=None, iso_currency="USD"))
             if spec["name"] == "Chase Sapphire Reserve":

@@ -5,15 +5,17 @@
 .mu-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .mu-chart__grid { stroke: var(--mu-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .mu-chart__axis { stroke: var(--mu-baseline); stroke-width: 1; shape-rendering: crispEdges; }
-.mu-chart__tick { fill: var(--mu-ink-3); font-size: 10.5px; font-family: var(--mu-font-mono); }
+.mu-chart__tick { fill: var(--mu-ink-3); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
 .mu-chart__line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .mu-chart__area { opacity: 1; }
+.mu-chart__ruler { stroke: var(--mu-baseline); stroke-width: 1; shape-rendering: crispEdges; fill: none; }
+.mu-chart__ruler--major { stroke: var(--mu-ink-3); }
 .mu-chart__dot { stroke: var(--mu-panel); stroke-width: 2; }
 .mu-chart__crosshair { stroke: var(--mu-ink-2); stroke-width: 1; stroke-dasharray: none; pointer-events: none; shape-rendering: crispEdges; }
 .mu-chart__hit { fill: transparent; cursor: crosshair; }
 .mu-chart__bar { shape-rendering: crispEdges; }
 .mu-chart__bar--hover { filter: brightness(1.12); }
-.mu-chart__endlabel { fill: var(--mu-ink); font-size: 11px; font-family: var(--mu-font-mono); font-weight: 500; }
+.mu-chart__endlabel { paint-order: stroke; stroke: var(--mu-panel); stroke-width: 4px; stroke-linejoin: round; fill: var(--mu-ink); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); font-weight: 500; }
 
 .mu-chart__tip {
   position: absolute; pointer-events: none; z-index: 5;
@@ -21,7 +23,7 @@
   padding: 6px 8px; min-width: 120px; font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono);
   box-shadow: var(--mu-shadow-offset) var(--mu-shadow-offset) 0 0 var(--mu-accent);
 }
-.mu-chart__tip-h { opacity: 0.7; margin-bottom: 4px; }
+.mu-chart__tip-h { margin-bottom: 4px; font-weight: 400; }
 .mu-chart__tip-row { display: flex; justify-content: space-between; gap: var(--mu-s3); align-items: center; }
 .mu-chart__tip-key { display: inline-block; width: 10px; height: 2px; margin-right: 6px; vertical-align: middle; }
 .mu-chart__tip-v { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -34,7 +36,7 @@
 
 .mu-donut { display: grid; grid-template-columns: auto 1fr; gap: var(--mu-s4); align-items: center; }
 .mu-donut__center { font-family: var(--mu-font-sans); fill: var(--mu-ink); font-weight: 600; font-size: 18px; }
-.mu-donut__centerlabel { fill: var(--mu-ink-3); font-size: 10px; font-family: var(--mu-font-mono); }
+.mu-donut__centerlabel { fill: var(--mu-ink-3); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
 .mu-donut__rows { display: flex; flex-direction: column; gap: 6px; font-size: var(--mu-fs-sm); }
 .mu-donut__row { display: grid; grid-template-columns: 10px 1fr auto auto; gap: var(--mu-s2); align-items: center; }
 .mu-donut__pct { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); min-width: 44px; text-align: right; }

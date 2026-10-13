@@ -11,6 +11,8 @@ import { useAccounts, useRefreshAccount, useReorderAccounts, useSetManualValue, 
 import type { Account } from "../api/types";
 import { ApiError } from "../api/client";
 import { AccountRow, GripIcon } from "../components/AccountRow";
+import { AccountDetail } from "../components/AccountDetail";
+import { RefreshIcon } from "../components/Icons";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
 import { groupAccounts, upIsGood } from "../lib/groups";
@@ -18,6 +20,7 @@ import { groupAccounts, upIsGood } from "../lib/groups";
 export function AccountsPage() {
   const q = useAccounts();
   const [editing, setEditing] = useState<Account | null>(null);
+  const [detail, setDetail] = useState<{ account: Account; good: boolean } | null>(null);
   const [showHidden, setShowHidden] = useState(true);
   const update = useUpdateAccount();
   const refresh = useRefreshAccount();
@@ -75,6 +78,7 @@ export function AccountsPage() {
               key={a.id}
               account={a}
               upIsGood={upIsGood(g.key)}
+              onOpen={() => { setEditing(null); setDetail({ account: a, good: upIsGood(g.key) }); }}
               actions={
                 <>
                   {a.kind === "plaid" && (
@@ -85,10 +89,10 @@ export function AccountsPage() {
                       loading={refresh.isPending && refresh.variables === a.id}
                       onClick={() => refresh.mutate(a.id, { onSuccess: () => toast("Balance refreshed"), onError: (e) => error(e instanceof ApiError ? e.message : "Refresh failed") })}
                     >
-                      ⟳
+                      <RefreshIcon />
                     </IconButton>
                   )}
-                  <Button size="sm" variant="quiet" onClick={() => setEditing(a)}>Edit</Button>
+                  <Button size="sm" variant="quiet" onClick={() => { setDetail(null); setEditing(a); }}>Edit</Button>
                 </>
               }
             />
@@ -97,6 +101,15 @@ export function AccountsPage() {
           </DndContext>
         </Panel>
       ))}
+
+      <AccountDetail
+        account={detail?.account ?? null}
+        upIsGood={detail?.good}
+        onClose={() => setDetail(null)}
+        onEdit={(a) => { setDetail(null); setEditing(a); }}
+        onRefresh={(a) => refresh.mutate(a.id, { onSuccess: () => toast("Balance refreshed"), onError: (e) => error(e instanceof ApiError ? e.message : "Refresh failed") })}
+        refreshing={refresh.isPending && refresh.variables === detail?.account.id}
+      />
 
       <Drawer
         open={!!editing}
@@ -167,13 +180,14 @@ function announcements(accounts: Account[]): Announcements {
 
 /** An account row that drags by its grip only, so text stays selectable and
  *  the Edit and refresh buttons keep working normally. */
-function SortableAccount({ account, upIsGood: good, actions }: { account: Account; upIsGood: boolean; actions: ReactNode }) {
+function SortableAccount({ account, upIsGood: good, actions, onOpen }: { account: Account; upIsGood: boolean; actions: ReactNode; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: account.id });
   return (
     <AccountRow
       account={account}
       upIsGood={good}
       actions={actions}
+      onOpen={onOpen}
       rowRef={setNodeRef}
       dragging={isDragging}
       style={{ transform: CSS.Transform.toString(transform), transition }}

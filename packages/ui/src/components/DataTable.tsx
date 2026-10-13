@@ -13,6 +13,8 @@ export interface Column<Row> {
   /** Sort accessor; omit to make the column unsortable. */
   sortValue?: (row: Row) => number | string | null | undefined;
   width?: number | string;
+  /** Class on this column's th and td cells, e.g. to hide it at narrow widths from app CSS. */
+  className?: string;
 }
 
 export interface DataTableProps<Row> {
@@ -86,7 +88,7 @@ export function DataTable<Row>({
               return (
                 <th
                   key={c.key}
-                  className={cx(c.numeric && "mu-th--num")}
+                  className={cx(c.numeric && "mu-th--num", c.className)}
                   style={{ width: c.width }}
                   aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
                   scope="col"
@@ -122,7 +124,7 @@ export function DataTable<Row>({
                   onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
                 >
                   {columns.map((c) => (
-                    <td key={c.key} className={cx(c.numeric && "mu-td--num", c.wrap && "mu-td--wrap")}>
+                    <td key={c.key} className={cx(c.numeric && "mu-td--num", c.wrap && "mu-td--wrap", c.className)}>
                       {c.cell(row)}
                     </td>
                   ))}
