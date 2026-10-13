@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth.deps import current_user
@@ -91,29 +91,55 @@ def patch_transaction(tx_id: str, body: TxPatch, _: Principal = Depends(current_
     return _tx_json(t, a, inst)
 
 
+#: Money moving between the household's own accounts. Counting it would double
+#: count: a transfer is an outflow here and an inflow there, and a card payment
+#: repays purchases already counted on the card. Excluded from In/Out unless
+#: include_transfers=true (docs/80 "GET /transactions/summary").
+TRANSFER_PRIMARY = ("TRANSFER_IN", "TRANSFER_OUT")
+CARD_PAYMENT_DETAILED = "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
+
+
+def is_transfer_clause():
+    """SQL predicate for internal transfers, honouring the user's category."""
+    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
+    return or_(effective.in_(TRANSFER_PRIMARY),
+               and_(Transaction.user_category.is_(None), Transaction.category_detailed == CARD_PAYMENT_DETAILED))
+
+
 @router.get("/transactions/summary")
 def summary(from_: date | None = Query(default=None, alias="from"), to: date | None = None,
             account_id: str | None = None, group_by: Literal["category", "month", "account"] = "category",
+            include_transfers: bool = False,
             _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Totals per category, month or account. Each row has `inflow` (money in,
+    positive), `outflow` (money out, positive), and `total` (net, Plaid sign:
+    positive = more out than in). Month rows are chronological; the others
+    are biggest net outflow first."""
     cat = func.coalesce(Transaction.user_category, Transaction.category_primary, "UNCATEGORIZED")
     key = {"category": cat, "month": func.to_char(Transaction.date, "YYYY-MM"),
            "account": cast(Transaction.account_id, String)}[group_by]
-    stmt = (select(key.label("key"), func.sum(Transaction.amount).label("total"),
-                   func.count().label("count"))
+    outflow = func.coalesce(func.sum(case((Transaction.amount > 0, Transaction.amount))), 0)
+    inflow = func.coalesce(func.sum(case((Transaction.amount < 0, -Transaction.amount))), 0)
+    stmt = (select(key.label("key"), func.sum(Transaction.amount).label("total"), inflow.label("inflow"),
+                   outflow.label("outflow"), func.count().label("count"))
             .join(Account, Account.id == Transaction.account_id)
             .where(Transaction.removed_at.is_(None), Transaction.pending.is_(False)))
+    if not include_transfers:
+        stmt = stmt.where(~is_transfer_clause())
     if from_:
         stmt = stmt.where(Transaction.date >= from_)
     if to:
         stmt = stmt.where(Transaction.date <= to)
     if account_id:
         stmt = stmt.where(Transaction.account_id == parse_uuid(account_id, "account_id"))
-    rows = sess.execute(stmt.group_by("key").order_by(func.sum(Transaction.amount).desc())).all()
+    order = key.asc() if group_by == "month" else func.sum(Transaction.amount).desc()
+    rows = sess.execute(stmt.group_by(key).order_by(order)).all()
     names = {}
     if group_by == "account":
         names = {str(a.id): a.name for a in sess.execute(select(Account)).scalars()}
-    return {"group_by": group_by,
-            "rows": [{"key": k, "label": names.get(k, k), "total": money(t), "count": c} for k, t, c in rows]}
+    return {"group_by": group_by, "transfers": "included" if include_transfers else "excluded",
+            "rows": [{"key": k, "label": names.get(k, k), "total": money(t), "inflow": money(i),
+                      "outflow": money(o), "count": c} for k, t, i, o, c in rows]}
 
 
 @router.get("/transactions/categories")

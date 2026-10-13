@@ -162,9 +162,22 @@ Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount conta
 ### PATCH /transactions/{id}
 Body: `{"user_category"?: str|null, "notes"?: str|null}` → transaction.
 
-### GET /transactions/summary?from&to&account_id&group_by=category|month|account
-`{"group_by":"category","rows":[{"key":"FOOD_AND_DRINK","label":"FOOD_AND_DRINK","total":"812.40","count":31}]}`
-Excludes pending and removed.
+### GET /transactions/summary
+Query: `group_by=category|month|account`, optional `from`, `to`, `account_id`,
+`include_transfers` (default `false`). Pending transactions are never counted.
+```json
+{"group_by":"month","transfers":"excluded","rows":[
+ {"key":"2026-09","label":"2026-09","inflow":"8421.10","outflow":"6776.14","total":"-1644.96","count":131}]}
+```
+`inflow` is money in and `outflow` money out, both positive; `total` is the net
+with Plaid's sign (positive = more out than in). Month rows are chronological;
+category and account rows are biggest net outflow first.
+
+Internal transfers are excluded unless `include_transfers=true`: categories
+`TRANSFER_IN` / `TRANSFER_OUT` (the user's category wins when set) and card
+payments (`LOAN_PAYMENTS_CREDIT_CARD_PAYMENT`). Counting them would double
+count: a transfer is out of one account and into another, and a card payment
+repays purchases already counted on the card.
 
 ### GET /transactions/categories
 `{"categories":["FOOD_AND_DRINK","GENERAL_MERCHANDISE", "…"]}`

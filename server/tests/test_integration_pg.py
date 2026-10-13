@@ -185,3 +185,34 @@ def test_account_trend_is_daily_and_ends_at_current_balance(client):
     assert len(trend) == 11 and trend[0] == "1000.00" and trend[-1] == "900.00"
     overview_rows = {a["id"]: a for g in client.get("/api/v1/overview").json()["groups"] for a in g["accounts"]}
     assert overview_rows[acct_id]["trend"] == trend
+
+
+def test_summary_splits_in_and_out_and_excludes_transfers(client):
+    from datetime import date
+
+    from server.app.models import Transaction
+
+    acct = client.post("/api/v1/accounts/manual",
+                       json={"name": "Summary cash", "manual_category": "cash", "value": "0"}).json()["id"]
+    rows = [  # (date, amount: Plaid sign, + = out, primary, detailed)
+        (date(2026, 8, 3), "-1000.00", "INCOME", "INCOME_WAGES"),
+        (date(2026, 8, 4), "50.00", "FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"),
+        (date(2026, 8, 5), "500.00", "TRANSFER_OUT", "TRANSFER_OUT_SAVINGS"),
+        (date(2026, 8, 6), "300.00", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"),
+        (date(2026, 9, 2), "-20.00", "TRAVEL", "TRAVEL_FLIGHTS"),
+        (date(2026, 9, 3), "80.00", "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT"),
+    ]
+    with db.session() as sess:
+        for i, (d, amt, primary, detailed) in enumerate(rows):
+            sess.add(Transaction(account_id=acct, plaid_transaction_id=f"sum-{i}", date=d, amount=amt, name=primary,
+                                 pending=False, category_primary=primary, category_detailed=detailed))
+
+    def months(**extra):
+        r = client.get("/api/v1/transactions/summary",
+                       params={"group_by": "month", "account_id": acct, "from": "2026-08-01", **extra})
+        assert r.status_code == 200, r.text
+        return [(x["key"], x["inflow"], x["outflow"], x["total"]) for x in r.json()["rows"]]
+
+    # Chronological; both directions present; transfers and card payments left out.
+    assert months() == [("2026-08", "1000.00", "50.00", "-950.00"), ("2026-09", "20.00", "80.00", "60.00")]
+    assert months(include_transfers="true")[0] == ("2026-08", "1000.00", "850.00", "-150.00")
