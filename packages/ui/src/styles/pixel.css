@@ -74,8 +74,8 @@
 .mu-reg--tr { right: -5px; top: -5px; }
 .mu-reg--bl { left: -5px; bottom: -5px; }
 .mu-reg--br { right: -5px; bottom: -5px; }
-/* Bracketed mono label: [ overview ] */
-.mu-bracket { font-family: var(--mu-font-mono); font-weight: 500; }
+/* Bracketed mono label: [ overview ]. One token: it never breaks inside, so a "]" can't wrap away from its word. */
+.mu-bracket { font-family: var(--mu-font-mono); font-weight: 500; white-space: nowrap; }
 .mu-bracket::before { content: "[ "; color: var(--mu-ink-3); font-weight: 400; }
 .mu-bracket::after { content: " ]"; color: var(--mu-ink-3); font-weight: 400; }
 /* A lit cell as an inline marker (status, legend). */

@@ -119,7 +119,7 @@ import { Button, Panel, Money } from "@mooney/ui";
 | `IconButton` | `label` (required a11y name) + Button props | 32×32 (26 when `sm`). |
 | `Input`, `Textarea`, `Select`, `Checkbox` | `label`, `help`, `error`, `mono` (Input) | Field chrome is mono label above, help/error below. `Select` takes `options` + `placeholder`. |
 | `Badge` | `tone: neutral\|good\|warn\|serious\|critical\|accent`, `dot` | Status dot + text, never colour alone. |
-| `Panel` | `caption` (mono with accent tick), `title`, `actions`, `foot`, `raised`, `inset`, `flush`, `marks`, `stacked` | The card. `flush` removes body padding for tables and lists. `marks` adds "+" registration marks on the corners — instrument panels only (charts, readouts), never every card. `stacked` puts `title` on its own full-width line (wraps, never truncates) with `caption` + `actions` on a mono meta line beneath: for narrow cards titled with a long name (liability cards). |
+| `Panel` | `caption` (mono with accent tick), `title`, `actions`, `foot`, `raised`, `inset`, `flush`, `marks`, `stacked` | The card. `flush` removes body padding for tables and lists. `marks` adds "+" registration marks on the corners — instrument panels only (charts, readouts), never every card. `stacked` puts `title` on its own full-width line (`--mu-fs-xl`, wraps, never truncates) with `caption` + `actions` on a mono meta line beneath: for narrow cards titled with a long name (liability cards). Give the caption's parts their own elements (`<span className="mu-bracket">kind</span><span>institution</span>`): when the line is too narrow they wrap whole, the institution moving under the label, rather than shrinking. |
 | `StatTile` | `label`, `value`, `delta`, `note`, `trend[]`, `tone: plain\|wash\|pos\|neg`, `hero` | One `hero` per view. `trend` draws a 12-point sparkline bottom-right. |
 | `Money` | `value`, `currency`, `cents`, `compact`, `signed`, `mono`, `plus` | Tabular numerals. `signed` colours by direction — only for changes, not balances. |
 | `Delta` | `amount`, `pct`, `label`, `upIsGood` | `▲ $23,542.96 (3.5%) 1 month`. Pass `upIsGood={false}` for liabilities. |
@@ -219,7 +219,8 @@ shares:
 | `AreaChart fill="dots"` | `cell=3`, `cellGap=2`, `ruler=true` | The dot-matrix fill under the first series: a staircase clip on the cell grid, five stepped fade bands toward the baseline, a tick ruler under the axis. `wash`/`none` unchanged. |
 
 HUD motifs: `Panel marks` (corner "+"), `.mu-bracket` (`[ overview ]`, used
-for the top-bar title and liability kinds), `.mu-cell` (an 8px lit cell as a
+for the top-bar title and liability kinds; one token, never broken inside, so
+the `]` cannot wrap away from its word), `.mu-cell` (an 8px lit cell as a
 legend or group marker), tiny mono units after big numbers
 (`.jf-figure__unit` in the app).
 

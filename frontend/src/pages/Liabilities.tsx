@@ -53,7 +53,8 @@ function Progress({ r, size = "lg", cells = 30 }: { r: Row; size?: "sm" | "lg"; 
   );
 }
 
-const where = (a: Account) => `${a.institution_name ?? ""}${a.mask ? ` ··${a.mask}` : ""}`;
+/** The no-break space keeps the mask with the institution's last word when the line wraps. */
+const where = (a: Account) => `${a.institution_name ?? ""}${a.mask ? `\u00a0··${a.mask}` : ""}`;
 
 export function LiabilitiesPage() {
   const q = useLiabilities();
@@ -103,7 +104,7 @@ export function LiabilitiesPage() {
                 key={a.id}
                 stacked
                 title={a.name}
-                caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <> {where(a)}</> : null}</>}
+                caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <span>{where(a)}</span> : null}</>}
                 actions={l?.is_overdue ? <Badge tone="critical">overdue</Badge> : undefined}
               >
                 <div className="mu-stack">

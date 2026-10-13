@@ -93,9 +93,11 @@
 .mu-panel__body--flush { padding: 0; }
 /* stacked head: title on its own full-width line, mono meta line under it */
 .mu-panel__head--stacked { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; padding: var(--mu-s3) var(--mu-s4); }
-.mu-panel__head--stacked .mu-panel__title { font-size: var(--mu-fs-lg); line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
+.mu-panel__head--stacked .mu-panel__title { font-size: var(--mu-fs-xl); line-height: 1.2; letter-spacing: -0.01em; white-space: normal; overflow-wrap: anywhere; }
 .mu-panel__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s2); flex-wrap: wrap; min-height: 22px; }
 .mu-panel__head--stacked .mu-panel__caption::before { display: none; }
+/* too narrow for one line: the caption's parts wrap whole ([ kind ], then the institution) instead of shrinking */
+.mu-panel__head--stacked .mu-panel__caption { flex-wrap: wrap; row-gap: 2px; }
 .mu-panel__foot { padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); font-family: var(--mu-font-mono); }
 
 /* ---------- StatTile ---------- */
