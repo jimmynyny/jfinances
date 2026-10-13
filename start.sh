@@ -13,6 +13,20 @@
 set -euo pipefail
 
 case "${SERVICE_ROLE:-}" in
+  web|hooks|worker)
+    # Every role brings the schema to head before it starts: boot checks for
+    # this role, then `alembic upgrade head` under a Postgres advisory lock, a
+    # no-op when already at head. Services can therefore deploy in any order.
+    # `web` also runs this as its Railway pre-deploy command, where a failure
+    # keeps the previous web deployment serving. Set SKIP_RELEASE=1 only for
+    # local debugging.
+    if [ "${SKIP_RELEASE:-0}" != "1" ]; then
+      python -m server.tools.release
+    fi
+    ;;
+esac
+
+case "${SERVICE_ROLE:-}" in
   web)
     # --proxy-headers: Railway (and Cloudflare in front of it) terminates TLS;
     # without it every client IP in the logs is a load balancer.

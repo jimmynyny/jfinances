@@ -50,7 +50,7 @@ before on other projects.
 | Services | `Postgres`, `web`, `hooks`, `worker` — in both environments |
 | Builder | Dockerfile at repo root (multi-stage: node builds the SPA, python runs) |
 | Start | `./start.sh` dispatches on `SERVICE_ROLE` |
-| Pre-deploy (every service) | `python -m server.tools.release` — boot checks for that `SERVICE_ROLE`, then Alembic `upgrade head` under a Postgres advisory lock |
+| Migrations | `python -m server.tools.release` (boot checks for that `SERVICE_ROLE`, then Alembic `upgrade head` under a Postgres advisory lock) runs at the start of `start.sh` for every role; `web` also runs it as its Railway pre-deploy command |
 | Healthcheck | `web` and `hooks`: `GET /healthz` → 200 JSON, called by Railway directly (not through Cloudflare). `worker`: none (no HTTP) |
 | Port | `web` and `hooks` listen on `PORT=8080`, the target port of their custom domains |
 | Deploys | **Manual**: `railway up --service <web|hooks|worker> --ci`. Not linked to GitHub. |

@@ -39,7 +39,8 @@ service, set these by hand.
 |---|---|---|---|
 | Builder | Dockerfile | Dockerfile | Dockerfile |
 | Start command | `./start.sh` | `./start.sh` | `./start.sh` |
-| Pre-deploy | `python -m server.tools.release` | same | same |
+| Pre-deploy | `python -m server.tools.release` | — | — |
+| Migrations at start | `start.sh` runs release | same | same |
 | `PORT` variable | `8080` | `8080` | — |
 | Custom domain target port | 8080 | 8080 | — |
 | Healthcheck | `/healthz`, 120 s | `/healthz`, 120 s | — |
@@ -61,7 +62,7 @@ railway environment sandbox
 #    the same image; the dashboard stays up while the worker ships.
 railway up --service worker --ci
 railway up --service hooks  --ci
-railway up --service web    --ci     # every service migrates in pre-deploy, then swaps
+railway up --service web    --ci     # every service migrates before it starts
 
 # 4. verify
 railway deployment list --service web --json | head -40
@@ -76,9 +77,9 @@ railway up --service worker --ci && railway up --service hooks --ci && railway u
 `--ci` streams the build and exits non-zero on failure, which is what you
 want from a script. `--detach` returns at "queued" and tells you nothing.
 
-Every service runs `python -m server.tools.release` as its pre-deploy step:
-boot checks for that service's role, then `alembic upgrade head` under a
-Postgres advisory lock. Whichever service deploys first migrates; the rest
+Every service runs `python -m server.tools.release` at the top of
+`start.sh` (and `web` also as its pre-deploy step): boot checks for that
+service's role, then `alembic upgrade head` under a Postgres advisory lock. Whichever service deploys first migrates; the rest
 find the schema at head. So there is no required deploy order, as long as
 migrations stay backward compatible with the code still running elsewhere
 (add tables/columns now, drop them in a later release).

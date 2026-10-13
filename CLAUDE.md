@@ -20,7 +20,7 @@ git push
 railway environment sandbox && railway up --service web --ci   # etc.
 railway environment production && railway up --service web --ci
 ```
-Every service runs migrations in its pre-deploy step (`server.tools.release`, advisory-locked), so there is no required deploy order. Keep migrations backward compatible with the code still running in the other services.
+Every service runs migrations before it starts (`start.sh` → `server.tools.release`, advisory-locked; `web` also in pre-deploy), so there is no required deploy order. Keep migrations backward compatible with the code still running in the other services.
 
 ## Code
 - Python: `uv run ruff check server && uv run pytest` before pushing.
