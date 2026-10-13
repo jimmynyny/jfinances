@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------- frontend --
 FROM node:22-alpine AS frontend
 WORKDIR /build
-COPY package.json ./
+COPY package.json tsconfig.base.json ./
 COPY package-lock.json* ./
 COPY packages ./packages
 COPY frontend ./frontend
