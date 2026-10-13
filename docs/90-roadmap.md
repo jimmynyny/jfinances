@@ -37,6 +37,17 @@ generic Google IdP later is a Zero Trust setting; no app change.
 - Alerts (large transaction, item needs re-link) via email/push.
 - Exports (CSV, yearly summaries for taxes).
 
+## Hardening backlog
+
+- **Content-Security-Policy on `web`.** Security headers are set except CSP.
+  A correct policy must allow Plaid Link (`cdn.plaid.com` scripts, `*.plaid.com`
+  frames and connections), the Google Fonts the SPA uses, and the inline
+  pre-paint theme script (by hash). Ship it only after testing Link in a real
+  browser in sandbox, including an OAuth bank, or it will silently break
+  connecting accounts.
+- **Cloudflare rate limit on the hooks hostnames.** Plaid sends a handful of
+  webhooks a day; a WAF rate rule caps abuse before it reaches Railway.
+
 ## Explicitly out of scope
 
 Budgets, bill pay, transfers, investment trading, anything that writes to an

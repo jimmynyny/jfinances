@@ -46,6 +46,10 @@ Access: Organizations, Identity Providers, and Groups → Read** on
 team). Cloudflare returns an *empty list*, not an error, for lists a token
 cannot read, so an empty result is not proof that nothing exists.
 
+Applied 2026-10-13: policy "jfinances household" and apps `jfinances`
+(AUD `afd54409…`) and `jfinances-sandbox` (AUD `e4ff714a…`), set as
+`CF_ACCESS_AUD` on `web` in production and sandbox respectively.
+
 What the script sets, if you ever do it by hand (Zero Trust → Access →
 Applications → Add → Self-hosted):
 
