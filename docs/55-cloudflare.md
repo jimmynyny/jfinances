@@ -86,8 +86,9 @@ allowlist: Access proves *who*, the app decides *whether*.
 
 ## 5. Adding or removing a person
 
-1. Zero Trust → the Access application → policy "household" → edit emails.
-2. Railway → `web` → `ALLOWED_USERS` → edit, redeploy `web` (or run
+1. Edit `EMAILS` in `ops/cloudflare_access.py` and run it with `--apply`
+   (or Zero Trust → Access → Policies → "jfinances household" → edit emails).
+2. Railway → `web` → `ALLOWED_USERS` → edit (keep the owner first), redeploy `web` (or run
    `railway run --service web python -m server.tools.seed`).
 3. To remove: delete from both places. Disabling in the app alone is enough
    to block access even if Access still lets them through.

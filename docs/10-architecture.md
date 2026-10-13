@@ -84,7 +84,7 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `SESSION_SECRET` | ✓ |  |  | Signs short-lived state cookies (Link OAuth) |
 | `CF_ACCESS_TEAM` | ✓ |  |  | `daedalustcg` — the Zero Trust team name |
 | `CF_ACCESS_AUD` | ✓ |  |  | Comma-separated AUD tags of the Access application(s) |
-| `ALLOWED_USERS` | ✓ |  |  | Comma-separated emails that may use the app. Seeds `users` on boot |
+| `ALLOWED_USERS` | ✓ |  |  | Comma-separated emails that may use the app, **in order**: the first is `owner`, the rest `member`. Reconciled into `users` at every web boot (lock-serialised across uvicorn workers) |
 | `PUBLIC_BASE_URL` | ✓ |  |  | `https://jfinances.sellingtcg.com` — builds the OAuth redirect URI |
 | `HOOKS_BASE_URL` | ✓ | ✓ | ✓ | `https://jfinances-hooks.sellingtcg.com` — Plaid webhook base |
 | `API_HOST` | ✓ |  |  | Hostname that uses bearer-token auth instead of Access (future iOS) |

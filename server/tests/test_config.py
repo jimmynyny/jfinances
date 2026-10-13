@@ -31,3 +31,12 @@ def test_derived_urls():
     assert s.plaid_redirect_uri == "https://fin.example.com/link/oauth"
     assert s.cf_access_audiences == ["aud-one", "aud-two"]
     assert s.allowed_user_emails == ["jimmy@example.com", "wife@example.com"]
+
+
+def test_allowed_users_keep_written_order(monkeypatch):
+    # The first email is the owner, so order must survive parsing. Sorting
+    # made anna@ (alphabetically first) the owner in production on 2026-10-13.
+    from server.app.config import reset_settings_cache, settings
+    monkeypatch.setenv("ALLOWED_USERS", " Jimmy@Example.com, anna@example.com ,jimmy@example.com,, ")
+    reset_settings_cache()
+    assert settings().allowed_user_emails == ["jimmy@example.com", "anna@example.com"]

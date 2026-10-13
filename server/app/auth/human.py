@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 import httpx
 import jwt
 from jwt import PyJWKClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -109,24 +109,42 @@ def principal_for_email(email: str, sess: Session, *, via: str,
                      session_expires_at=expires_at, display_name=user.display_name)
 
 
-def seed_allowed_users(sess: Session) -> int:
-    """Upsert every ALLOWED_USERS email. The first one becomes `owner`.
+#: Serialises concurrent seeding. uvicorn starts several worker processes and
+#: each seeds at startup; without the lock two of them INSERT the same email,
+#: one fails its startup, and uvicorn then stops the whole server.
+SEED_LOCK_KEY = 0x6A667573  # "jfus"
 
-    Removing an email from ALLOWED_USERS does NOT delete the row (history
-    references it); it sets disabled_at so the person stops at the next request.
+
+def seed_allowed_users(sess: Session) -> int:
+    """Make `users` match ALLOWED_USERS. Idempotent; safe to run concurrently.
+
+    * Every listed email exists and is enabled.
+    * ALLOWED_USERS is authoritative for roles: the FIRST listed email is
+      `owner`, every other one is `member`, for new and existing rows alike.
+    * An email no longer listed is not deleted (history references it); it gets
+      disabled_at, so the person is refused at their next request.
     """
     s = settings()
     allowed = s.allowed_user_emails
     if not allowed:
         return 0
+    if sess.get_bind().dialect.name == "postgresql":
+        # Held until this transaction commits; a concurrent seeder waits here and
+        # then sees the rows this one inserted (READ COMMITTED, per statement).
+        sess.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": SEED_LOCK_KEY})
     existing = {u.email: u for u in sess.execute(select(User)).scalars()}
     now = datetime.now(UTC)
     for i, email in enumerate(allowed):
+        role = "owner" if i == 0 else "member"
         u = existing.get(email)
         if u is None:
-            sess.add(User(email=email, role="owner" if i == 0 and not existing else "member"))
-        elif u.disabled_at is not None:
+            sess.add(User(email=email, role=role))
+            continue
+        if u.disabled_at is not None:
             u.disabled_at = None
+        if u.role != role:
+            log.info("role of %s: %s -> %s (ALLOWED_USERS order)", email, u.role, role)
+            u.role = role
     for email, u in existing.items():
         if email not in allowed and u.disabled_at is None:
             u.disabled_at = now

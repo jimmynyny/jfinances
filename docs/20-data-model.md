@@ -24,8 +24,10 @@ webhook_events       (audit)
 
 ## users
 Who may use the app. Seeded from `ALLOWED_USERS` at every `web` boot
-(`auth/human.py::seed_allowed_users`). The first address in the list becomes
-`owner`; the rest `member`. Removing an address from the variable does not
+(`auth/human.py::seed_allowed_users`). The first address in the list is
+`owner` and the rest are `member`, re-applied to existing rows at every boot,
+so the variable's order is the source of truth. Seeding takes a Postgres
+advisory lock because every uvicorn worker seeds at startup. Removing an address from the variable does not
 delete the row (history references it); it sets `disabled_at`, and the person
 is refused on their next request.
 

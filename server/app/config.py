@@ -84,7 +84,14 @@ class Settings(BaseSettings):
 
     @property
     def allowed_user_emails(self) -> list[str]:
-        return sorted({e.strip().lower() for e in self.allowed_users.split(",") if e.strip()})
+        """ALLOWED_USERS lowercased and de-duplicated, IN THE ORDER WRITTEN: the
+        first email is the owner (see auth.human.seed_allowed_users)."""
+        out: list[str] = []
+        for raw in self.allowed_users.split(","):
+            email = raw.strip().lower()
+            if email and email not in out:
+                out.append(email)
+        return out
 
     @property
     def plaid_base_url(self) -> str:
