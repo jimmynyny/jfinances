@@ -143,6 +143,16 @@ The `sandbox` Railway environment points at `sandbox.plaid.com`. In Link, use
 institution "First Platypus Bank", user `user_good`, password `pass_good`.
 OAuth flow: institution "Platypus OAuth Bank" exercises the redirect.
 
+**Sandbox never sends a real text message.** Link's codes are fixed values:
+
+| Where Link asks for a code | What to enter |
+|---|---|
+| Phone screen at the start of Link (Plaid's "returning user" / Remember Me step) | Phone `415-555-0011`, then code `123456` (any of `415-555-0011`, `-0012`, `-0013`, `-0136`, `-0137`, `-0138` works) |
+| After signing in to a test bank with password `mfa_device` (device MFA) | `1234` |
+
+The phone step is Plaid's own feature, on for every Plaid customer; there is
+no dashboard switch. In production it sends real texts to the number you type.
+
 To fire a webhook without waiting:
 
 ```bash
