@@ -1,0 +1,24 @@
+{
+  "name": "jfinances-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/ui",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w @mooney/ui && npm run build -w frontend",
+    "dev": "npm run dev -w frontend",
+    "dev:ui": "npm run demo -w @mooney/ui",
+    "typecheck": "npm run typecheck -w @mooney/ui && npm run typecheck -w frontend",
+    "lint": "eslint packages/ui/src packages/ui/demo frontend/src"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0"
+  }
+}

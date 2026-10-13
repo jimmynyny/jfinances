@@ -1,0 +1,41 @@
+/* @mooney/ui — base */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--mu-page);
+  color: var(--mu-ink);
+  font-family: var(--mu-font-sans);
+  font-size: var(--mu-fs-md);
+  line-height: var(--mu-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: var(--mu-lh-tight); }
+h1 { font-size: var(--mu-fs-2xl); letter-spacing: -0.01em; }
+h2 { font-size: var(--mu-fs-xl); }
+h3 { font-size: var(--mu-fs-lg); }
+p { margin: 0; }
+a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--mu-accent); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: none; box-shadow: var(--mu-focus); }
+::selection { background: var(--mu-accent-wash); }
+hr { border: 0; border-top: var(--mu-border); margin: var(--mu-s4) 0; }
+table { border-collapse: collapse; }
+
+/* the mono voice: labels, captions, figures */
+.mu-mono { font-family: var(--mu-font-mono); font-size: var(--mu-fs-sm); }
+.mu-caption { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); }
+.mu-num { font-variant-numeric: tabular-nums; }
+.mu-muted { color: var(--mu-ink-3); }
+.mu-secondary { color: var(--mu-ink-2); }
+.mu-pos { color: var(--mu-pos); }
+.mu-neg { color: var(--mu-neg); }
+.mu-right { text-align: right; }
+.mu-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -1,0 +1,154 @@
+/* @mooney/ui — design tokens
+ *
+ * Instrument-panel finance. Square corners, 1px rules, flat offset shadows,
+ * one signal accent, mono for labels and figures. Light first; dark is its
+ * own selected set, not an inversion.
+ *
+ * Consumers set <html data-theme="light|dark"> to force a theme; otherwise
+ * prefers-color-scheme decides.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- surfaces & ink ---- */
+  --mu-page:        #f3f3ef;   /* the desk the panels sit on */
+  --mu-panel:       #ffffff;   /* chart / card surface */
+  --mu-panel-2:     #f8f8f5;   /* inset wells, table header, hover wash */
+  --mu-ink:         #17191c;   /* primary text */
+  --mu-ink-2:       #4e5259;   /* secondary text */
+  --mu-ink-3:       #8a8f98;   /* muted: axis labels, captions, placeholders */
+  --mu-line:        #d8d8d1;   /* hairline borders */
+  --mu-line-strong: #17191c;   /* pressable outlines */
+  --mu-grid:        #e6e6e0;   /* chart gridlines, one step off surface */
+  --mu-baseline:    #c3c3bb;
+
+  /* ---- the one accent ---- */
+  --mu-accent:      #e4531b;   /* signal orange: focus, selection, primary action, hero series */
+  --mu-accent-ink:  #ffffff;
+  --mu-accent-wash: #fbe9e0;   /* soft tint behind selected rows / tiles */
+
+  /* ---- money semantics (never the accent) ---- */
+  --mu-pos:         #1b7a3d;   /* gains, inflow */
+  --mu-pos-wash:    #e3f3e8;
+  --mu-neg:         #b32318;   /* losses, outflow */
+  --mu-neg-wash:    #fbe5e3;
+
+  /* ---- status (icon + label always; never a series colour) ---- */
+  --mu-status-good:     #0ca30c;
+  --mu-status-warn:     #e3a008;
+  --mu-status-serious:  #ec835a;
+  --mu-status-critical: #d03b3b;
+
+  /* ---- categorical series, fixed order, validated (see docs/70) ---- */
+  --mu-series-1: #2a78d6;
+  --mu-series-2: #1baf7a;
+  --mu-series-3: #eda100;
+  --mu-series-4: #4a3aa7;
+  --mu-series-5: #e87ba4;
+  --mu-series-6: #008300;
+  --mu-series-other: #a3a7ad;
+
+  /* ---- type ---- */
+  --mu-font-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mu-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --mu-fs-xs: 11px;
+  --mu-fs-sm: 12.5px;
+  --mu-fs-md: 14px;
+  --mu-fs-lg: 16px;
+  --mu-fs-xl: 20px;
+  --mu-fs-2xl: 28px;
+  --mu-fs-hero: 40px;
+  --mu-lh-tight: 1.15;
+  --mu-lh: 1.45;
+
+  /* ---- space (4px base) ---- */
+  --mu-s1: 4px;
+  --mu-s2: 8px;
+  --mu-s3: 12px;
+  --mu-s4: 16px;
+  --mu-s5: 20px;
+  --mu-s6: 24px;
+  --mu-s8: 32px;
+  --mu-s10: 40px;
+
+  /* ---- structure ---- */
+  --mu-radius: 0px;
+  --mu-radius-sm: 2px;       /* inputs, badges only */
+  --mu-border: 1px solid var(--mu-line);
+  --mu-shadow-offset: 2px;   /* flat, never blurred */
+  --mu-shadow: var(--mu-shadow-offset) var(--mu-shadow-offset) 0 0 var(--mu-line-strong);
+  --mu-shadow-soft: var(--mu-shadow-offset) var(--mu-shadow-offset) 0 0 var(--mu-line);
+  --mu-focus: 0 0 0 2px var(--mu-panel), 0 0 0 4px var(--mu-accent);
+
+  /* ---- layout ---- */
+  --mu-sidebar-w: 216px;
+  --mu-header-h: 52px;
+  --mu-gutter: 16px;
+
+  /* ---- motion ---- */
+  --mu-dur: 140ms;
+  --mu-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Dark: selected steps, re-validated against --mu-panel #161719 */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --mu-page:        #0f1012;
+    --mu-panel:       #161719;
+    --mu-panel-2:     #1d1e21;
+    --mu-ink:         #f1f1ec;
+    --mu-ink-2:       #b8bbc0;
+    --mu-ink-3:       #80848b;
+    --mu-line:        #2a2c30;
+    --mu-line-strong: #f1f1ec;
+    --mu-grid:        #232529;
+    --mu-baseline:    #3a3c41;
+    --mu-accent:      #ff6a34;
+    --mu-accent-ink:  #17191c;
+    --mu-accent-wash: #33211a;
+    --mu-pos:         #3fbf6a;
+    --mu-pos-wash:    #16281c;
+    --mu-neg:         #ef6a5f;
+    --mu-neg-wash:    #2e1816;
+    --mu-series-1: #3987e5;
+    --mu-series-2: #199e70;
+    --mu-series-3: #c98500;
+    --mu-series-4: #9085e9;
+    --mu-series-5: #d55181;
+    --mu-series-6: #008300;
+    --mu-series-other: #5b5f66;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --mu-page:        #0f1012;
+  --mu-panel:       #161719;
+  --mu-panel-2:     #1d1e21;
+  --mu-ink:         #f1f1ec;
+  --mu-ink-2:       #b8bbc0;
+  --mu-ink-3:       #80848b;
+  --mu-line:        #2a2c30;
+  --mu-line-strong: #f1f1ec;
+  --mu-grid:        #232529;
+  --mu-baseline:    #3a3c41;
+  --mu-accent:      #ff6a34;
+  --mu-accent-ink:  #17191c;
+  --mu-accent-wash: #33211a;
+  --mu-pos:         #3fbf6a;
+  --mu-pos-wash:    #16281c;
+  --mu-neg:         #ef6a5f;
+  --mu-neg-wash:    #2e1816;
+  --mu-series-1: #3987e5;
+  --mu-series-2: #199e70;
+  --mu-series-3: #c98500;
+  --mu-series-4: #9085e9;
+  --mu-series-5: #d55181;
+  --mu-series-6: #008300;
+  --mu-series-other: #5b5f66;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --mu-dur: 0ms; }
+}

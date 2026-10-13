@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+docs
+*.md
+!index.html
+.env
+.env.*
+frontend/dist
+packages/*/dist
+.DS_Store
+.railway

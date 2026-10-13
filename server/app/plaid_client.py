@@ -1,0 +1,149 @@
+"""A thin, typed-enough Plaid client over httpx.
+
+Why not plaid-python: the generated SDK wraps every field in a model class
+and breaks on each major version. We call eleven endpoints. A JSON client is
+forty lines, testable with a fake transport, and the raw dicts go straight
+into our `raw` jsonb columns. Endpoint reference: https://plaid.com/docs/api/
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import httpx
+
+from .config import settings
+
+log = logging.getLogger(__name__)
+
+
+class PlaidError(Exception):
+    def __init__(self, status: int, body: dict[str, Any]):
+        self.status = status
+        self.body = body
+        self.error_type = body.get("error_type")
+        self.error_code = body.get("error_code")
+        self.request_id = body.get("request_id")
+        super().__init__(f"{self.error_type}/{self.error_code}: {body.get('error_message')}")
+
+
+class PlaidClient:
+    def __init__(self, *, base_url: str | None = None, client_id: str | None = None,
+                 secret: str | None = None, transport: httpx.BaseTransport | None = None,
+                 timeout: float = 60.0):
+        s = settings()
+        self.base_url = (base_url or s.plaid_base_url).rstrip("/")
+        self.client_id = client_id if client_id is not None else s.plaid_client_id
+        self.secret = secret if secret is not None else s.plaid_secret
+        self._http = httpx.Client(base_url=self.base_url, timeout=timeout, transport=transport,
+                                  headers={"Content-Type": "application/json",
+                                           "Plaid-Version": "2020-09-14"})
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = {"client_id": self.client_id, "secret": self.secret, **(body or {})}
+        resp = self._http.post(path, json=payload)
+        data = resp.json() if resp.content else {}
+        if resp.status_code >= 400:
+            raise PlaidError(resp.status_code, data)
+        return data
+
+    # --- link ---------------------------------------------------------------
+    def link_token_create(self, *, user_id: str, access_token: str | None = None,
+                          products: list[str] | None = None) -> dict[str, Any]:
+        s = settings()
+        body: dict[str, Any] = {
+            "user": {"client_user_id": user_id},
+            "client_name": "Mooney Household Ledger",
+            "language": "en",
+            "country_codes": s.plaid_country_codes,
+            "webhook": s.plaid_webhook_url,
+            "redirect_uri": s.plaid_redirect_uri,
+        }
+        if access_token:
+            body["access_token"] = access_token          # update mode
+            body["update"] = {"account_selection_enabled": True}
+        else:
+            body["products"] = products or s.plaid_products
+            body["transactions"] = {"days_requested": s.plaid_days_requested}
+        return self.post("/link/token/create", body)
+
+    def item_public_token_exchange(self, public_token: str) -> dict[str, Any]:
+        return self.post("/item/public_token/exchange", {"public_token": public_token})
+
+    # --- item ---------------------------------------------------------------
+    def item_get(self, access_token: str) -> dict[str, Any]:
+        return self.post("/item/get", {"access_token": access_token})
+
+    def item_remove(self, access_token: str) -> dict[str, Any]:
+        return self.post("/item/remove", {"access_token": access_token})
+
+    def item_webhook_update(self, access_token: str, webhook: str) -> dict[str, Any]:
+        return self.post("/item/webhook/update", {"access_token": access_token, "webhook": webhook})
+
+    def institutions_get_by_id(self, institution_id: str) -> dict[str, Any]:
+        return self.post("/institutions/get_by_id",
+                         {"institution_id": institution_id,
+                          "country_codes": settings().plaid_country_codes})
+
+    # --- accounts -----------------------------------------------------------
+    def accounts_get(self, access_token: str) -> dict[str, Any]:
+        return self.post("/accounts/get", {"access_token": access_token})
+
+    def accounts_balance_get(self, access_token: str) -> dict[str, Any]:
+        """Real-time balances. Billed per call; only the Refresh button uses it."""
+        return self.post("/accounts/balance/get", {"access_token": access_token})
+
+    # --- transactions -------------------------------------------------------
+    def transactions_sync(self, access_token: str, cursor: str | None, count: int = 500) -> dict[str, Any]:
+        body: dict[str, Any] = {"access_token": access_token, "count": count,
+                                "options": {"include_personal_finance_category": True,
+                                            "include_logo_and_counterparty_beta": True}}
+        if cursor:
+            body["cursor"] = cursor
+        return self.post("/transactions/sync", body)
+
+    # --- investments --------------------------------------------------------
+    def investments_holdings_get(self, access_token: str) -> dict[str, Any]:
+        return self.post("/investments/holdings/get", {"access_token": access_token})
+
+    def investments_transactions_get(self, access_token: str, start_date: str, end_date: str,
+                                     offset: int = 0, count: int = 500) -> dict[str, Any]:
+        return self.post("/investments/transactions/get",
+                         {"access_token": access_token, "start_date": start_date,
+                          "end_date": end_date, "options": {"offset": offset, "count": count}})
+
+    # --- liabilities --------------------------------------------------------
+    def liabilities_get(self, access_token: str) -> dict[str, Any]:
+        return self.post("/liabilities/get", {"access_token": access_token})
+
+    # --- webhooks -----------------------------------------------------------
+    def webhook_verification_key_get(self, key_id: str) -> dict[str, Any]:
+        return self.post("/webhook_verification_key/get", {"key_id": key_id})
+
+    # --- sandbox ------------------------------------------------------------
+    def sandbox_item_fire_webhook(self, access_token: str, webhook_code: str,
+                                  webhook_type: str = "TRANSACTIONS") -> dict[str, Any]:
+        return self.post("/sandbox/item/fire_webhook",
+                         {"access_token": access_token, "webhook_type": webhook_type,
+                          "webhook_code": webhook_code})
+
+    def sandbox_public_token_create(self, institution_id: str = "ins_109508") -> dict[str, Any]:
+        s = settings()
+        return self.post("/sandbox/public_token/create",
+                         {"institution_id": institution_id, "initial_products": s.plaid_products,
+                          "options": {"webhook": s.plaid_webhook_url}})
+
+
+_client: PlaidClient | None = None
+
+
+def plaid() -> PlaidClient:
+    global _client
+    if _client is None:
+        _client = PlaidClient()
+    return _client
+
+
+def reset_client() -> None:
+    global _client
+    _client = None

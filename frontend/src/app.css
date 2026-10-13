@@ -1,0 +1,38 @@
+/* App-level layout rules that are specific to jfinances, not the design system. */
+
+.jf-acct { display: grid; grid-template-columns: 1fr auto auto; gap: var(--mu-s3); align-items: center; padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); min-width: 0; }
+.jf-acct:first-of-type { border-top: 0; }
+.jf-acct__name { font-size: var(--mu-fs-md); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jf-acct__meta { display: flex; gap: var(--mu-s2); align-items: center; }
+.jf-acct__bal { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.jf-acct__bal .mu-money { font-size: var(--mu-fs-md); }
+.jf-acct--hidden { opacity: 0.5; }
+
+.jf-group { display: flex; flex-direction: column; }
+.jf-group__head { display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s3); padding: var(--mu-s3) var(--mu-s4); background: var(--mu-panel-2); border-bottom: var(--mu-border); }
+.jf-group__title { display: flex; align-items: baseline; gap: var(--mu-s3); font-weight: 600; }
+.jf-group__toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: var(--mu-s2); }
+.jf-group__toggle:focus-visible { box-shadow: var(--mu-focus); }
+
+.jf-split { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.jf-split__bar { display: flex; height: 8px; gap: 2px; background: var(--mu-grid); }
+.jf-split__seg { height: 100%; }
+.jf-split__rows { display: grid; grid-template-columns: 10px 1fr auto; gap: var(--mu-s1) var(--mu-s2); align-items: center; font-size: var(--mu-fs-sm); margin-top: var(--mu-s2); }
+.jf-split__rows .mu-money { font-size: var(--mu-fs-sm); }
+
+.jf-summary-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--mu-s3); padding: var(--mu-s2) 0; }
+.jf-summary-row + .jf-summary-row { border-top: var(--mu-border); }
+
+.jf-attn { display: flex; flex-direction: column; gap: var(--mu-s2); }
+.jf-attn__row { display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s2); padding: var(--mu-s2) var(--mu-s3); border: 1px solid var(--mu-status-warn); background: var(--mu-panel); }
+
+.jf-txn-name { display: flex; flex-direction: column; min-width: 0; }
+.jf-txn-name small { color: var(--mu-ink-3); font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); }
+.jf-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s3); padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); }
+
+.jf-liab { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--mu-s3); }
+.jf-theme { all: unset; cursor: pointer; font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); }
+.jf-theme:hover { color: var(--mu-accent); }
+.jf-theme:focus-visible { box-shadow: var(--mu-focus); }
+.jf-center { min-height: 60vh; display: grid; place-items: center; }
+.jf-about { max-width: 640px; }

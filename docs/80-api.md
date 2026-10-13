@@ -1,0 +1,212 @@
+# 80 — HTTP API
+
+Base: `https://jfinances.sellingtcg.com/api/v1`. JSON in, JSON out. Every
+route needs a principal (Cloudflare Access session on the dashboard
+hostname, or `Authorization: Bearer` on the API hostname) except `/healthz`.
+Money fields are strings with two decimals (`"1234.56"`); quantities are
+strings; dates are ISO 8601.
+
+Errors:
+
+```json
+{"error": {"code": "auth.not_allowed", "message": "…"}}
+```
+
+Codes you will see: `auth.missing_credential` 401, `auth.bad_access_jwt` 401,
+`auth.bad_token` 401/429, `auth.not_allowed` 403, `auth.forbidden` 403,
+`not_found` 404, `bad_request` 400, `validation` 422, `conflict` 409,
+`rate_limited` 429, `plaid_error` 502, `internal` 500.
+
+`dashboard_only` below means a device token is refused (interactive session required).
+
+## Identity
+
+### GET /me
+```json
+{"email":"jimmy@…","display_name":null,"role":"owner","via":"access",
+ "session_expires_at":"2026-10-14T16:00:00+00:00","env":"production","plaid_env":"production"}
+```
+
+## Overview and net worth
+
+### GET /overview
+```json
+{"net_worth":"687041.79","assets":"929008.67","liabilities":"241966.88",
+ "change_1m":{"amount":"23542.96","pct":"3.5","since":"2026-09-13"},
+ "as_of":"2026-10-13T06:00:12+00:00","account_count":23,
+ "items_needing_attention":[{"id":"…","institution_name":"Chase","status":"login_required","error_code":"ITEM_LOGIN_REQUIRED"}],
+ "groups":[
+   {"key":"cash","label":"Cash","is_liability":false,"total":"65342.30",
+    "change_1m":{"amount":"1826.10","pct":"2.9"},
+    "accounts":[{"id":"…","name":"Checking","mask":"4821","type":"depository","subtype":"checking",
+                 "current_balance":"15234.75","available_balance":"15100.00","institution_name":"Citi",
+                 "balance_updated_at":"…","is_hidden":false,"is_liability":false,"kind":"plaid","item_status":"active", "…":"…"}]},
+   {"key":"investments","label":"Investments","…":"…"},
+   {"key":"real_estate","…":"…"},{"key":"vehicles","…":"…"},{"key":"other_assets","…":"…"},
+   {"key":"credit_cards","is_liability":true,"…":"…"},{"key":"loans","…":"…"},{"key":"other_liabilities","…":"…"}
+ ]}
+```
+Group keys are fixed and always present (possibly empty).
+
+### GET /networth/history?range=1m|3m|6m|1y|all
+```json
+{"range":"6m","points":[{"date":"2026-04-13","assets":"…","liabilities":"…","net":"…"}, "…"]}
+```
+One point per day; each account contributes its latest snapshot on or before that day.
+
+## Accounts
+
+### GET /accounts
+`{"accounts":[account, …]}` — every account including hidden and closed.
+
+Account object:
+```json
+{"id":"…","item_id":"…|null","kind":"plaid|manual","name":"…","official_name":"…","mask":"4821",
+ "type":"depository|credit|loan|investment|other|manual","subtype":"checking","manual_category":null,
+ "iso_currency":"USD","current_balance":"…","available_balance":"…","credit_limit":"…",
+ "balance_updated_at":"…","is_liability":false,"is_hidden":false,"display_order":0,"closed_at":null,
+ "institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
+```
+
+### PATCH /accounts/{id}
+Body: `{"name"?: str, "is_hidden"?: bool, "display_order"?: int}` → account.
+
+### POST /accounts/manual → 201
+Body: `{"name":"2019 4Runner","manual_category":"vehicle","value":"28500","iso_currency":"USD"}`.
+`manual_category` ∈ `real_estate | vehicle | cash | other_asset | other_liability`.
+Creates the account and today's snapshot.
+
+### PUT /accounts/{id}/value
+Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts only). Writes/overwrites the snapshot for that date; updates the current balance if the date is the latest.
+
+### DELETE /accounts/{id} → 204 (manual only, dashboard_only)
+
+### POST /accounts/{id}/refresh
+Real-time balance for the whole item (`/accounts/balance/get`, billed). 429 if the item was refreshed within 10 minutes. → account.
+
+### GET /accounts/{id}/history?range=1y
+`{"account_id":"…","points":[{"date":"…","balance":"…","source":"plaid|manual|carry"}]}`
+
+## Items (Plaid connections)
+
+### GET /items
+`{"items":[item, …]}`
+```json
+{"id":"…","plaid_item_id":"…","institution_id":"ins_3","institution_name":"Chase",
+ "status":"active|login_required|error|pending_expiration|removed","error_code":null,"error_message":null,
+ "consent_expires_at":null,"transactions_status":"HISTORICAL_UPDATE_COMPLETE",
+ "last_synced_at":"…","last_webhook_at":"…","investments_synced_at":"…","liabilities_synced_at":"…",
+ "products":["transactions","liabilities"],"account_count":3,"created_at":"…","removed_at":null}
+```
+
+### POST /items/{id}/sync → 202
+Queues `sync_item`, `refresh_investments`, `refresh_liabilities`. `{"queued":true,"item":item}`
+
+### POST /items/{id}/relink (dashboard_only)
+`{"link_token":"link-…","expiration":"…","link_session_id":"…","mode":"update"}`
+
+### DELETE /items/{id} (dashboard_only)
+Calls `/item/remove`; returns the item with `status:"removed"`.
+
+## Link
+
+### POST /link/token (dashboard_only)
+Body: `{"item_id"?: "…"}` (present = update mode).
+```json
+{"link_token":"link-production-…","expiration":"…","link_session_id":"…","mode":"create",
+ "redirect_uri":"https://jfinances.sellingtcg.com/link/oauth"}
+```
+
+### GET /link/session (dashboard_only)
+The newest unconsumed, unexpired link session for this user, for the OAuth return page:
+`{"link_token":"…","link_session_id":"…","mode":"create|update","item_id":null}`
+
+### POST /link/exchange → 201 (dashboard_only)
+Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…"}` → item. Queues the three jobs.
+
+### POST /link/update-complete (dashboard_only)
+Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (status `active`).
+
+### GET /link/config
+`{"redirect_uri":"…","webhook_url":"…","products":[…],"plaid_env":"production"}`
+
+## Transactions
+
+### GET /transactions
+Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount contains), `category`, `pending` (bool), `page` (1-based), `page_size` (≤500, default 50).
+```json
+{"page":1,"page_size":50,"total":1234,"transactions":[
+ {"id":"…","account_id":"…","account_name":"Checking","account_mask":"4821","institution_name":"Citi",
+  "date":"2026-10-12","authorized_date":"2026-10-11","amount":"64.00","iso_currency":"USD",
+  "name":"THE GOOD TABLE","merchant_name":"The Good Table","logo_url":"…","pending":false,
+  "category_primary":"FOOD_AND_DRINK","category_detailed":"FOOD_AND_DRINK_RESTAURANT",
+  "category":"FOOD_AND_DRINK","user_category":null,"payment_channel":"in store","notes":null,"removed_at":null}]}
+```
+`amount` keeps Plaid's sign: positive is money out, negative is money in. `category` is `user_category` if set, else Plaid's primary.
+
+### PATCH /transactions/{id}
+Body: `{"user_category"?: str|null, "notes"?: str|null}` → transaction.
+
+### GET /transactions/summary?from&to&account_id&group_by=category|month|account
+`{"group_by":"category","rows":[{"key":"FOOD_AND_DRINK","label":"FOOD_AND_DRINK","total":"812.40","count":31}]}`
+Excludes pending and removed.
+
+### GET /transactions/categories
+`{"categories":["FOOD_AND_DRINK","GENERAL_MERCHANDISE", "…"]}`
+
+## Investments
+
+### GET /holdings
+```json
+{"total_value":"542301.55","accounts":[
+ {"account":account,"holdings_value":"180336.73","holdings":[
+   {"id":"…","security_id":"…","ticker":"VTI","name":"Vanguard Total Stock Market ETF","type":"etf",
+    "is_cash_equivalent":false,"quantity":"120.5","cost_basis":"20000.00","price":"281.12",
+    "price_as_of":"2026-10-10","value":"33875.00","iso_currency":"USD","close_price":"281.12","close_price_as_of":"2026-10-10"}]}]}
+```
+
+### GET /holdings/transactions?account_id&limit=200
+`{"transactions":[{"id":"…","account_id":"…","account_name":"…","institution_name":"…","date":"…","name":"BUY VTI","type":"buy","subtype":"buy","ticker":"VTI","security_name":"…","quantity":"10","amount":"2811.20","price":"281.12","fees":"0.00"}]}`
+
+## Liabilities
+
+### GET /liabilities
+```json
+{"total_owed":"241966.88","accounts":[
+ {"account":account,"detail":{"kind":"mortgage","interest_rate_pct":"6.125","interest_rate_type":"fixed",
+   "next_payment_due_date":"2026-11-01","minimum_payment":"2412.00","next_payment_amount":"2412.00",
+   "last_payment_amount":"2412.00","last_payment_date":"2026-10-01","last_statement_balance":null,
+   "last_statement_date":null,"is_overdue":false,"origination_date":"2021-03-15","origination_principal":"320000.00",
+   "loan_term":"30 year","maturity_date":"2051-03-15","updated_at":"…"}}]}
+```
+`detail` is null until the liabilities refresh has run for that item.
+
+## Sync
+
+### GET /sync/status
+```json
+{"items":[item, …],
+ "jobs":[{"id":"…","kind":"sync_item","status":"queued|running|failed","item_id":"…","attempts":1,
+          "run_after":"…","last_error":null,"created_at":"…","finished_at":null}],
+ "webhooks":[{"id":"…","item_id":"…","type":"TRANSACTIONS","code":"SYNC_UPDATES_AVAILABLE",
+              "received_at":"…","processed_at":"…","error":null}]}
+```
+
+### POST /sync/all → 202 (dashboard_only) — queue sync/investments/liabilities for every item.
+### POST /sync/snapshot → 202 (dashboard_only) — queue today's balance snapshot.
+
+## Device tokens (dashboard_only)
+
+### GET /tokens → `{"tokens":[{"id","name","created_at","last_used_at","revoked_at"}]}`
+### POST /tokens `{"name":"Jimmy's iPhone"}` → 201 `{"id","name","token":"<shown once>","note"}`
+### DELETE /tokens/{id} → 204
+
+## Public
+
+### GET /healthz → `{"ok":true,"service":"web","env":"production","db":"ok"}` (503 if the DB is down)
+### GET /about → the privacy page (`index.html`)
+
+## Hooks service (separate hostname)
+
+### POST /plaid/webhook — Plaid only. 401 unless the `Plaid-Verification` signature checks out.
+### GET /healthz
