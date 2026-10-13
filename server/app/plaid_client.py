@@ -1,14 +1,18 @@
 """A thin, typed-enough Plaid client over httpx.
 
 Why not plaid-python: the generated SDK wraps every field in a model class
-and breaks on each major version. We call eleven endpoints. A JSON client is
+and breaks on each major version. We call a dozen endpoints. A JSON client is
 forty lines, testable with a fake transport, and the raw dicts go straight
 into our `raw` jsonb columns. Endpoint reference: https://plaid.com/docs/api/
+
+Every request passes `ALLOWED_ENDPOINTS` first: calling Plaid is a billing
+decision, so an endpoint that is not on the list never leaves the process.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -25,6 +29,37 @@ class PlaidError(Exception):
         self.error_code = body.get("error_code")
         self.request_id = body.get("request_id")
         super().__init__(f"{self.error_type}/{self.error_code}: {body.get('error_message')}")
+
+
+class BillingGuardError(RuntimeError):
+    """A call to a Plaid endpoint outside `ALLOWED_ENDPOINTS`. Raised before
+    any request is made."""
+
+
+#: Every Plaid endpoint the app may call. Each one is free, or covered by the
+#: monthly per-Item price of a product we use (docs/30-plaid.md, "Cost model").
+#: Left off on purpose, because each would add a charge:
+#:   /accounts/balance/get, /transactions/refresh, /investments/refresh
+#:       billed per call;
+#:   /transactions/recurring/get
+#:       adds the Recurring Transactions subscription to the Item.
+#: Adding an endpoint here is a billing decision: update docs/30 with it.
+ALLOWED_ENDPOINTS = frozenset({
+    "/link/token/create",
+    "/item/public_token/exchange",
+    "/item/get",
+    "/item/remove",
+    "/item/webhook/update",
+    "/institutions/get_by_id",
+    "/accounts/get",
+    "/transactions/sync",                 # Transactions
+    "/investments/holdings/get",          # Investments Holdings
+    "/investments/transactions/get",      # Investments Transactions (also adds Holdings)
+    "/liabilities/get",                   # Liabilities
+    "/webhook_verification_key/get",
+})
+#: Test helpers; allowed only against sandbox.plaid.com.
+SANDBOX_ENDPOINTS = frozenset({"/sandbox/item/fire_webhook", "/sandbox/public_token/create"})
 
 
 
@@ -66,6 +101,9 @@ class PlaidClient:
                                            "Plaid-Version": "2020-09-14"})
 
     def post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        sandbox = urlparse(self.base_url).hostname == "sandbox.plaid.com"
+        if path not in ALLOWED_ENDPOINTS and not (sandbox and path in SANDBOX_ENDPOINTS):
+            raise BillingGuardError(f"refusing Plaid {path}: not in plaid_client.ALLOWED_ENDPOINTS")
         payload = {"client_id": self.client_id, "secret": self.secret, **(body or {})}
         resp = self._http.post(path, json=payload)
         data = resp.json() if resp.content else {}
@@ -118,10 +156,6 @@ class PlaidClient:
     # --- accounts -----------------------------------------------------------
     def accounts_get(self, access_token: str) -> dict[str, Any]:
         return self.post("/accounts/get", {"access_token": access_token})
-
-    def accounts_balance_get(self, access_token: str) -> dict[str, Any]:
-        """Real-time balances. Billed per call; only the Refresh button uses it."""
-        return self.post("/accounts/balance/get", {"access_token": access_token})
 
     # --- transactions -------------------------------------------------------
     def transactions_sync(self, access_token: str, cursor: str | None, count: int = 500) -> dict[str, Any]:

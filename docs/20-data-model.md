@@ -60,6 +60,7 @@ unlink: `status=removed`, `removed_at` set, accounts kept for history.
 | `transactions_cursor` | the `/transactions/sync` cursor; persisted only after a full successful page set |
 | `transactions_status` | `NOT_READY` → `INITIAL_UPDATE_COMPLETE` → `HISTORICAL_UPDATE_COMPLETE` |
 | `investments_synced_at`, `liabilities_synced_at`, `last_synced_at`, `last_webhook_at` | shown on /sync/status |
+| `new_accounts_at` | set by `ITEM/NEW_ACCOUNTS_AVAILABLE`, cleared when update mode finishes; Settings highlights Add accounts while it is set |
 | `products` | what Plaid says the item has; used to decide which refresh jobs apply |
 | `created_by` | who linked it |
 
@@ -82,7 +83,7 @@ query.
 | `is_hidden` | excluded from totals and charts, still listed |
 | `display_order` | user sort |
 | `closed_at` | Plaid stopped returning it, or the item was unlinked |
-| `last_refresh_requested_at` | rate limit for the real-time balance button |
+| `last_refresh_requested_at` | rate limit for the Refresh button |
 
 ## balance_snapshots
 One row per account per day, the source of every history chart.

@@ -30,6 +30,10 @@ on `plaid_items.products`. Every job checks it first
 `/transactions/sync` on an Item without that product makes Plaid try to
 add it, which starts a new monthly charge.
 
+Update mode (Add accounts) never adds a product. A card added later to an
+Item linked without one gets balances and transactions, but Liabilities
+details only if the Item already had Liabilities.
+
 ## What to register in the Plaid dashboard
 
 Once per environment. All four values come from Railway variables so they are
@@ -58,17 +62,48 @@ browser                         web (Access)                    Plaid
   │   GET /api/v1/link/session  → same link_token                   │
   │   Plaid.create({token, receivedRedirectUri: location.href})     │
   │ onSuccess(public_token, metadata)                               │
-  │ POST /api/v1/link/exchange ─────►│ /item/public_token/exchange ─►│
-  │                                  │ encrypt+store access_token    │
+  │ POST /api/v1/link/exchange ─────►│ duplicate guard (metadata)    │
+  │◄── 409 link.*: ask, or stop      │   (no exchange, no bill)      │
+  │                                  │ /item/public_token/exchange ─►│
+  │                                  │ encrypt + COMMIT access_token │
   │                                  │ /accounts/get, enqueue jobs   │
   │◄──── item summary                │                               │
 ```
 
-Update mode (re-auth, consent renewal, adding accounts):
-`POST /api/v1/items/{id}/relink` returns a link token created with the item's
-access token. When Link finishes there is **no new public token**; the SPA
-calls `POST /api/v1/link/update-complete {link_session_id}` which clears the
-error and queues a sync.
+## Never paying twice
+
+An Item bills monthly from the moment its public token is exchanged until
+`/item/remove`, and only its access token can remove it. Two rules follow.
+
+**Don't create the same Item twice.** `services/link_guard.py` compares the
+Link metadata (institution id, each selected account's name and mask, as
+Plaid recommends) with the live Items *before* the exchange. A public token
+that is never exchanged never becomes a billed Item.
+
+| verdict (409 code) | meaning | way through |
+|---|---|---|
+| `link.duplicate` | every selected account is already connected, or a connection there is still loading its first accounts | none: use Add accounts / Re-link on the existing connection |
+| `link.overlap` | some are already connected (a joint account under both logins); they would show twice | `confirm:"overlap"`, or reconnect with them unticked |
+| `link.same_institution` | another login at the same bank, none of these accounts | `confirm:"new_login"` (each person's own login) |
+
+The dashboard turns each 409 into a question (`components/LinkExchange.tsx`);
+nothing is exchanged until the answer is yes.
+
+**Never lose a token.** `create_item_from_public_token` commits the encrypted
+token on its own, right after the exchange. A later failure (the first
+`/accounts/get`, say) leaves a saved Item whose queued `sync_item` retries
+and then queues the product refreshes it skipped. If the token cannot be
+saved at all, the Item is removed at Plaid on the spot. Beyond the code:
+daily backups and a copy of `TOKEN_ENCRYPTION_KEY` (docs/60 §6).
+
+Update mode (Re-link for re-auth and consent renewal, Add accounts on a
+healthy connection): `POST /api/v1/items/{id}/relink` returns a link token
+created with the item's access token and `update.account_selection_enabled`.
+Same Item, same token, nothing new billed. When Link finishes there is **no
+new public token**; the SPA calls `POST /api/v1/link/update-complete
+{link_session_id}`, which clears the error and the new-accounts flag and
+queues a sync. A missed account always goes through Add accounts, never a
+second Connect.
 
 ## Webhooks
 
@@ -85,7 +120,7 @@ Delivered to the `hooks` service only. Verification is in
 | ITEM / LOGIN_REPAIRED | status `active`, error cleared |
 | ITEM / PENDING_EXPIRATION, PENDING_DISCONNECT | status `pending_expiration`, `consent_expires_at` set |
 | ITEM / USER_PERMISSION_REVOKED, USER_ACCOUNT_REVOKED | status `removed` |
-| ITEM / NEW_ACCOUNTS_AVAILABLE | enqueue `sync_item` (accounts upsert picks them up) |
+| ITEM / NEW_ACCOUNTS_AVAILABLE | set `new_accounts_at`: Settings shows "new accounts available" and highlights Add accounts. A sync can't add them; the user picks them in update mode |
 | anything else | recorded in `webhook_events`, no action |
 
 The payload is a signal only; the worker re-reads from Plaid. Unknown item
@@ -100,10 +135,10 @@ ids are recorded and ignored.
   the new cursor. On `TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION` it
   restarts from the original cursor (up to three times). If a transaction
   references an account we do not have, accounts are refreshed first.
-- **`refresh_accounts`**: `/accounts/get` (cached balances, cheap) and a
-  snapshot. `realtime=True` uses `/accounts/balance/get`, which is billed per
-  call, and is only reachable from the Refresh button, rate limited to once
-  per item per 10 minutes.
+- **`refresh_accounts`**: `/accounts/get` (the balances Plaid last fetched;
+  free) and a snapshot. Also behind the Refresh button, rate limited to once
+  per item per 10 minutes. Real-time `/accounts/balance/get` is refused by
+  the client (see "Cost model").
 - **`refresh_investments`**: holdings replaced wholesale; transactions for
   730 days on the first run, then a 30-day overlap.
 - **`refresh_liabilities`**: `/liabilities/get`, one row per liability account.
@@ -127,15 +162,34 @@ Times are settings (`NIGHTLY_SYNC_UTC` etc.) if they ever need to move.
 
 ## Cost model (what actually bills)
 
-- Transactions, Investments, Liabilities: each is a per-Item monthly charge
-  while the product is enabled on that Item. With ~25 items this is the bill.
-  Plaid bills per product per Item that was *initialised* with it. Link
-  requires one product per Connect choice and adds the others only where
-  the selected accounts support them, and jobs never call a product the
-  Item lacks (that would initialise it). See "Products" above.
-- `/accounts/balance/get` (real-time) is per call. Never scheduled.
-- `/accounts/get`, `/transactions/sync`, `/investments/*`, `/liabilities/get`
-  are included in the product price.
+Contract rates (Plaid dashboard → Contracts & Rates, contract of
+2026-10-10), per Item per month. An Item is one login at one institution,
+however many accounts it covers.
+
+| product | rate | added to an Item when |
+|---|---|---|
+| Transactions | $0.30 | `banking` requires it; `investments` adds it if a checking, savings or card account is selected |
+| Liabilities | $0.20 | a credit card, mortgage or student loan is selected |
+| Investments Holdings | $0.18 | `investments` requires it; `banking` adds it if a brokerage account is selected |
+| Investments Transactions | $0.35 | the first `/investments/transactions/get`, which `refresh_investments` makes for every Item with Investments: the activity list, kept on purpose |
+| Recurring Transactions | $0.15 | never: `/transactions/recurring/get` is not allowlisted |
+
+- A subscription bills every month while a valid access token exists for
+  the Item, even while it is broken (`ITEM_LOGIN_REQUIRED`). Only
+  `/item/remove` (Unlink) stops it, and a product cannot be taken off an
+  Item on its own.
+- Everything the jobs call is inside those prices: `/accounts/get`,
+  `/transactions/sync`, `/investments/holdings/get`,
+  `/investments/transactions/get`, `/liabilities/get`, `/item/get`,
+  `/institutions/get_by_id`.
+- Per-call endpoints are refused in code, before any request
+  (`plaid_client.ALLOWED_ENDPOINTS`, tested in `test_billing_guard.py`):
+  `/accounts/balance/get` (Balance, not in the contract),
+  `/transactions/refresh`, `/investments/refresh`. Allowlisting an endpoint
+  is a billing decision: record it here.
+- Rough size: a bank login is $0.30, plus $0.20 with a card, mortgage or
+  student loan; an investment login is $0.53. Ten logins come to about
+  $4–5 a month.
 
 ## Sandbox testing
 
@@ -174,6 +228,8 @@ the relink path.
 
 Plaid's production checklist for an app like this: webhooks implemented (yes),
 update mode implemented (yes), `/item/remove` on unlink (yes), redirect URI
-registered (do it), privacy page public (yes). Production secrets go only in
+registered (do it), privacy page public (yes). Before the first production
+link: daily backups on and `TOKEN_ENCRYPTION_KEY` in the password manager;
+then follow the linking-day checklist in docs/60 §2. Production secrets go only in
 Railway variables; `PLAID_ENV` must equal `production` and `APP_ENV` must
 equal `production` on the same service, or boot validation refuses to start.

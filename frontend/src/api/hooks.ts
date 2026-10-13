@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type { Account, Range, Summary, TransactionQuery } from "./types";
@@ -36,9 +37,10 @@ export const useSyncStatus = (pollMs = 30_000) => useQuery({ queryKey: qk.sync, 
 export const useApiTokens = () => useQuery({ queryKey: qk.tokens, queryFn: api.apiTokens });
 
 /** Everything that changes balances or items invalidates the money views. */
+/** Stable across renders, so it is safe in effect and callback deps. */
 export function useInvalidateMoney() {
   const qc = useQueryClient();
-  return () => {
+  return useCallback(() => {
     void qc.invalidateQueries({ queryKey: qk.overview });
     void qc.invalidateQueries({ queryKey: ["networth"] });
     void qc.invalidateQueries({ queryKey: qk.accounts });
@@ -46,7 +48,7 @@ export function useInvalidateMoney() {
     void qc.invalidateQueries({ queryKey: qk.sync });
     void qc.invalidateQueries({ queryKey: qk.holdings });
     void qc.invalidateQueries({ queryKey: qk.liabilities });
-  };
+  }, [qc]);
 }
 
 export function useUpdateAccount() {

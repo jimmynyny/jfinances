@@ -30,7 +30,12 @@ def sync_item(sess: Session, payload: dict) -> None:
     if item is None:
         return
     try:
+        knew_products = bool(item.products)
         plaid_sync.refresh_accounts(sess, item)
+        if not knew_products and item.products:
+            # The link-time /accounts/get failed, so the product refreshes the
+            # exchange would have queued were skipped. Queue them now.
+            enqueue_product_refreshes(sess, item)
         if item.has_product("transactions"):
             plaid_sync.sync_transactions(sess, item)
         else:
@@ -60,8 +65,15 @@ def enqueue_item_refresh(sess: Session, item: PlaidItem):
     """
     from .queue import enqueue
     queued = enqueue(sess, "sync_item", {"item_id": str(item.id)})
+    enqueue_product_refreshes(sess, item)
+    return queued
+
+
+def enqueue_product_refreshes(sess: Session, item: PlaidItem) -> None:
+    """Investments and liabilities refreshes, only for products Plaid
+    initialised on the Item (calling one it lacks would add it to the bill)."""
+    from .queue import enqueue
     if item.has_product("investments"):
         enqueue(sess, "refresh_investments", {"item_id": str(item.id)})
     if item.has_product("liabilities"):
         enqueue(sess, "refresh_liabilities", {"item_id": str(item.id)})
-    return queued

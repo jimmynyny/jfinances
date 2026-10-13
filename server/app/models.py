@@ -105,6 +105,8 @@ class PlaidItem(TimestampMixin, Base):
     liabilities_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_webhook_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Set by ITEM/NEW_ACCOUNTS_AVAILABLE; cleared when update mode finishes.
+    new_accounts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     products: Mapped[list[str]] = mapped_column(ARRAY(String(40)), nullable=False, default=list)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

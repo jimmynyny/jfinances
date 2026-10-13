@@ -104,7 +104,7 @@
   td.jf-col-name { min-width: 140px; }
 }
 /* Row actions sit at the right edge on wide screens. */
-.jf-actions { justify-content: flex-end; flex-wrap: nowrap; }
+.jf-actions { justify-content: flex-end; flex-wrap: wrap; } /* wraps before the table outgrows its panel */
 /* Settings tables on a phone: each row becomes a stacked card, so the actions
  * (Sync now, Re-link, Unlink, Update value, Revoke) are never off-screen. */
 @media (max-width: 640px) {

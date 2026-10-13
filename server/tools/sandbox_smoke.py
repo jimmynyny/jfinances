@@ -13,6 +13,8 @@ What it proves, in order, without a browser:
 4. Plaid -> Cloudflare -> `hooks` works: Plaid is asked to fire
    SYNC_UPDATES_AVAILABLE at HOOKS_BASE_URL, and the hooks service must verify
    the ES256 signature and record the event.
+5. The duplicate guard recognises the same login linked again, from real
+   sandbox account names and masks, before anything would be exchanged.
 
 It refuses to run unless PLAID_ENV=sandbox. The item stays linked so the
 sandbox dashboard has data; unlink it from Settings when done.
@@ -42,7 +44,7 @@ from server.app.models import (
     WebhookEvent,
 )
 from server.app.plaid_client import plaid
-from server.app.services import plaid_sync
+from server.app.services import link_guard, plaid_sync
 
 FIRST_PLATYPUS = "ins_109508"
 
@@ -163,6 +165,19 @@ def main() -> int:
         failures += 1
     else:
         ok(f"webhook verified and recorded at {ev[0].isoformat()} (processed {ev[1]})")
+
+    step("5. duplicate guard (metadata only; nothing is exchanged)")
+    with session() as sess:
+        it = sess.get(PlaidItem, item_uuid)
+        meta = {"institution": {"institution_id": FIRST_PLATYPUS, "name": "First Platypus Bank"},
+                "accounts": [{"name": (a.raw or {}).get("name"), "mask": a.mask, "subtype": a.subtype}
+                             for a in it.accounts if a.closed_at is None]}
+        check = link_guard.check_new_link(sess, meta)
+    if check.verdict == "duplicate":
+        ok(f"linking the same login again is refused ({len(check.overlapping)} accounts matched)")
+    else:
+        fail(f"expected verdict 'duplicate', got {check.verdict!r}")
+        failures += 1
 
     print("\nRESULT:", "PASS" if failures == 0 else f"FAIL ({failures})", flush=True)
     return 0 if failures == 0 else 1

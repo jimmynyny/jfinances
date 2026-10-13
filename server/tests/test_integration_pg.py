@@ -49,7 +49,6 @@ class FakePlaid:
                      "subtype": "credit card", "balances": {"current": 410, "limit": 2000, "iso_currency_code": "USD"}},
                 ]}
 
-    accounts_balance_get = accounts_get
 
     def transactions_sync(self, token, cursor, count=500):
         if cursor is None:
@@ -216,3 +215,157 @@ def test_summary_splits_in_and_out_and_excludes_transfers(client):
     # Chronological; both directions present; transfers and card payments left out.
     assert months() == [("2026-08", "1000.00", "50.00", "-950.00"), ("2026-09", "20.00", "80.00", "60.00")]
     assert months(include_transfers="true")[0] == ("2026-08", "1000.00", "850.00", "-150.00")
+
+
+# --- Plaid billing safety: no duplicate Items, never lose an access token ----------------------
+def _meta(inst="ins_1", name="First Platypus Bank",
+          accounts=(("Plaid Checking", "0000", "checking"), ("Plaid Credit", "3333", "credit card"))):
+    """The onSuccess metadata Link hands the browser."""
+    return {"institution": {"institution_id": inst, "name": name},
+            "accounts": [{"id": f"link-{m}", "name": n, "mask": m, "subtype": st} for n, m, st in accounts]}
+
+
+@pytest.fixture
+def plaid_calls(monkeypatch):
+    """Each exchange makes a distinct Item (own token, own account ids), counted."""
+    calls = {"exchange": 0, "removed": []}
+    accounts_get = FakePlaid.accounts_get
+
+    def exchange(self, public_token):
+        calls["exchange"] += 1
+        n = calls["exchange"]
+        return {"access_token": f"access-sandbox-fake-token-{n:032d}", "item_id": f"item-{n}"}
+
+    def accounts(self, token):
+        data = accounts_get(self, token)
+        for a in data["accounts"]:
+            a["account_id"] = f"{a['account_id']}-{token[-4:]}"
+        return data
+
+    def remove(self, token):
+        calls["removed"].append(token)
+        return {"removed": True}
+
+    monkeypatch.setattr(FakePlaid, "item_public_token_exchange", exchange)
+    monkeypatch.setattr(FakePlaid, "accounts_get", accounts)
+    monkeypatch.setattr(FakePlaid, "item_remove", remove)
+    return calls
+
+
+def _exchange(client, meta, **kw):
+    return client.post("/api/v1/link/exchange", json={"public_token": "public-sandbox-x", "metadata": meta, **kw})
+
+
+def test_duplicate_guard_runs_before_the_exchange(client, plaid_calls):
+    assert _exchange(client, _meta()).status_code == 201
+    assert plaid_calls["exchange"] == 1
+
+    # The same login again: every selected account is already connected. Refused before
+    # the exchange (so Plaid never bills it), and no confirm value gets it through.
+    r = _exchange(client, _meta())
+    err = r.json()["error"]
+    assert r.status_code == 409 and err["code"] == "link.duplicate" and err["confirm"] is None
+    assert err["accounts"] == ["Plaid Checking ··0000", "Plaid Credit ··3333"]
+    assert _exchange(client, _meta(), confirm="overlap").status_code == 409
+    assert _exchange(client, _meta(), confirm="new_login").status_code == 409
+
+    # A second login sharing one account (a joint checking): asks first.
+    joint = _meta(accounts=(("Plaid Checking", "0000", "checking"), ("Her Card", "9999", "credit card")))
+    r = _exchange(client, joint)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "link.overlap"
+    assert r.json()["error"]["accounts"] == ["Plaid Checking ··0000"]
+    assert _exchange(client, joint, confirm="new_login").status_code == 409
+
+    # A second login with only its own accounts: asks first.
+    own = _meta(accounts=(("Her Savings", "7777", "savings"),))
+    r = _exchange(client, own)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "link.same_institution"
+    assert r.json()["error"]["confirm"] == "new_login"
+    assert plaid_calls["exchange"] == 1
+
+    assert _exchange(client, own, confirm="new_login").status_code == 201
+    assert _exchange(client, joint, confirm="overlap").status_code == 201
+    # Another institution goes straight through.
+    assert _exchange(client, _meta(inst="ins_2", name="Tartan Bank")).status_code == 201
+    assert plaid_calls["exchange"] == 4
+
+
+def test_token_is_kept_when_the_first_fetch_fails(client, plaid_calls, monkeypatch):
+    from sqlalchemy import select
+
+    from server.app.models import Account, PlaidItem
+    from server.app.plaid_client import PlaidError
+    from server.app.services import plaid_sync
+    from server.app.worker import loop_once
+
+    working = FakePlaid.accounts_get
+
+    def down(self, token):
+        raise PlaidError(500, {"error_code": "INTERNAL_SERVER_ERROR", "error_type": "API_ERROR"})
+
+    monkeypatch.setattr(FakePlaid, "accounts_get", down)
+    r = _exchange(client, _meta())
+    assert r.status_code == 201, r.text
+    with db.session() as sess:
+        item = sess.execute(select(PlaidItem)).scalar_one()
+        assert plaid_sync.access_token_for(item) == f"access-sandbox-fake-token-{1:032d}"
+    assert ("sync_item", "queued") in _jobs()
+
+    # Connecting the bank again before its accounts arrive is refused too.
+    r = _exchange(client, _meta())
+    assert r.status_code == 409 and "still loading" in r.json()["error"]["message"]
+    assert plaid_calls["exchange"] == 1
+
+    # Plaid answers again: the queued sync stores the accounts and queues the
+    # product refreshes the link-time fetch would have.
+    monkeypatch.setattr(FakePlaid, "accounts_get", working)
+    while loop_once():
+        pass
+    kinds = {k for k, _ in _jobs()}
+    assert {"sync_item", "refresh_liabilities"} <= kinds and "refresh_investments" not in kinds
+    with db.session() as sess:
+        assert sess.execute(select(PlaidItem.status)).scalar_one() == "active"
+        assert len(sess.execute(select(Account)).scalars().all()) == 2
+
+
+def test_unsaveable_item_is_removed_at_plaid(client, plaid_calls, monkeypatch):
+    from sqlalchemy import func, select
+
+    from server.app.models import PlaidItem
+    from server.app.services import plaid_sync
+
+    def broken(item, token):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(plaid_sync, "store_access_token", broken)
+    with pytest.raises(RuntimeError):
+        _exchange(client, _meta())
+    assert plaid_calls["removed"] == [f"access-sandbox-fake-token-{1:032d}"]
+    with db.session() as sess:
+        assert sess.execute(select(func.count()).select_from(PlaidItem)).scalar() == 0
+
+
+def test_new_accounts_webhook_flags_item_until_update_mode(client):
+    from server.app.hooks import route_event
+
+    item = _exchange(client, _meta()).json()
+    with db.session() as sess:
+        assert route_event(sess, {"webhook_type": "ITEM", "webhook_code": "NEW_ACCOUNTS_AVAILABLE",
+                                  "item_id": item["plaid_item_id"]}) == "item:new_accounts"
+    assert client.get("/api/v1/items").json()["items"][0]["new_accounts_at"] is not None
+    lt = client.post(f"/api/v1/items/{item['id']}/relink").json()
+    assert lt["mode"] == "update"
+    done = client.post("/api/v1/link/update-complete",
+                       json={"public_token": "", "link_session_id": lt["link_session_id"]}).json()
+    assert done["new_accounts_at"] is None
+
+
+def test_refresh_button_uses_free_accounts_get(client, monkeypatch):
+    _exchange(client, _meta())
+    seen = []
+    accounts_get = FakePlaid.accounts_get
+    monkeypatch.setattr(FakePlaid, "accounts_get", lambda self, token: seen.append(token) or accounts_get(self, token))
+    acct = next(a for a in client.get("/api/v1/accounts").json()["accounts"] if a["kind"] == "plaid")
+    r = client.post(f"/api/v1/accounts/{acct['id']}/refresh")
+    assert r.status_code == 200, r.text
+    assert len(seen) == 1

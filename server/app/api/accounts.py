@@ -147,8 +147,9 @@ def delete_manual(account_id: str, _: Principal = Depends(dashboard_only),
 
 @router.post("/accounts/{account_id}/refresh")
 def refresh(account_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
-    """Real-time balance via /accounts/balance/get for the whole item. Billed
-    per call, so rate limited per item."""
+    """The latest balances Plaid has for the whole item, via /accounts/get
+    (free; Plaid refreshes them several times a day). Rate limited per item so
+    a busy finger can't hammer Plaid."""
     a = _get(sess, account_id)
     if a.kind != "plaid" or a.item is None:
         raise ApiError(400, "bad_request", "manual accounts have nothing to refresh")
@@ -165,7 +166,7 @@ def refresh(account_id: str, _: Principal = Depends(current_user), sess: Session
     for x in item.accounts:
         x.last_refresh_requested_at = now
     try:
-        plaid_sync.refresh_accounts(sess, item, realtime=True)
+        plaid_sync.refresh_accounts(sess, item)
     except PlaidError as e:
         sess.flush()
         raise ApiError(502, "plaid_error", f"{e.error_code}: {e.body.get('error_message')}") from e

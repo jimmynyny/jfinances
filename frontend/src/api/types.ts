@@ -109,6 +109,8 @@ export interface Item {
   transactions_status: string | null;
   last_synced_at: string | null;
   last_webhook_at: string | null;
+  /** Plaid found accounts on this login that aren't connected yet: Add accounts (update mode) picks them. */
+  new_accounts_at: string | null;
   investments_synced_at: string | null;
   liabilities_synced_at: string | null;
   products: string[];
@@ -328,5 +330,9 @@ export interface NewApiToken {
 }
 
 export interface ApiErrorBody {
-  error: { code: string; message: string };
+  /** Some errors carry details next to code and message (e.g. the duplicate guard's 409). */
+  error: { code: string; message: string; [detail: string]: unknown };
 }
+
+/** The answer to the duplicate guard's 409 on /link/exchange (docs/30-plaid.md). */
+export type LinkConfirm = "new_login" | "overlap";

@@ -75,7 +75,6 @@ ROUTES: dict[tuple[str, str], str] = {
     ("INVESTMENTS_TRANSACTIONS", "DEFAULT_UPDATE"): "refresh_investments",
     ("INVESTMENTS_TRANSACTIONS", "HISTORICAL_UPDATE"): "refresh_investments",
     ("LIABILITIES", "DEFAULT_UPDATE"): "refresh_liabilities",
-    ("ITEM", "NEW_ACCOUNTS_AVAILABLE"): "sync_item",
 }
 
 ITEM_STATUS: dict[str, str] = {
@@ -120,8 +119,10 @@ def route_event(sess, body: dict[str, Any]) -> str | None:
         if wcode == "WEBHOOK_UPDATE_ACKNOWLEDGED":
             return "ack"
         if wcode == "NEW_ACCOUNTS_AVAILABLE" and item is not None:
-            enqueue(sess, "sync_item", {"item_id": str(item.id)})
-            return "sync_item"
+            # A sync can't add them: the user has to pick them in update mode
+            # (Settings → Add accounts), which keeps the same Item and bill.
+            item.new_accounts_at = datetime.now(UTC)
+            return "item:new_accounts"
         return None
 
     kind = ROUTES.get((wtype, wcode))

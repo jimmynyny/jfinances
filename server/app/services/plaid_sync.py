@@ -147,12 +147,14 @@ def write_snapshots(sess: Session, accounts: list[Account], *, source: str,
     return n
 
 
-def refresh_accounts(sess: Session, item: PlaidItem, client: PlaidClient | None = None,
-                     *, realtime: bool = False) -> list[Account]:
+def refresh_accounts(sess: Session, item: PlaidItem, client: PlaidClient | None = None) -> list[Account]:
+    """/accounts/get: the balances Plaid last fetched (it refreshes them several
+    times a day). Free. Real-time /accounts/balance/get is billed per call and
+    not in our contract, so the client refuses it."""
     client = client or plaid()
     token = access_token_for(item)
     try:
-        data = client.accounts_balance_get(token) if realtime else client.accounts_get(token)
+        data = client.accounts_get(token)
     except PlaidError as e:
         mark_item_error(item, e)
         raise
@@ -461,28 +463,54 @@ def refresh_liabilities(sess: Session, item: PlaidItem, client: PlaidClient | No
 def create_item_from_public_token(sess: Session, *, public_token: str, user_id,
                                   metadata: dict[str, Any] | None = None,
                                   client: PlaidClient | None = None) -> PlaidItem:
+    """Exchange the public token, then commit the encrypted access token
+    before doing anything else.
+
+    From the exchange on, Plaid bills the Item every month until /item/remove,
+    and only the access token can remove it. So the token is committed on its
+    own: a later failure (the first /accounts/get, say) leaves a saved Item
+    that the queued sync retries, instead of rolling the token back and
+    leaving a billed Item nobody can reach. If the token cannot be saved at
+    all, the Item is removed at Plaid right away.
+    """
     client = client or plaid()
     ex = client.item_public_token_exchange(public_token)
     access_token = ex["access_token"]
     item_id = ex["item_id"]
-    item = sess.execute(select(PlaidItem).where(PlaidItem.item_id == item_id)).scalar_one_or_none()
     inst = (metadata or {}).get("institution") or {}
-    if item is None:
-        item = PlaidItem(item_id=item_id, created_by=user_id, products=[],  # filled from /accounts/get item meta
-                         access_token_enc=b"", institution_id=inst.get("institution_id"),
-                         institution_name=inst.get("name"))
-        sess.add(item)
-    store_access_token(item, access_token)
-    item.status = "active"
-    item.removed_at = None
-    item.error_code = None
-    item.error_message = None
-    sess.flush()
-    refresh_accounts(sess, item, client)
+    try:
+        item = sess.execute(select(PlaidItem).where(PlaidItem.item_id == item_id)).scalar_one_or_none()
+        if item is None:
+            item = PlaidItem(item_id=item_id, created_by=user_id, products=[],  # filled from /accounts/get item meta
+                             access_token_enc=b"", institution_id=inst.get("institution_id"),
+                             institution_name=inst.get("name"))
+            sess.add(item)
+        store_access_token(item, access_token)
+        item.status = "active"
+        item.removed_at = None
+        item.error_code = None
+        item.error_message = None
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        log.error("could not save new item %s; removing it at Plaid so it is not billed", item_id)
+        try:
+            client.item_remove(access_token)
+        except Exception:  # noqa: BLE001
+            log.exception("item_remove failed for unsaved item %s; remove it from the Plaid dashboard", item_id)
+        raise
+    try:
+        refresh_accounts(sess, item, client)
+    except PlaidError:
+        sess.commit()  # keep the status mark_item_error set; the token is already safe
+        log.warning("first /accounts/get failed for item %s; the queued sync retries it", item_id)
+    except Exception:  # noqa: BLE001  (timeouts and other transport errors)
+        sess.rollback()
+        log.exception("first /accounts/get failed for item %s; the queued sync retries it", item_id)
     if not item.institution_name and item.institution_id:
         try:
             item.institution_name = client.institutions_get_by_id(item.institution_id)["institution"]["name"]
-        except PlaidError:
+        except Exception:  # noqa: BLE001  (cosmetic; the next sync fills it from the item meta)
             pass
     return item
 

@@ -5,6 +5,7 @@ import { api, ApiError } from "../api/client";
 import { useInvalidateMoney } from "../api/hooks";
 import type { LinkKind } from "../api/types";
 import { clearStashedLink, stashLink, type StashedLink } from "../lib/plaidLink";
+import { useLinkExchange } from "./LinkExchange";
 
 const KINDS: Record<LinkKind, { label: string; hint: string }> = {
   banking: {
@@ -18,7 +19,8 @@ const KINDS: Record<LinkKind, { label: string; hint: string }> = {
 };
 
 interface Props extends Omit<ButtonProps, "onClick" | "children"> {
-  /** When set, opens Link in update mode for this item (re-link). */
+  /** When set, opens Link in update mode for this item: re-link a broken
+   *  login, or add accounts to a working one (same Item, nothing new billed). */
   itemId?: string;
   /** Skip the "what are you connecting?" choice and link this kind directly. */
   kind?: LinkKind;
@@ -27,9 +29,10 @@ interface Props extends Omit<ButtonProps, "onClick" | "children"> {
 }
 
 /**
- * "Connect account" / "Re-link". Fetches a link token (which creates a server
- * link session), stashes it for the OAuth round trip, opens Link, then either
- * exchanges the public token (create) or calls update-complete (update).
+ * "Connect account" / "Re-link" / "Add accounts". Fetches a link token (which
+ * creates a server link session), stashes it for the OAuth round trip, opens
+ * Link, then either exchanges the public token through the duplicate guard
+ * (create, see LinkExchange) or calls update-complete (update).
  *
  * The Plaid hook lives in a child that only mounts once a token exists, so a
  * page with several of these buttons embeds link-initialize.js once, when used.
@@ -40,27 +43,27 @@ export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Prop
   const [choosing, setChoosing] = useState(false);
   const { toast, error } = useToast();
   const invalidate = useInvalidateMoney();
+  const { exchange, dialog } = useLinkExchange({ onLinked });
 
   const onSuccess = useCallback<PlaidLinkOnSuccess>(
     async (public_token, metadata) => {
       const current = link;
       clearStashedLink();
       setLink(null);
+      if (current?.mode !== "update") {
+        await exchange(public_token, metadata, current?.sessionId);
+        return;
+      }
       try {
-        if (current?.mode === "update") {
-          await api.linkUpdateComplete(current.sessionId);
-          toast("Connection updated — sync queued");
-        } else {
-          const item = await api.linkExchange(public_token, metadata, current?.sessionId);
-          toast(`Connected ${item.institution_name ?? "account"} — first sync queued`);
-        }
+        await api.linkUpdateComplete(current.sessionId);
+        toast("Connection updated — sync queued");
         invalidate();
         onLinked?.();
       } catch (e) {
         error(e instanceof ApiError ? e.message : "Could not finish connecting. Try again.");
       }
     },
-    [link, toast, error, invalidate, onLinked],
+    [link, exchange, toast, error, invalidate, onLinked],
   );
 
   const onExit = useCallback<PlaidLinkOnExit>(
@@ -98,6 +101,7 @@ export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Prop
           </Button>
         ))}
         <Button size={btn.size} variant="quiet" onClick={() => setChoosing(false)}>Cancel</Button>
+        {dialog}
       </span>
     );
   }
@@ -109,6 +113,7 @@ export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Prop
         {children ?? (itemId ? "Re-link" : kind === "investments" ? "Connect investment account" : "Connect account")}
       </Button>
       {link && <PlaidOpener token={link.token} onSuccess={onSuccess} onExit={onExit} />}
+      {dialog}
     </>
   );
 }

@@ -1,6 +1,6 @@
 import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, Change, Holding, Holdings, InvestmentTransaction, Item, Job,
-  Liabilities, LiabilityDetail, LinkConfig, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthPoint, NewApiToken,
+  Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthPoint, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
 
@@ -8,7 +8,7 @@ const BASE = "/api/v1";
 
 /** One error shape for the whole app. `code` comes from the server when it sent one. */
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(public status: number, public code: string, message: string, public details: Record<string, unknown> = {}) {
     super(message);
     this.name = "ApiError";
   }
@@ -77,6 +77,7 @@ function item(r: Raw): Item {
     transactions_status: str(r.transactions_status),
     last_synced_at: str(r.last_synced_at),
     last_webhook_at: str(r.last_webhook_at),
+    new_accounts_at: str(r.new_accounts_at),
     investments_synced_at: str(r.investments_synced_at),
     liabilities_synced_at: str(r.liabilities_synced_at),
     products: Array.isArray(r.products) ? r.products.map(String) : [],
@@ -249,7 +250,7 @@ async function request<T = Raw>(method: string, path: string, body?: unknown, qu
     if (res.status === 401 || res.status === 403) {
       throw new ApiError(res.status, err?.code ?? "auth.denied", err?.message ?? "Your session has expired. Reload to sign in again.");
     }
-    throw new ApiError(res.status, err?.code ?? "http.error", err?.message ?? `Request failed (${res.status})`);
+    throw new ApiError(res.status, err?.code ?? "http.error", err?.message ?? `Request failed (${res.status})`, err ?? {});
   }
   return data as T;
 }
@@ -316,8 +317,9 @@ export const api = {
     const r = await request("GET", "/link/session");
     return { link_token: String(r.link_token), link_session_id: String(r.link_session_id), mode: (r.mode as LinkSession["mode"]) ?? "create", item_id: str(r.item_id) };
   },
-  linkExchange: async (public_token: string, metadata: unknown, link_session_id?: string): Promise<Item> =>
-    item(await request("POST", "/link/exchange", { public_token, metadata, link_session_id })),
+  /** 409 link.* = the duplicate guard stopped it before the exchange; see components/LinkExchange. */
+  linkExchange: async (public_token: string, metadata: unknown, link_session_id?: string, confirm?: LinkConfirm): Promise<Item> =>
+    item(await request("POST", "/link/exchange", { public_token, metadata, link_session_id, confirm })),
   linkUpdateComplete: async (link_session_id: string): Promise<Item> => item(await request("POST", "/link/update-complete", { link_session_id })),
   linkConfig: async (): Promise<LinkConfig> => {
     const r = await request("GET", "/link/config");

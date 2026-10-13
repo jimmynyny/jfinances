@@ -5,6 +5,7 @@ import { Button, EmptyState, Page, Panel, Skeleton, useToast } from "@mooney/ui"
 import { api, ApiError } from "../api/client";
 import { useInvalidateMoney } from "../api/hooks";
 import { PlaidOpener } from "../components/ConnectButton";
+import { useLinkExchange } from "../components/LinkExchange";
 import { clearStashedLink, readStashedLink, type StashedLink } from "../lib/plaidLink";
 
 /**
@@ -38,25 +39,26 @@ export function LinkOAuthPage() {
     clearStashedLink();
     nav("/settings", { replace: true });
   }, [nav]);
+  // Create mode: the duplicate guard may ask a question first; leave once it's answered.
+  const { exchange, dialog } = useLinkExchange({ onSettled: finish });
 
   const onSuccess = useCallback<PlaidLinkOnSuccess>(
     async (public_token, metadata) => {
       const current = link && link !== "none" ? link : null;
+      if (current?.mode !== "update") {
+        await exchange(public_token, metadata, current?.sessionId);
+        return;
+      }
       try {
-        if (current?.mode === "update") {
-          await api.linkUpdateComplete(current.sessionId);
-          toast("Connection updated — sync queued");
-        } else {
-          const item = await api.linkExchange(public_token, metadata, current?.sessionId);
-          toast(`Connected ${item.institution_name ?? "account"} — first sync queued`);
-        }
+        await api.linkUpdateComplete(current.sessionId);
+        toast("Connection updated — sync queued");
         invalidate();
       } catch (e) {
         error(e instanceof ApiError ? e.message : "Could not finish connecting");
       }
       finish();
     },
-    [link, toast, error, invalidate, finish],
+    [link, exchange, toast, error, invalidate, finish],
   );
 
   const onExit = useCallback<PlaidLinkOnExit>(
@@ -88,6 +90,7 @@ export function LinkOAuthPage() {
         </div>
       </Panel>
       {link && <PlaidOpener token={link.token} receivedRedirectUri={window.location.href} onSuccess={onSuccess} onExit={onExit} />}
+      {dialog}
     </Page>
   );
 }

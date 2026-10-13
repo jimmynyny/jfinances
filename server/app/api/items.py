@@ -42,7 +42,9 @@ def sync(item_id: str, _: Principal = Depends(current_user), sess: Session = Dep
 
 @router.post("/items/{item_id}/relink")
 def relink(item_id: str, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
-    """Link token in update mode, for ITEM_LOGIN_REQUIRED / expiring consent."""
+    """Link token in update mode, with account selection: re-auth after
+    ITEM_LOGIN_REQUIRED or expiring consent, and "Add accounts" on a healthy
+    connection. Same Item, same access token, so nothing new is billed."""
     from .link import _new_link_session
     it = _get(sess, item_id)
     if it.status == "removed":

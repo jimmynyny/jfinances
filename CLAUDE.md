@@ -11,6 +11,8 @@ anything structural.
 - **Never** auto-deploy from GitHub. Deploys are `railway up --service <name> --ci`, per service, sandbox first.
 - `worker` runs **one** replica. Do not scale it.
 - Never call a Plaid product endpoint for an Item that lacks the product (`PlaidItem.has_product`): Plaid would add and bill it.
+- Plaid endpoints go through `plaid_client.ALLOWED_ENDPOINTS`; allowlisting one is a billing decision (docs/30 "Cost model").
+- Never exchange a public token the duplicate guard refused, and commit an access token before anything else can fail: a lost token is an Item billed forever.
 - Cloudflare Access is managed by `ops/cloudflare_access.py`; change it there, not by hand.
 - Keep `web`, `hooks`, `worker` independent: shared code is fine, shared process is not.
 

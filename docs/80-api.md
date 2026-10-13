@@ -95,7 +95,7 @@ Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts onl
 ### DELETE /accounts/{id} → 204 (manual only, dashboard_only)
 
 ### POST /accounts/{id}/refresh
-Real-time balance for the whole item (`/accounts/balance/get`, billed). 429 if the item was refreshed within 10 minutes. → account.
+The latest balances Plaid has for the whole item (`/accounts/get`, free). 429 if the item was refreshed within 10 minutes. → account.
 
 ### GET /accounts/{id}/history?range=1y
 `{"account_id":"…","points":[{"date":"…","balance":"…","source":"plaid|manual|carry"}]}`
@@ -108,7 +108,7 @@ Real-time balance for the whole item (`/accounts/balance/get`, billed). 429 if t
 {"id":"…","plaid_item_id":"…","institution_id":"ins_3","institution_name":"Chase",
  "status":"active|login_required|error|pending_expiration|removed","error_code":null,"error_message":null,
  "consent_expires_at":null,"transactions_status":"HISTORICAL_UPDATE_COMPLETE",
- "last_synced_at":"…","last_webhook_at":"…","investments_synced_at":"…","liabilities_synced_at":"…",
+ "last_synced_at":"…","last_webhook_at":"…","new_accounts_at":null,"investments_synced_at":"…","liabilities_synced_at":"…",
  "products":["transactions","liabilities"],"account_count":3,"created_at":"…","removed_at":null}
 ```
 
@@ -116,6 +116,7 @@ Real-time balance for the whole item (`/accounts/balance/get`, billed). 429 if t
 Queues `sync_item`, `refresh_investments`, `refresh_liabilities`. `{"queued":true,"item":item}`
 
 ### POST /items/{id}/relink (dashboard_only)
+Update mode with account selection: Re-link (re-auth, consent) and Add accounts. Same Item, nothing new billed.
 `{"link_token":"link-…","expiration":"…","link_session_id":"…","mode":"update"}`
 
 ### DELETE /items/{id} (dashboard_only)
@@ -137,10 +138,23 @@ The newest unconsumed, unexpired link session for this user, for the OAuth retur
 `{"link_token":"…","link_session_id":"…","mode":"create|update","item_id":null}`
 
 ### POST /link/exchange → 201 (dashboard_only)
-Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…"}` → item. Queues `sync_item`, plus `refresh_investments` / `refresh_liabilities` only if the Item has those products.
+Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…","confirm"?:"new_login"|"overlap"}` → item. Queues `sync_item`, plus `refresh_investments` / `refresh_liabilities` only if the Item has those products.
+
+The duplicate guard runs first (docs/30 "Never paying twice"). `409` with
+`code` `link.duplicate` (no override), `link.overlap` (retry with
+`confirm:"overlap"`) or `link.same_institution` (retry with
+`confirm:"new_login"`); the body adds `institution`, `accounts` (the
+already-connected ones, as "Name ··1234") and `confirm` (the value that lets
+it through, or null). Nothing was exchanged, so nothing is billed.
+```json
+{"error":{"code":"link.overlap","message":"Chase Total Checking ··4821 is already connected…",
+ "institution":"Chase","accounts":["Chase Total Checking ··4821"],"confirm":"overlap"}}
+```
+If the first `/accounts/get` fails after the exchange, the item is still
+saved and returned (its queued sync retries).
 
 ### POST /link/update-complete (dashboard_only)
-Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (status `active`).
+Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (status `active`, `new_accounts_at` cleared).
 
 ### GET /link/config
 `{"redirect_uri":"…","webhook_url":"…","products":[…],"kinds":{"banking":{"products":["transactions"],"required_if_supported_products":["liabilities","investments"]},"investments":{…}},"plaid_env":"production"}`

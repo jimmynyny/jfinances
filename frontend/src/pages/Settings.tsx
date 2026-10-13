@@ -58,6 +58,7 @@ export function SettingsPage() {
       cell: (i) => (
         <div className="jf-inst__status">
           <Badge tone={itemStatusTone(i.status)}>{itemStatusLabel(i.status)}{i.error_code ? ` · ${i.error_code}` : ""}</Badge>
+          {i.new_accounts_at && i.status !== "removed" && <Badge tone="accent">new accounts available</Badge>}
           {i.error_message && <div className="mu-caption">{i.error_message}</div>}
           {i.transactions_status && i.transactions_status !== "HISTORICAL_UPDATE_COMPLETE" && (
             <div className="mu-caption">history still loading ({i.transactions_status.toLowerCase().replace(/_/g, " ")})</div>
@@ -67,11 +68,16 @@ export function SettingsPage() {
     },
     { key: "sync", header: "Last sync", cell: (i) => <><span className="mu-mono">{formatRelative(i.last_synced_at)}</span><div className="mu-caption">webhook {formatRelative(i.last_webhook_at)}</div></>, sortValue: (i) => i.last_synced_at ?? "" },
     {
-      key: "actions", header: "", numeric: true,
+      key: "actions", header: "", numeric: true, wrap: true,
       cell: (i) => (
         <span className="mu-row jf-actions">
           <Button size="sm" variant="quiet" loading={syncItem.isPending && syncItem.variables === i.id} onClick={() => syncItem.mutate(i.id, { onSuccess: (r) => toast(r.queued ? "Sync queued" : "Sync already queued"), onError: (e) => fail(e, "Could not queue sync") })}>Sync now</Button>
-          {i.status !== "active" && <ConnectButton itemId={i.id} size="sm" />}
+          {/* Update mode: same Item, so adding accounts never adds a second, separately billed connection. */}
+          {i.status !== "removed" && (
+            <ConnectButton itemId={i.id} size="sm" variant={i.new_accounts_at || i.status !== "active" ? "primary" : "quiet"}>
+              {i.status === "active" ? "Add accounts" : "Re-link"}
+            </ConnectButton>
+          )}
           <Button size="sm" variant="danger" onClick={() => setConfirmRemove(i)}>Unlink</Button>
         </span>
       ),
@@ -184,7 +190,7 @@ export function SettingsPage() {
       >
         {confirmRemove && (
           <p>
-            This removes the Plaid connection to <strong>{confirmRemove.institution_name ?? "this institution"}</strong>. Its {confirmRemove.account_count} accounts and their history stay in jfinances but stop updating. You can connect it again later.
+            This removes the Plaid connection to <strong>{confirmRemove.institution_name ?? "this institution"}</strong> and ends its Plaid billing. Its {confirmRemove.account_count} accounts and their history stay in jfinances but stop updating. Connecting it again later starts a new connection, billed again; to change which accounts it covers, use Add accounts instead.
           </p>
         )}
       </Drawer>
@@ -222,3 +228,4 @@ function ValueForm({ account, onSubmit, busy }: { account: Account; onSubmit: (b
     </form>
   );
 }
+

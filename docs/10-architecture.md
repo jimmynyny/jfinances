@@ -151,10 +151,13 @@ Flow:
 2. Browser runs Plaid Link. For OAuth banks the browser is redirected back to
    `/link/oauth?oauth_state_id=…`; the SPA re-initialises Link with the same
    token (from `link_sessions`) and `receivedRedirectUri=window.location.href`.
-3. `POST /api/v1/link/exchange {public_token}` → `/item/public_token/exchange`,
-   access token is encrypted (AES-GCM via `cryptography`, key from
-   `TOKEN_ENCRYPTION_KEY`) and stored on `plaid_items`. Accounts are fetched
-   and upserted. A `sync_item` job is enqueued.
+3. `POST /api/v1/link/exchange {public_token, metadata}` → the duplicate
+   guard checks the metadata against live items (409 = nothing exchanged,
+   nothing billed), then `/item/public_token/exchange`; the access token is
+   encrypted (AES-GCM via `cryptography`, key from `TOKEN_ENCRYPTION_KEY`)
+   and committed to `plaid_items` before anything else runs. Accounts are
+   fetched and upserted. A `sync_item` job is enqueued. (docs/30 "Never
+   paying twice".)
 4. Webhooks: `TRANSACTIONS.SYNC_UPDATES_AVAILABLE` → enqueue `sync_item`.
    `HOLDINGS.DEFAULT_UPDATE` / `INVESTMENTS_TRANSACTIONS.DEFAULT_UPDATE` →
    enqueue `refresh_investments`. `LIABILITIES.DEFAULT_UPDATE` → enqueue
@@ -170,11 +173,13 @@ Flow:
    `refresh_investments`; weekly `refresh_liabilities`.
 7. Unlink: `DELETE /api/v1/items/{id}` calls `/item/remove`, marks the item
    `removed`, keeps history (accounts/transactions stay, flagged).
-8. Re-link: `POST /api/v1/items/{id}/relink` → link token in update mode.
+8. Re-link / Add accounts: `POST /api/v1/items/{id}/relink` → link token in
+   update mode with account selection. Same Item, nothing new billed.
 
-Never call `/accounts/balance/get` on a schedule (it is the expensive
-real-time endpoint). It is used only by the explicit "Refresh" button, rate
-limited to once per item per 10 minutes.
+The Plaid client refuses every endpoint outside
+`plaid_client.ALLOWED_ENDPOINTS`, so per-call billing (`/accounts/balance/get`,
+the refresh endpoints) cannot happen by accident. The "Refresh" button reads
+`/accounts/get` (free), rate limited to once per item per 10 minutes.
 
 ## 6. Data model (Postgres, Alembic-managed)
 
@@ -217,10 +222,10 @@ All routes require a principal except `/healthz`. Errors are
 | `PUT /accounts/order` | `{account_ids}`: one group, top to bottom → drag-and-drop reorder |
 | `POST /accounts/manual` | `{name, manual_category, value, iso_currency?}` → account + snapshot |
 | `PUT /accounts/{id}/value` | `{value, as_of?, note?}` manual accounts only |
-| `POST /accounts/{id}/refresh` | real-time balance, rate limited |
+| `POST /accounts/{id}/refresh` | latest balances Plaid has (`/accounts/get`), rate limited |
 | `GET /items` | items with status, institution, account count, last sync |
 | `POST /items/{id}/sync` | enqueue `sync_item` |
-| `POST /items/{id}/relink` | `{link_token}` in update mode |
+| `POST /items/{id}/relink` | `{link_token}` in update mode (Re-link, Add accounts) |
 | `DELETE /items/{id}` | `/item/remove` and mark removed |
 | `POST /link/token` | `{kind?: banking|investments, item_id?}` → `{link_token, expiration, link_session_id, mode, kind}` |
 | `POST /link/exchange` | `{public_token, metadata?}` → item summary |

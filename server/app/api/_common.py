@@ -12,8 +12,10 @@ from ..models import Account, PlaidItem
 
 
 class ApiError(HTTPException):
-    def __init__(self, status: int, code: str, message: str):
-        super().__init__(status_code=status, detail={"code": code, "message": message})
+    """`details` ride along in the error body next to code and message."""
+
+    def __init__(self, status: int, code: str, message: str, **details: Any):
+        super().__init__(status_code=status, detail={"code": code, "message": message, **details})
 
 
 def money(v: Decimal | None) -> str | None:
@@ -75,6 +77,7 @@ def item_json(it: PlaidItem) -> dict[str, Any]:
         "transactions_status": it.transactions_status,
         "last_synced_at": ts(it.last_synced_at),
         "last_webhook_at": ts(it.last_webhook_at),
+        "new_accounts_at": ts(it.new_accounts_at),
         "investments_synced_at": ts(it.investments_synced_at),
         "liabilities_synced_at": ts(it.liabilities_synced_at),
         "products": list(it.products or []),

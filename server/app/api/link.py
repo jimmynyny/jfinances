@@ -17,7 +17,7 @@ from ..jobs.queue import enqueue
 from ..jobs.sync_item import enqueue_item_refresh
 from ..models import LinkSession, PlaidItem
 from ..plaid_client import LINK_KINDS, PlaidError, link_product_plan, plaid
-from ..services import plaid_sync
+from ..services import link_guard, plaid_sync
 from ._common import ApiError, item_json, parse_uuid
 
 router = APIRouter()
@@ -80,10 +80,22 @@ class ExchangeIn(BaseModel):
     public_token: str
     metadata: dict[str, Any] | None = None
     link_session_id: str | None = None
+    #: The answer to a 409 from the duplicate guard: "new_login" lets a
+    #: link.same_institution through, "overlap" a link.overlap. A
+    #: link.duplicate has no override. See services/link_guard.py.
+    confirm: Literal["new_login", "overlap"] | None = None
 
 
 @router.post("/link/exchange", status_code=201)
 def exchange(body: ExchangeIn, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+    """Exchange only when the duplicate guard allows it: a public token that is
+    never exchanged never becomes a billed Item."""
+    check = link_guard.check_new_link(sess, body.metadata)
+    if not check.allows(body.confirm):
+        raise ApiError(409, f"link.{check.verdict}", link_guard.message(check),
+                       institution=check.institution,
+                       accounts=[link_guard.label(a) for a in check.overlapping],
+                       confirm=link_guard.CONFIRMS.get(check.verdict))
     try:
         item = plaid_sync.create_item_from_public_token(sess, public_token=body.public_token,
                                                         user_id=p.user_id, metadata=body.metadata)
@@ -114,6 +126,7 @@ def update_complete(body: ExchangeIn | None = None, p: Principal = Depends(dashb
     ls.consumed_at = datetime.now(UTC)
     plaid_sync.clear_item_error(item)
     item.status = "active"
+    item.new_accounts_at = None  # update mode is where new accounts get picked
     enqueue(sess, "sync_item", {"item_id": str(item.id)})
     return item_json(item)
 

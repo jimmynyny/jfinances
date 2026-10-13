@@ -43,6 +43,27 @@ are forward-only; write a new migration rather than downgrading.
 5. Check Settings → Sync status: the item should go `active`, jobs `done`,
    a webhook should arrive within a minute.
 
+### Linking day (production: every Item bills monthly, docs/30 "Cost model")
+
+Before the first link:
+- Railway → production Postgres → Backups: **Daily** on (§6).
+- `TOKEN_ENCRYPTION_KEY` (production web → Variables) copied into the
+  password manager. Without it every stored token is unreadable.
+
+While linking:
+- One connection per **login**. In Plaid's account picker, tick every
+  account you want from that login in one go.
+- Banks, cards, loans → "Bank, card or loan". Brokerages, 401(k)s, IRAs,
+  529s → "Investment or retirement".
+- A joint account visible under both people's logins: tick it under one
+  login only. The duplicate guard asks if it sees it twice (docs/30).
+- Missed an account? Settings → that connection → **Add accounts**. Never
+  Connect the same login again.
+
+After:
+- Settings: each connection's product badges are what Plaid bills.
+- Take a manual backup (§6).
+
 ## 3. Common failures
 
 | Symptom | Cause | Fix |
@@ -77,16 +98,27 @@ are forward-only; write a new migration rather than downgrading.
 
 ## 5. Relinking / unlinking
 
-Relink: Settings → the item → Relink. Backend: `POST /items/{id}/relink` →
-Link in update mode → `POST /link/update-complete`.
+Relink: Settings → the item → Re-link (shown when it needs attention).
+Add accounts: Settings → the item → Add accounts (always there for an active
+item; highlighted with "new accounts available" after Plaid's
+NEW_ACCOUNTS_AVAILABLE webhook). Both: `POST /items/{id}/relink` → Link in
+update mode → `POST /link/update-complete`. Same Item, nothing new billed.
 Unlink: Settings → the item → Unlink. Backend: `/item/remove` at Plaid, item
-`removed`, accounts `closed_at`, history kept. Plaid stops billing that item.
+`removed`, accounts `closed_at`, history kept. Plaid stops billing that item;
+connecting it again later is a new Item, billed again.
+
+A billed Item with no token on our side should not happen (the exchange
+commits the token first, and removes the Item at Plaid if it cannot). If it
+ever does, the logs name its `item_id`; ask Plaid support to remove it.
 
 ## 6. Backups and restore
 
 Railway → Postgres service → Backups: Weekly (kept 27 days) and Monthly
-(kept 89 days) are on; Daily (kept 6 days) is recommended so a bad day
-costs at most a day of balance history. Manual backup before anything scary.
+(kept 89 days) are on. In production, Daily (kept 6 days) is required: the
+access tokens live only in this database, so a restore from an older backup
+loses the token of every Item linked since, and those Items keep billing
+with no way to unlink them. Manual backup after a linking session and
+before anything scary.
 Restore: pick the backup → Restore → Railway stages a new volume → Deploy.
 Restores land in the same project and environment only. After a restore,
 run `POST /api/v1/sync/all` to catch up; cursors in the restored rows make
