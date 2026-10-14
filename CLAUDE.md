@@ -22,6 +22,9 @@ git push
 railway environment sandbox && railway up --service web --ci   # etc.
 railway environment production && railway up --service web --ci
 ```
+`railway up` uploads the working tree, uncommitted files included: deploy from a clean tree (stash work in
+progress first) so what ships is a commit. A Railway variable change redeploys every service from its last
+upload; older code booting on a newer schema logs it and starts (`server.tools.release`).
 Every service runs migrations before it starts (`start.sh` → `server.tools.release`, advisory-locked; `web` also in pre-deploy), so there is no required deploy order. Keep migrations backward compatible with the code still running in the other services.
 
 ## Code
