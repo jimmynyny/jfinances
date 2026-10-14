@@ -51,6 +51,9 @@ export interface Account {
   group?: GroupKey;
   /** Set when the person chose the group (it differs from what the bank's type says). */
   group_override?: GroupKey | null;
+  /** An offline home's "City, ST 07042" (GET /accounts), so a car can be kept at it. */
+  asset_place?: string | null;
+  asset_zip?: string | null;
   display_order: number;
   closed_at: string | null;
   /** The offline asset (home, car) this loan is secured by. */
@@ -750,3 +753,52 @@ export interface ImportRecord {
   removed?: number;
 }
 export interface ImportFile { filename: string; content_b64: string; account_id?: string | null; mapping?: ImportMapping | null }
+
+// --- Market values for offline homes and vehicles (GET/PUT /accounts/{id}/asset; docs/80 "Valuations") ---
+
+export type PropertyType = "Single Family" | "Condo" | "Townhouse" | "Multi-Family" | "Manufactured" | "Land";
+
+/** What a monthly valuation needs: a home's address, or a vehicle's VIN, mileage, pace and where it's kept. */
+export interface AssetDraft {
+  valuation_enabled?: boolean;
+  address_line?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  property_type?: PropertyType | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  square_feet?: number | null;
+  vin?: string | null;
+  mileage?: number | null;
+  miles_per_month?: number | null;
+  /** The home a vehicle is kept at; its ZIP prices the car. */
+  garage_account_id?: string | null;
+}
+
+export interface AssetValuation {
+  month: string;
+  as_of: string;
+  status: "pending" | "ok" | "no_value" | "error" | "skipped";
+  value: number | null;
+  low: number | null;
+  high: number | null;
+  inputs: Record<string, unknown> | null;
+  detail: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface AssetInfo {
+  kind: "home" | "vehicle" | null;
+  provider: "rentcast" | "marketcheck" | null;
+  /** What a valuation still needs: address, city, state, zip; vin, mileage, location. */
+  missing: string[];
+  paces: number[];
+  /** The month the next value is asked for (the first of it). */
+  next_month: string | null;
+  valuations: AssetValuation[];
+  valuation_enabled?: boolean;
+  details: (AssetDraft & { mileage_as_of: string | null; vehicle_label: string | null }) | null;
+  projected_miles?: number | null;
+  priced_at_zip?: string | null;
+}

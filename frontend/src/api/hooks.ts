@@ -147,6 +147,17 @@ export function useReorderAccounts() {
     onSettled: inv,
   });
 }
+/** An offline home's or vehicle's valuation inputs and monthly values. */
+export const useAsset = (id: string | null) =>
+  useQuery({ queryKey: ["asset", id], queryFn: () => api.asset(id!), enabled: !!id });
+export function useSaveAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; body: Parameters<typeof api.saveAsset>[1] }) => api.saveAsset(v.id, v.body),
+    onSuccess: (_d, v) => void qc.invalidateQueries({ queryKey: ["asset", v.id] }),
+  });
+}
+
 export function useCreateManual() {
   const inv = useInvalidateMoney();
   return useMutation({ mutationFn: api.createManualAccount, onSuccess: inv });

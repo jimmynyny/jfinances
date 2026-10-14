@@ -100,9 +100,11 @@ query.
 ## balance_snapshots
 One row per account per day, the source of every history chart.
 `source` is `plaid` (balance refreshed that day), `manual` (user entered a
-value for that date), `carry` (worker copied the last known value) or
-`derived` (rebuilt from transactions, below). A manual value on a date is
-never overwritten by a carry. Unique on `(account_id, as_of)`.
+value for that date), `carry` (worker copied the last known value),
+`derived` (rebuilt from transactions, below), `import` (a statement's closing
+balance) or `valuation` (an offline home's or vehicle's monthly market value).
+A manual value, an imported balance or a valuation on a date is never
+overwritten by a carry. Unique on `(account_id, as_of)`.
 
 **Derived history.** Snapshots start the day an account is linked, but Plaid
 hands over up to two years of transactions. For cash (`depository`) and card
@@ -187,6 +189,22 @@ everything else reads them like any other. Their running balances are `balance_s
 with `source = 'import'` (and `note = 'import:<id>'`), only on days before tracking began; for
 an offline account (no tracking: kept by hand), on every day without a typed (`manual`) value,
 and the daily carry-forward never overwrites one.
+
+## asset_details, valuations
+Monthly market values for offline homes and vehicles (services/valuations.py).
+`asset_details` (one row per account) holds what a valuation needs: a home's
+address, kind and optional size; a vehicle's VIN, its last mileage reading and
+date, its pace (`miles_per_month`, 100–2,000, 1,000 when unset; today's mileage
+is the reading plus the pace since) and where it's kept (`garage_account_id`, an
+offline home whose ZIP prices it, else `zip` as typed); `valuation_enabled`;
+the VIN's decoded name. `valuations` records every request to a provider
+(RentCast for homes, MarketCheck for vehicles; `kind` `value` or `decode`)
+*before* it is sent, unique on (`account_id`, `provider`, `kind`, `month`): no
+asset is asked about twice in a calendar month, whatever reruns or crashes.
+`status`: pending, ok, no_value, error (a status code only: a URL could carry a
+key), skipped (over the provider's monthly ceiling: 40 RentCast, 400 MarketCheck,
+under their free tiers). A value becomes the account's balance and that day's
+`valuation` snapshot (a value typed the same day stands).
 
 ## jobs
 The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler

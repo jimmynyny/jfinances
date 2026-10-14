@@ -917,6 +917,101 @@ def test_an_offline_bank_takes_its_exports_and_counts_in_insights(client):
     assert u.status_code == 200 and u.json()["removed"] == 4
 
 
+def test_homes_and_cars_are_valued_once_a_month_within_budget(client, monkeypatch):
+    """Offline homes (RentCast) and cars (MarketCheck: VIN decoded once, priced at
+    the garage home's ZIP and the mileage projected at the person's pace) get one
+    market value a month: a rerun asks nothing, a new month asks again, a ceiling
+    holds requests back, an error changes nothing, and no key is ever stored."""
+    import json
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    import httpx
+    from sqlalchemy import select
+
+    from server.app.config import settings
+    from server.app.models import Account, Valuation
+    from server.app.services import valuations
+
+    s = settings().model_copy(update={"rentcast_api_key": "rc-SECRET-key", "marketcheck_api_key": "mc-SECRET-key"})
+    calls: list[httpx.Request] = []
+    fail = {"rentcast": False}
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.host == "api.rentcast.io":
+            if fail["rentcast"]:
+                return httpx.Response(500, json={})
+            return httpx.Response(200, json={"price": 640000, "priceRangeLow": 601000, "priceRangeHigh": 688000,
+                                             "comparables": [{}] * 15})
+        if "/decode/" in request.url.path:
+            return httpx.Response(200, json={"year": 2020, "make": "Subaru", "model": "Outback", "trim": "Limited"})
+        return httpx.Response(200, json={"marketcheck_price": 24350, "msrp": 34895})
+
+    http = httpx.Client(transport=httpx.MockTransport(answer))
+    home = client.post("/api/v1/accounts/manual", json={
+        "name": "Main house", "manual_category": "real_estate", "value": 600000,
+        "asset": {"address_line": "12 Elm St", "city": "Montclair", "state": "nj", "zip": "07042",
+                  "property_type": "Single Family"}})
+    assert home.status_code == 201, home.text
+    home = home.json()
+    car = client.post("/api/v1/accounts/manual", json={
+        "name": "Outback", "manual_category": "vehicle", "value": 25000,
+        "asset": {"vin": "4s4btanc1l3123456", "mileage": 30000, "miles_per_month": 250,
+                  "garage_account_id": home["id"]}}).json()
+    bare = client.post("/api/v1/accounts/manual", json={"name": "Old truck", "manual_category": "vehicle",
+                                                        "value": 3000}).json()
+    assert client.get(f"/api/v1/accounts/{bare['id']}/asset").json()["missing"] == ["vin", "mileage", "location"]
+    bad = client.put(f"/api/v1/accounts/{car['id']}/asset", json={"vin": "NOTAVIN", "mileage": 1})
+    assert bad.status_code == 400 and "VIN" in bad.json()["error"]["message"]
+    assert client.put(f"/api/v1/accounts/{car['id']}/asset", json={
+        "vin": "4S4BTANC1L3123456", "mileage": 30000, "garage_account_id": car["id"]}).status_code == 400
+    assert client.put(f"/api/v1/accounts/{car['id']}/asset", json={"miles_per_month": 333}).status_code == 422
+
+    today = datetime.now(UTC).date()
+    later = today + timedelta(days=61)  # two months of driving at 250 a month
+    with db.session() as sess:
+        assert valuations.run(sess, today=later, client=http, s=s) == {"valued": 2}  # the truck has no details
+    rentcast = [r for r in calls if r.url.host == "api.rentcast.io"]
+    price = [r for r in calls if r.url.path.endswith("/marketcheck_price")]
+    decode = [r for r in calls if "/decode/" in r.url.path]
+    assert (len(rentcast), len(price), len(decode)) == (1, 1, 1)
+    assert rentcast[0].headers["X-Api-Key"] == "rc-SECRET-key"
+    assert rentcast[0].url.params["address"] == "12 Elm St, Montclair, NJ, 07042"
+    q = price[0].url.params
+    assert (q["vin"], q["zip"], q["miles"], q["dealer_type"]) == ("4S4BTANC1L3123456", "07042", "30501",
+                                                                  "independent")
+    with db.session() as sess:
+        assert sess.get(Account, uuid.UUID(home["id"])).current_balance == 640000
+        assert sess.get(Account, uuid.UUID(car["id"])).current_balance == 24350
+    info = client.get(f"/api/v1/accounts/{car['id']}/asset").json()
+    assert info["details"]["vehicle_label"] == "2020 Subaru Outback Limited" and info["priced_at_zip"] == "07042"
+    assert info["valuations"][0]["value"] == "24350.00" and info["valuations"][0]["inputs"]["miles"] == 30501
+
+    calls.clear()
+    with db.session() as sess:  # the same month again: nothing is asked
+        assert valuations.run(sess, today=later, client=http, s=s) == {"already this month": 2}
+    assert calls == []
+
+    next_month = (later.replace(day=1) + timedelta(days=32)).replace(day=3)
+    fail["rentcast"] = True
+    with db.session() as sess:  # a new month: asked again (no second decode); a failed answer changes nothing
+        assert valuations.run(sess, today=next_month, client=http, s=s) == {"valued": 1, "error": 1}
+        assert sess.get(Account, uuid.UUID(home["id"])).current_balance == 640000
+    assert len([r for r in calls if "/decode/" in r.url.path]) == 0 and len(calls) == 2
+
+    calls.clear()
+    monkeypatch.setitem(valuations.MONTHLY_CEILING, "rentcast", 0)
+    monkeypatch.setitem(valuations.MONTHLY_CEILING, "marketcheck", 0)
+    third = (next_month + timedelta(days=32)).replace(day=1)
+    with db.session() as sess:  # over the ceiling: held back, and the month is held
+        assert valuations.run(sess, today=third, client=http, s=s) == {"already this month": 2}
+        assert {v.status for v in sess.execute(select(Valuation).where(Valuation.month == third)).scalars()} == {
+            "skipped"}
+        stored = json.dumps([[v.inputs, v.detail, v.error] for v in sess.execute(select(Valuation)).scalars()])
+    assert calls == [] and "SECRET" not in stored
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal

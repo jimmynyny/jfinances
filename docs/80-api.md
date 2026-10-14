@@ -106,9 +106,25 @@ by: a manual `real_estate`, `vehicle` or `other_asset` account. `null` unlinks; 
 out keeps the link. 400 for a card, or a target that isn't such an asset.
 
 ### POST /accounts/manual → 201
-Body: `{"name":"2019 4Runner","manual_category":"vehicle","value":"28500","iso_currency":"USD"}`.
+Body: `{"name":"2019 4Runner","manual_category":"vehicle","value":"28500","iso_currency":"USD","asset"?:{…}}`.
 `manual_category` ∈ `real_estate | vehicle | cash | other_asset | other_liability`.
-Creates the account and today's snapshot.
+Creates the account and today's snapshot; `asset` (as for PUT /accounts/{id}/asset) sets a home's
+or vehicle's valuation details in the same step. `GET /accounts` carries an offline home's
+`asset_place` ("Montclair, NJ 07042") and `asset_zip`, so a vehicle can be kept at it.
+
+### GET /accounts/{id}/asset · PUT /accounts/{id}/asset
+An offline home's or vehicle's monthly market value (services/valuations.py). GET →
+`{kind: home|vehicle, provider, missing[], paces[], next_month, valuation_enabled, details,
+projected_miles, priced_at_zip, valuations[{month, as_of, status, value, low, high, inputs, detail,
+error}]}` (the last 12). PUT body: `{valuation_enabled, address_line, city, state, zip, property_type
+(Single Family|Condo|Townhouse|Multi-Family|Manufactured|Land), bedrooms, bathrooms, square_feet}`
+for a home; `{valuation_enabled, vin, mileage, miles_per_month (100|250|500|750|1000|1500|2000),
+garage_account_id | address_line, city, state, zip}` for a vehicle → the same as GET. A new mileage
+is a reading as of today; the VIN must be 17 characters (no I, O, Q); `garage_account_id` must be an
+offline home. Nothing here asks for a value: the daily `value_assets` job does, at most once per
+asset per calendar month (homes: RentCast's estimate and range; vehicles: MarketCheck's
+dealer-retail prediction at today's projected mileage and the garage's ZIP, the VIN decoded once).
+There is no endpoint to ask sooner.
 
 ### PUT /accounts/{id}/value
 Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts only). Writes/overwrites the snapshot for that date; updates the current balance if the date is the latest.

@@ -65,6 +65,9 @@ def build_scheduler() -> BackgroundScheduler:
                   id="liabilities")
     h, m = _hm(s.daily_prices_utc)
     sched.add_job(_schedule("refresh_prices"), CronTrigger(hour=h, minute=m), id="prices")
+    # Daily, but each home or vehicle is valued at most once a calendar month (services/valuations.py).
+    h, m = _hm(s.daily_valuations_utc)
+    sched.add_job(_schedule("value_assets"), CronTrigger(hour=h, minute=m), id="valuations")
     sched.add_job(_housekeeping, "interval", minutes=10, id="housekeeping")
     return sched
 

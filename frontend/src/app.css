@@ -200,3 +200,6 @@ a.jf-cats__row--link:focus-visible, .jf-cats__open:focus-visible { outline: none
 .jf-acct__namerow > .jf-acct__name { min-width: 0; }
 /* "Chase: Sapphire": the institution reads quieter than the card's own name. */
 .jf-cats__inst { color: var(--mu-ink-2); }
+
+/* Asset details (AssetFields): city · state · ZIP and the like share a row, stacking when narrow. */
+.jf-asset__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--mu-s3); }

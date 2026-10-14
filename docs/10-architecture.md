@@ -92,6 +92,9 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `FRED_API_KEY` | ✓ | ✓ | ✓ | St. Louis Fed market data (benchmark indexes, Bitcoin, CPI); only the worker calls it. Optional: without it those benchmarks are off. docs/30 "Market data" |
 | `TIINGO_API_KEY` | ✓ | ✓ | ✓ | Tiingo daily prices (dividend-adjusted fund benchmarks, holdings history); only the worker calls it. Optional |
 | `DAILY_PRICES_UTC` | | | ✓ | Default `22:30`, after US markets close |
+| `RENTCAST_API_KEY` | ✓ | ✓ | ✓ | RentCast value estimates for offline homes; only the worker calls it (header `X-Api-Key`). Optional: without it homes keep the value typed. RentCast bills every successful request past 50 a month and can't be capped on its side, so `services/valuations.py` asks at most once per home per month and at most 40 times a month in all |
+| `MARKETCHECK_API_KEY` | ✓ | ✓ | ✓ | MarketCheck Price (Base tier) and Basic VIN Decoder for offline vehicles; only the worker calls it (the key rides in the query string: never logged, never stored). Optional. At most once per vehicle per month, 400 a month in all (free plan: 500) |
+| `DAILY_VALUATIONS_UTC` | | | ✓ | Default `09:00`. The job runs daily; each asset is valued at most once a calendar month (the `valuations` table refuses a second request). Sandbox shares production's keys, so it gets 5 RentCast and 50 MarketCheck requests a month |
 
 Boot validation (`config.validate_for_boot()`): in `APP_ENV=production` the
 web service refuses to start if `CF_ACCESS_AUD`, `CF_ACCESS_TEAM`,

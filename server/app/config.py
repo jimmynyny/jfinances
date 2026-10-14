@@ -65,10 +65,15 @@ class Settings(BaseSettings):
     daily_investments_utc: str = "06:30"
     weekly_liabilities_utc: str = "07:00"   # Mondays
     daily_prices_utc: str = "22:30"         # after US markets close
+    daily_valuations_utc: str = "09:00"     # each asset at most once a month (services/valuations.py)
 
     # --- market data (benchmarks, investment history; docs/30 "Market data") -
     fred_api_key: str = ""
     tiingo_api_key: str = ""
+
+    # --- valuations (offline homes and vehicles, monthly; services/valuations.py) -
+    rentcast_api_key: str = ""
+    marketcheck_api_key: str = ""
     refresh_min_interval_seconds: int = 600
 
     @field_validator("plaid_products", "plaid_country_codes", mode="before")

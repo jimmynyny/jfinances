@@ -415,6 +415,69 @@ class AccountTerms(TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+class AssetDetails(TimestampMixin, Base):
+    """What a market valuation needs to know about an offline home or vehicle
+    (services/valuations.py): a home's address and size, a vehicle's VIN,
+    mileage, pace and where it's kept. Values are asked for once a month."""
+    __tablename__ = "asset_details"
+
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True)
+    #: Off: the person keeps the value by hand; no valuation is asked for.
+    valuation_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # A home
+    address_line: Mapped[str | None] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(100))
+    state: Mapped[str | None] = mapped_column(String(2))
+    #: A home's ZIP, or where a vehicle is kept (prices are local).
+    zip: Mapped[str | None] = mapped_column(String(10))
+    property_type: Mapped[str | None] = mapped_column(String(40))
+    bedrooms: Mapped[int | None] = mapped_column(Integer)
+    bathrooms: Mapped[Decimal | None] = mapped_column(Numeric(4, 1))
+    square_feet: Mapped[int | None] = mapped_column(Integer)
+    # A vehicle
+    vin: Mapped[str | None] = mapped_column(String(17))
+    mileage: Mapped[int | None] = mapped_column(Integer)
+    mileage_as_of: Mapped[date | None] = mapped_column(Date)
+    #: The person's pace (100 … 2,000 a month; 1,000 when unset): projects today's mileage from the reading.
+    miles_per_month: Mapped[int | None] = mapped_column(Integer)
+    #: Where it's kept: one of the household's homes (its ZIP prices the car), else `zip` as typed.
+    garage_account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
+    #: "2020 Subaru Outback Limited": the VIN as decoded (decoded_vin is the VIN it was decoded for).
+    vehicle_label: Mapped[str | None] = mapped_column(String(200))
+    decoded_vin: Mapped[str | None] = mapped_column(String(17))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class Valuation(Base):
+    """One request to a valuation provider, recorded before it is sent: unique per
+    account, provider, kind and month, so no asset is ever asked about twice in a
+    month (the database refuses the second row). `status`: pending (sent, no answer
+    yet), ok, no_value (answered without a price), error, skipped (over the monthly
+    budget). Inputs are what was asked (never a key); `detail` a small part of the
+    answer."""
+    __tablename__ = "valuations"
+    __table_args__ = (
+        UniqueConstraint("account_id", "provider", "kind", "month", name="uq_valuations_once_a_month"),
+        Index("ix_valuations_provider_month", "provider", "month"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)  # rentcast | marketcheck
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)  # value | decode
+    #: The first of the month the request belongs to.
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
+    value: Mapped[Decimal | None] = mapped_column(MONEY)
+    low: Mapped[Decimal | None] = mapped_column(MONEY)
+    high: Mapped[Decimal | None] = mapped_column(MONEY)
+    inputs: Mapped[dict | None] = mapped_column(JSONB)
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 # ---------------------------------------------------------------------------
 # Subscriptions and alerts (services/recurring.py, services/alerts.py)
 # ---------------------------------------------------------------------------

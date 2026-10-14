@@ -19,6 +19,7 @@ from ..models import (
     SECURABLE_CATEGORIES,
     Account,
     AccountTerms,
+    AssetDetails,
     BalanceSnapshot,
     Liability,
     PlaidItem,
@@ -45,7 +46,17 @@ def list_accounts(_: Principal = Depends(current_user), sess: Session = Depends(
     rows = sess.execute(select(Account).options(selectinload(Account.item))
                         .order_by(Account.display_order, Account.name)).scalars().all()
     trends = balance_trends(sess, [a.id for a in rows], current={a.id: a.current_balance for a in rows})
-    return {"accounts": [{**account_json(a), "trend": [money(v) for v in trends.get(a.id, [])]} for a in rows]}
+    # An offline home's place ("Montclair, NJ 07042"), so a car can be kept at it.
+    places = {d.account_id: d for d in sess.execute(select(AssetDetails)).scalars()}
+
+    def place(a: Account) -> dict:
+        d = places.get(a.id)
+        if d is None or a.kind != "manual":
+            return {}
+        where = " ".join(x for x in (", ".join(y for y in (d.city, d.state) if y), d.zip) if x)
+        return {"asset_place": where or None, "asset_zip": d.zip}
+    return {"accounts": [{**account_json(a), **place(a), "trend": [money(v) for v in trends.get(a.id, [])]}
+                         for a in rows]}
 
 
 GroupKey = Literal["cash", "investments", "real_estate", "vehicles", "other_assets", "credit_cards", "loans",
@@ -142,16 +153,90 @@ def reorder_accounts(body: OrderIn, _: Principal = Depends(current_user), sess: 
     return {"ok": True, "count": len(ids)}
 
 
+class AssetIn(BaseModel):
+    """What a monthly market valuation needs: a home's address (and, optionally, its
+    size), or a vehicle's VIN, mileage and ZIP. A new mileage keeps the old reading,
+    so the pace between them projects today's."""
+    model_config = {"extra": "forbid"}
+    valuation_enabled: bool = True
+    address_line: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    zip: str | None = Field(default=None, pattern=r"^\d{5}(-\d{4})?$")
+    property_type: Literal["Single Family", "Condo", "Townhouse", "Multi-Family", "Manufactured", "Land"] | None = None
+    bedrooms: int | None = Field(default=None, ge=0, le=50)
+    bathrooms: Decimal | None = Field(default=None, ge=0, le=50)
+    square_feet: int | None = Field(default=None, ge=100, le=100_000)
+    vin: str | None = Field(default=None, max_length=17)
+    mileage: int | None = Field(default=None, ge=0, le=2_000_000)
+    miles_per_month: Literal[100, 250, 500, 750, 1000, 1500, 2000] | None = None
+    #: The home a vehicle is kept at (an offline home account); its ZIP prices the car.
+    garage_account_id: str | None = None
+
+
+def _asset(sess: Session, a: Account, body: AssetIn, user_id) -> AssetDetails:
+    from ..services import valuations
+    if valuations.kind_of(a) is None:
+        raise ApiError(400, "bad_request", "market values are for offline homes and vehicles")
+    det = sess.get(AssetDetails, a.id) or AssetDetails(account_id=a.id)
+    vin = (body.vin or "").strip().upper() or None
+    if vin is not None and not valuations.VIN.fullmatch(vin):
+        raise ApiError(400, "bad_request", "a VIN is 17 letters and digits (no I, O or Q)")
+    today = datetime.now(UTC).date()
+    if body.mileage != det.mileage:  # a new reading, as of today
+        det.mileage, det.mileage_as_of = body.mileage, today if body.mileage is not None else None
+    det.miles_per_month = body.miles_per_month
+    garage = None
+    if body.garage_account_id:
+        garage = sess.get(Account, parse_uuid(body.garage_account_id, "garage_account_id"))
+        if garage is None or valuations.kind_of(garage) != "home" or garage.id == a.id:
+            raise ApiError(400, "bad_request", "a vehicle is kept at one of your offline homes")
+    det.garage_account_id = garage.id if garage is not None else None
+    det.valuation_enabled = body.valuation_enabled
+    det.address_line = (body.address_line or "").strip() or None
+    det.city = (body.city or "").strip() or None
+    det.state = (body.state or "").upper() or None
+    det.zip = body.zip or None
+    det.property_type, det.bedrooms, det.bathrooms, det.square_feet = (body.property_type, body.bedrooms,
+                                                                       body.bathrooms, body.square_feet)
+    if vin != det.vin:
+        det.vin, det.vehicle_label, det.decoded_vin = vin, None, None
+    det.updated_by = user_id
+    sess.add(det)
+    sess.flush()
+    return det
+
+
+@router.get("/accounts/{account_id}/asset")
+def get_asset(account_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """An offline home's or vehicle's valuation inputs and its recent monthly values."""
+    from ..services import valuations
+    a = _get(sess, account_id)
+    return valuations.details_json(a, sess.get(AssetDetails, a.id), sess, datetime.now(UTC).date())
+
+
+@router.put("/accounts/{account_id}/asset")
+def put_asset(account_id: str, body: AssetIn, p: Principal = Depends(current_user),
+              sess: Session = Depends(get_session)):
+    """Set what a valuation needs. Nothing is asked for here: the monthly job does that."""
+    from ..services import valuations
+    a = _get(sess, account_id)
+    det = _asset(sess, a, body, p.user_id)
+    return valuations.details_json(a, det, sess, datetime.now(UTC).date())
+
+
 class ManualAccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     manual_category: Literal["real_estate", "vehicle", "cash", "other_asset", "other_liability"]
     value: Decimal
     iso_currency: str = Field(default="USD", min_length=3, max_length=3)
     note: str | None = None
+    #: A home's address or a vehicle's VIN and mileage, for its monthly market value.
+    asset: AssetIn | None = None
 
 
 @router.post("/accounts/manual", status_code=201)
-def create_manual(body: ManualAccountIn, _: Principal = Depends(current_user),
+def create_manual(body: ManualAccountIn, p: Principal = Depends(current_user),
                   sess: Session = Depends(get_session)):
     if body.manual_category not in MANUAL_CATEGORIES:
         raise ApiError(400, "bad_request", "unknown manual_category")
@@ -162,6 +247,8 @@ def create_manual(body: ManualAccountIn, _: Principal = Depends(current_user),
     sess.add(a)
     sess.flush()
     plaid_sync.write_snapshots(sess, [a], source="manual")
+    if body.asset is not None:
+        _asset(sess, a, body.asset, p.user_id)
     return account_json(a, None)
 
 

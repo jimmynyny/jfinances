@@ -5,7 +5,7 @@ import type {
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SummaryQuery, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
-  WebhookEvent, ImportFile, ImportPreview, ImportRecord, GroupKey,
+  WebhookEvent, ImportFile, ImportPreview, ImportRecord, GroupKey, AssetDraft, AssetInfo,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -56,6 +56,8 @@ const KEEP_STRING = new Set([
   "id", "name", "label", "mask", "key", "kind", "category", "note", "source",
   // an imported file's own text stays as written ("-9.50", a payee called "1234")
   "samples", "header", "description", "filename", "format", "status", "basis", "why", "notes", "problems",
+  // an address's ZIP keeps its leading zero ("07042"); a VIN or a street stays as written
+  "zip", "priced_at_zip", "asset_zip", "vin", "address_line", "state", "city",
 ]);
 function numbers(v: unknown, key = ""): unknown {
   if (typeof v === "string") return !KEEP_STRING.has(key) && DECIMAL.test(v) ? Number(v) : v;
@@ -107,6 +109,8 @@ function account(r: Raw): Account {
     is_business: bool(r.is_business),
     group: (r.group as GroupKey | undefined) ?? undefined,
     group_override: (r.group_override as GroupKey | null | undefined) ?? null,
+    asset_place: r.asset_place == null ? null : String(r.asset_place),
+    asset_zip: r.asset_zip == null ? null : String(r.asset_zip),
     display_order: n0(r.display_order),
     closed_at: str(r.closed_at),
     secured_by_id: str(r.secured_by_id),
@@ -359,7 +363,11 @@ export const api = {
   },
   updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; is_business?: boolean; display_order?: number; secured_by_id?: string | null; group?: GroupKey | null }): Promise<Account> =>
     account(await request("PATCH", `/accounts/${id}`, patch)),
-  createManualAccount: async (body: { name: string; manual_category: ManualCategory; value: number; iso_currency?: string }): Promise<Account> =>
+  /** An offline home's or vehicle's valuation inputs and its recent monthly values. */
+  asset: async (id: string): Promise<AssetInfo> => numbers(await request("GET", `/accounts/${id}/asset`)) as AssetInfo,
+  saveAsset: async (id: string, body: AssetDraft): Promise<AssetInfo> =>
+    numbers(await request("PUT", `/accounts/${id}/asset`, body)) as AssetInfo,
+  createManualAccount: async (body: { name: string; manual_category: ManualCategory; value: number; iso_currency?: string; asset?: AssetDraft }): Promise<Account> =>
     account(await request("POST", "/accounts/manual", { ...body, value: dec(body.value) })),
   setManualValue: async (id: string, body: { value: number; as_of?: string; note?: string }): Promise<Account> =>
     account(await request("PUT", `/accounts/${id}/value`, { ...body, value: dec(body.value) })),

@@ -141,7 +141,7 @@ def write_snapshots(sess: Session, accounts: list[Account], *, source: str,
         else:
             # Same day, fresher number: overwrite unless a manual entry or an imported
             # statement's balance is being replaced by a mere carry-forward.
-            if not (row.source in ("manual", "import") and source == "carry"):
+            if not (row.source in ("manual", "import", "valuation") and source == "carry"):
                 row.current_balance = acct.current_balance
                 row.available_balance = acct.available_balance
                 row.source = source

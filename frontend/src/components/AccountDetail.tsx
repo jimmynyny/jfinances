@@ -8,6 +8,7 @@ import { useAccountDetails, useAccountHistory, useAccounts } from "../api/hooks"
 import type { Account, Range, TermsKey } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
 import { DetailSections, RecentActivity, TermsForm } from "./AccountFacts";
+import { MarketValue } from "./MarketValue";
 import { BusinessMark } from "./BusinessMark";
 
 const RANGES: Array<{ value: Range; label: string }> = [
@@ -92,6 +93,9 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
           ) : (
             <EmptyState glyph="~" title="No history yet" description="A snapshot is taken every morning; the chart fills in after the second one." />
           )}
+          {!editing && a.kind === "manual" && (a.manual_category === "real_estate" || a.manual_category === "vehicle") && (
+            <MarketValue key={a.id} account={a} accounts={all} />
+          )}
           {editing && d ? (
             <TermsForm accountId={a.id} details={d} focus={typeof editing === "string" ? editing : null} onDone={() => setEditing(false)} />
           ) : d ? (
@@ -111,7 +115,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
             items={[
               ...(a.available_balance != null ? [{ key: "available", value: <Money value={a.available_balance} currency={a.iso_currency} /> }] : []),
               ...(a.credit_limit != null ? [{ key: "credit limit", value: <Money value={a.credit_limit} currency={a.iso_currency} cents={false} /> }] : []),
-              { key: "kind", value: a.kind === "manual" ? "offline asset, valued by hand" : `${a.type}${a.subtype ? ` / ${a.subtype}` : ""}` },
+              { key: "kind", value: a.kind === "manual" ? (a.manual_category === "real_estate" || a.manual_category === "vehicle" ? "offline asset" : "offline asset, valued by hand") : `${a.type}${a.subtype ? ` / ${a.subtype}` : ""}` },
               ...(a.kind === "plaid" ? [{ key: "connection", value: <Badge tone={itemStatusTone(a.item_status)}>{itemStatusLabel(a.item_status)}</Badge> }] : []),
               { key: "last update", value: a.balance_updated_at ? formatDate(a.balance_updated_at.slice(0, 10), { year: true }) : "—" },
               ...(securedBy ? [{ key: "secured by", value: securedBy.name }] : []),

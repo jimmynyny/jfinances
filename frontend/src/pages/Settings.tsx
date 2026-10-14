@@ -4,7 +4,8 @@ import {
   Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Page, PageHeader, Panel, Select, Skeleton, formatRelative, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useApiTokens, useCreateManual, useDeleteManual, useItems, useRemoveItem, useRevokeToken, useSetManualValue, useSyncAll, useSyncItem, useSyncStatus } from "../api/hooks";
-import type { Account, ApiToken, Item, Job, ManualCategory } from "../api/types";
+import type { Account, ApiToken, AssetDraft, Item, Job, ManualCategory } from "../api/types";
+import { AssetFields, bodyOf, draftFrom, homesFor, problems, type AssetForm } from "../components/AssetFields";
 import { ApiError } from "../api/client";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
@@ -149,6 +150,7 @@ export function SettingsPage() {
 
       <Drawer open={adding} onClose={() => setAdding(false)} title="Add offline asset" footer={<Button variant="quiet" onClick={() => setAdding(false)}>Cancel</Button>}>
         <ManualForm
+          accounts={accounts.data ?? []}
           busy={createManual.isPending}
           onSubmit={(body) => createManual.mutate(body, { onSuccess: () => { setAdding(false); toast(`Added ${body.name}`); }, onError: (e) => fail(e, "Could not add asset") })}
         />
@@ -180,17 +182,32 @@ export function SettingsPage() {
   );
 }
 
-function ManualForm({ onSubmit, busy }: { onSubmit: (b: { name: string; manual_category: ManualCategory; value: number }) => void; busy: boolean }) {
+function ManualForm({ onSubmit, busy, accounts }: {
+  onSubmit: (b: { name: string; manual_category: ManualCategory; value: number; asset?: AssetDraft }) => void;
+  busy: boolean;
+  accounts: Account[];
+}) {
   const [name, setName] = useState("");
   const [cat, setCat] = useState<ManualCategory>("real_estate");
   const [value, setValue] = useState("");
+  const [asset, setAsset] = useState<AssetForm>(draftFrom(null));
+  // A home or a car is valued from market data once a month, given its address or VIN and mileage.
+  const kind = cat === "real_estate" ? "home" : cat === "vehicle" ? "vehicle" : null;
   const v = Number(value.replace(/[,$\s]/g, ""));
-  const ok = name.trim().length > 0 && Number.isFinite(v) && value !== "";
+  const ok = name.trim().length > 0 && Number.isFinite(v) && value !== "" && (!kind || Object.keys(problems(kind, asset)).length === 0);
   return (
-    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ name: name.trim(), manual_category: cat, value: v }); }}>
-      <Input label="Name" placeholder="123 Main St" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ name: name.trim(), manual_category: cat, value: v, asset: kind ? bodyOf(kind, asset) : undefined }); }}>
+      <Input label="Name" placeholder={kind === "vehicle" ? "2020 Subaru Outback" : "123 Main St"} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       <Select label="Type" options={MANUAL} value={cat} onChange={(e) => setCat(e.target.value as ManualCategory)} />
       <Input label="Current value" mono inputMode="decimal" placeholder="300000" value={value} onChange={(e) => setValue(e.target.value)} help="Enter what you'd put on a balance sheet today. Liabilities as a positive amount owed." />
+      {kind && (
+        <>
+          <span className="mu-caption">
+            {kind === "home" ? "With its address, it's valued from market data once a month." : "With its VIN, mileage and where it's kept, it's valued from market data once a month (a dealer-retail estimate)."} You can skip this and add it later.
+          </span>
+          <AssetFields kind={kind} value={asset} onChange={setAsset} homes={homesFor(accounts)} />
+        </>
+      )}
       <div><Button type="submit" variant="primary" disabled={!ok} loading={busy}>Add asset</Button></div>
     </form>
   );
