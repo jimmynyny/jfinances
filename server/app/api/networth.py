@@ -49,7 +49,7 @@ def history(range: str = "6m", _: Principal = Depends(current_user), sess: Sessi
     real_since = None
     for aid, d, bal, liab, source in rows:
         first.setdefault(aid, (Decimal(bal or 0), liab))
-        if source != "derived" and (real_since is None or d < real_since):
+        if source not in ("derived", "import") and (real_since is None or d < real_since):
             real_since = d
         if d < since:
             last[aid] = (Decimal(bal or 0), liab)

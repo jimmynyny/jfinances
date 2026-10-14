@@ -105,8 +105,8 @@ export type Range = "1m" | "3m" | "6m" | "1y" | "all";
 export interface AccountHistoryPoint {
   date: string;
   balance: number;
-  /** derived: rebuilt from transactions, before the account was linked. */
-  source: "plaid" | "manual" | "carry" | "derived";
+  /** derived: rebuilt from transactions, before the account was linked; import: a bank export's closing balance. */
+  source: "plaid" | "manual" | "carry" | "derived" | "import";
 }
 
 export interface Item {
@@ -628,3 +628,73 @@ export interface AccountDetails {
   suggestions: Partial<Record<TermsKey, { value: number | string; why: string }>>;
   recent: Array<{ id: string; date: string; name: string; amount: number; pending: boolean }>;
 }
+
+// ---------------------------------------------------------------------------
+// Imports (bank exports into an account's history)
+// ---------------------------------------------------------------------------
+export type ImportRole = "date" | "auth_date" | "description" | "memo" | "amount" | "debit" | "credit" | "balance" | "category" | "type";
+export interface ImportMapping {
+  header_row: number | null;
+  date: number | null;
+  auth_date: number | null;
+  description: number | null;
+  memo: number | null;
+  amount: number | null;
+  debit: number | null;
+  credit: number | null;
+  balance: number | null;
+  category: number | null;
+  type: number | null;
+  date_format: string | null;
+  /** 1: positive amounts are money out; -1: negative ones are; 0: the type column says. */
+  sign: number;
+  balance_sign: number;
+  chosen: string[];
+}
+export interface ImportColumn { index: number; header: string; samples: string[]; role: ImportRole | null }
+export type ImportRowStatus = "new" | "review" | "matched" | "duplicate";
+export interface ImportRowView {
+  index: number;
+  date: string;
+  description: string;
+  /** Plaid sign: positive is money out. */
+  amount: number;
+  balance: number | null;
+  status: ImportRowStatus;
+  match: { date: string; name: string; amount: number; source: string } | null;
+}
+export interface ImportPreview {
+  format: "csv" | "ofx";
+  account_id: string | null;
+  account_hint: string | null;
+  columns: ImportColumn[];
+  mapping: ImportMapping | null;
+  date_ambiguous: boolean;
+  sign?: { basis: string | null; agree: number | null; disagree: number | null };
+  range?: { from: string; to: string } | null;
+  connection_from?: string | null;
+  gap?: { from: string; to: string; days: number } | null;
+  counts: { total: number; new?: number; review?: number; matched?: number; duplicate?: number; problems?: number };
+  balances?: { days: number; from: string; to: string } | null;
+  problems: string[];
+  rows: ImportRowView[];
+  rows_shown?: number;
+}
+export interface ImportRecord {
+  id: string;
+  account_id: string;
+  filename: string;
+  format: string;
+  created_at: string | null;
+  date_from: string | null;
+  date_to: string | null;
+  rows_total: number;
+  rows_added: number;
+  rows_matched: number;
+  rows_skipped: number;
+  balances_added: number;
+  status: "applied" | "undone";
+  undone_at: string | null;
+  removed?: number;
+}
+export interface ImportFile { filename: string; content_b64: string; account_id?: string | null; mapping?: ImportMapping | null }

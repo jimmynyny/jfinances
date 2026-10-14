@@ -14,7 +14,7 @@ from what we already stored instead of another billable call.
 users ──< api_tokens
 users ──< mobile_link_codes
 users ──< link_sessions >── plaid_items
-users ──< plaid_items ──< accounts ──< transactions
+users ──< plaid_items ──< accounts ──< transactions >── imports ──< import_rows
                                   ├──< balance_snapshots
                                   ├──< holdings >── securities
                                   ├──< investment_transactions >── securities
@@ -118,7 +118,8 @@ at their first recorded value on earlier days and says the stretch is
 estimated (`estimated_before` on `GET /networth/history`).
 
 ## transactions
-From `/transactions/sync`. `amount` keeps Plaid's sign (positive = money
+From `/transactions/sync` (`source = 'plaid'`), or from a bank export (`source = 'import'`,
+`import_id` set, `plaid_transaction_id` null; see imports below). `amount` keeps Plaid's sign (positive = money
 leaving the account). `category_primary` / `category_detailed` are Plaid's
 personal finance categories; `user_category` overrides the primary for
 display and summaries. `notes` is free text. `removed_at` is set when Plaid
@@ -151,6 +152,20 @@ bank reports always wins, so an entered one only ever fills a gap; the rest
 (payment, rate, term or original amount from the other three; payoff; schedule)
 is worked out on read by `services/terms.py` and `services/loanmath.py`, never
 stored.
+
+## imports, import_rows, import_profiles
+A bank export imported into a linked account (services/importer.py). `imports` is one per
+file: its name and SHA-256 (never its contents), how its columns were read (`mapping`), the
+date range, counts, and `status` (`applied`, or `undone` with `undone_at`). `import_rows` is
+the ledger, unique on (`account_id`, `fingerprint`): every row an import added (`added`,
+`transaction_id`) or found already there (`matched`, `matched_transaction_id`), so the same row
+in a later or overlapping export is never added again; `superseded` marks an added row the
+connection later sent too. A fingerprint is the bank's FITID for OFX, else date, amount,
+normalized description and which of the identical same-day rows it is. `import_profiles`
+remembers a confirmed CSV layout by its header signature, and the account it last went into.
+Imported transactions have `source = 'import'`, `import_id`, and no `plaid_transaction_id`;
+everything else reads them like any other. Their running balances are `balance_snapshots`
+with `source = 'import'` (and `note = 'import:<id>'`), only on days before tracking began.
 
 ## jobs
 The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler

@@ -593,6 +593,115 @@ def test_account_details_fill_gaps_and_infer_the_rest(client):
         assert sess.get(AccountTerms, card.id) is None
 
 
+def test_bank_export_import_never_double_counts(client):
+    """A checking export reaching back before the connection's history: rows the
+    connection has are matched, older ones added with their balances, unmatched
+    ones inside its period wait for a tick; re-uploads add nothing, undo removes
+    it all, and when the connection later sends the same rows the imported
+    copies retire."""
+    import base64
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from server.app.models import Account, BalanceSnapshot, ImportRow, Transaction
+    from server.app.services import importer
+
+    with db.session() as sess:
+        acct = Account(kind="plaid", name="Everyday Checking", type="depository", subtype="checking", mask="4821",
+                       current_balance=Decimal("1500.00"))
+        sess.add(acct)
+        sess.flush()
+        for d, amt, name, cat in ((date(2026, 9, 2), "6.38", "STARBUCKS STORE 123", "FOOD_AND_DRINK"),
+                                  (date(2026, 9, 4), "-2000.00", "ACME PAYROLL", "INCOME"),
+                                  (date(2026, 10, 1), "50.00", "SHELL OIL", "TRANSPORTATION")):
+            sess.add(Transaction(account_id=acct.id, source="plaid", plaid_transaction_id=f"p-{d}-{amt}", date=d,
+                                 amount=Decimal(amt), name=name, merchant_name=name.split()[0].title(),
+                                 category_primary=cat, pending=False))
+        sess.add(BalanceSnapshot(account_id=acct.id, as_of=date(2026, 10, 13), current_balance=Decimal("1500.00"),
+                                 source="plaid"))
+        acct_id = str(acct.id)
+
+    csv_text = (
+        "Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
+        "DEBIT,09/05/2026,\"CORNER DELI\",-12.00,DEBIT_CARD,3481.62,,\n"  # in the connection's period, unmatched
+        "CREDIT,09/04/2026,\"ACME PAYROLL PPD\",2000.00,ACH_CREDIT,3493.62,,\n"   # matched
+        "DEBIT,09/02/2026,\"STARBUCKS STORE 123\",-6.38,DEBIT_CARD,1493.62,,\n"  # matched
+        "DEBIT,08/20/2026,\"CHASE CREDIT CRD AUTOPAY\",-500.00,ACH_DEBIT,1500.00,,\n"
+        "DEBIT,08/15/2026,\"STARBUCKS STORE 99\",-4.00,DEBIT_CARD,2000.00,,\n"
+        "CREDIT,08/01/2026,\"ACME PAYROLL PPD\",2000.00,ACH_CREDIT,2004.00,,\n")
+    body = {"filename": "Chase4821_Activity_20261014.CSV", "content_b64": base64.b64encode(csv_text.encode()).decode()}
+
+    pv = client.post("/api/v1/imports/preview", json=body).json()
+    assert pv["account_id"] == acct_id  # recognized by the last four digits in the file name
+    assert pv["counts"] == {"total": 6, "new": 3, "review": 1, "matched": 2, "duplicate": 0, "problems": 0}
+    assert pv["sign"]["basis"] == "matched" and pv["connection_from"] == "2026-09-02"
+    assert pv["balances"]["days"] == 6
+    review = [r["index"] for r in pv["rows"] if r["status"] == "review"]
+
+    done = client.post("/api/v1/imports", json={**body, "account_id": acct_id, "include": []}).json()
+    assert (done["rows_added"], done["rows_matched"], done["rows_skipped"], done["balances_added"]) == (3, 2, 1, 6)
+    with db.session() as sess:
+        q = select(Transaction).where(Transaction.source == "import")
+        rows = {t.name: t for t in sess.execute(q).scalars()}
+        assert rows["CHASE CREDIT CRD AUTOPAY"].category_detailed == "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
+        assert rows["STARBUCKS STORE 99"].category_primary == "FOOD_AND_DRINK"  # learned from the connection's rows
+        assert rows["STARBUCKS STORE 99"].merchant_name == "Starbucks"
+        assert rows["ACME PAYROLL PPD"].category_primary == "INCOME"
+    hist = client.get(f"/api/v1/accounts/{acct_id}/history?range=all").json()["points"]
+    by_day = {p["date"]: p for p in hist}
+    assert by_day["2026-08-15"] == {**by_day["2026-08-15"], "source": "import", "balance": "2000.00"}
+
+    again = client.post("/api/v1/imports/preview", json=body).json()["counts"]
+    assert again["new"] == 0 and again["duplicate"] == 5 and again["review"] == 1  # the unticked one can still be added
+    added = client.post("/api/v1/imports", json={**body, "account_id": acct_id, "include": review}).json()
+    assert added["rows_added"] == 1
+    overlap = csv_text + "DEBIT,07/20/2026,\"OLD BOOKSTORE\",-30.00,DEBIT_CARD,2034.00,,\n"
+    body2 = {**body, "content_b64": base64.b64encode(overlap.encode()).decode()}
+    assert client.post("/api/v1/imports/preview", json=body2).json()["counts"]["new"] == 1
+
+    # Undo the first import: its rows and balances go, the matched pairs are forgotten.
+    undone = client.delete(f"/api/v1/imports/{done['id']}").json()
+    assert undone["status"] == "undone" and undone["removed"] == 3
+    assert client.post("/api/v1/imports/preview", json=body).json()["counts"]["new"] == 3
+
+    # Re-import, then the connection sends the older history too: the copies retire.
+    client.post("/api/v1/imports", json={**body, "account_id": acct_id, "include": []})
+    with db.session() as sess:
+        imported = sess.execute(select(Transaction).where(Transaction.name == "STARBUCKS STORE 99",
+                                                          Transaction.removed_at.is_(None))).scalar_one()
+        imported.user_category = "ENTERTAINMENT"
+        sess.add(Transaction(account_id=imported.account_id, source="plaid", plaid_transaction_id="p-late",
+                             date=date(2026, 8, 16), amount=Decimal("4.00"), name="STARBUCKS", pending=False,
+                             category_primary="FOOD_AND_DRINK"))
+        sess.flush()
+        assert importer.reconcile(sess, [imported.account_id]) == 1
+        assert imported.removed_at is not None
+        theirs = sess.execute(select(Transaction).where(Transaction.plaid_transaction_id == "p-late")).scalar_one()
+        assert theirs.user_category == "ENTERTAINMENT"  # the person's category moved across
+        ledger = sess.execute(select(ImportRow).where(ImportRow.transaction_id == imported.id)).scalar_one()
+        assert ledger.status == "superseded" and ledger.matched_transaction_id == theirs.id
+        assert datetime.now(UTC)
+
+    # OFX: the bank's own IDs; a second upload adds nothing.
+    ofx = ("OFXHEADER:100\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><ACCTID>99994821</BANKACCTFROM>"
+           "<BANKTRANLIST><STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260610<TRNAMT>-25.00<FITID>A1<NAME>HARDWARE STORE"
+           "</STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>")
+    body3 = {"filename": "export.qfx", "content_b64": base64.b64encode(ofx.encode()).decode(), "account_id": acct_id}
+    assert client.post("/api/v1/imports", json={**body3, "include": []}).json()["rows_added"] == 1
+    assert client.post("/api/v1/imports/preview", json=body3).json()["counts"]["duplicate"] == 1
+
+    with db.session() as sess:
+        brokerage = Account(kind="plaid", name="Brokerage", type="investment", subtype="brokerage")
+        sess.add(brokerage)
+        sess.flush()
+        bid = str(brokerage.id)
+    assert client.post("/api/v1/imports/preview", json={**body, "account_id": bid}).status_code == 400
+    bad = client.post("/api/v1/imports/preview", json={**body, "content_b64": "not base64!"})
+    assert bad.status_code == 400 and bad.json()["error"]["code"] == "bad_file"
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal

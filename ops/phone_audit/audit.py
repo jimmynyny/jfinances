@@ -53,6 +53,7 @@ PAGES = [
     ("insights-subscriptions", "/insights", {"jf.insights.tab": "subscriptions"}, []),
     ("insights-wealth", "/insights", {"jf.insights.tab": "wealth"}, []),
     ("settings", "/settings", {}, []),
+    ("import", "/import", {}, []),
     ("menu", "/", {}, [OPEN_MENU]),
     ("notfound", "/nope", {}, []),
 ]

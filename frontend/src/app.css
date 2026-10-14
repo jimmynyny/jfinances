@@ -166,3 +166,23 @@
 .jf-liab__open:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--mu-ink-3); }
 .jf-liab__open:focus-visible { box-shadow: var(--mu-focus); }
 .jf-terms .mu-seg { align-self: flex-start; }
+
+/* Import history: the file and account, the counts, how the file is read, the rows. */
+.jf-import__pick { display: flex; flex-wrap: wrap; gap: var(--mu-s3); align-items: flex-end; }
+.jf-import__pick > * { flex: 1 1 220px; }
+.jf-import__pick .mu-btn { width: 100%; justify-content: center; }
+.jf-import__how { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; font-size: var(--mu-fs-sm); color: var(--mu-ink-2); }
+.jf-import__problem, .jf-import__warn { margin: 0; font-size: var(--mu-fs-sm); color: var(--mu-status-warn); }
+.jf-import__problem { color: var(--mu-neg); }
+.jf-import__counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--mu-s2); }
+.jf-import__count { display: flex; flex-direction: column; gap: 2px; padding: var(--mu-s2) var(--mu-s3); border: var(--mu-border); }
+.jf-import__count-n { font-size: var(--mu-fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.jf-import__count--good .jf-import__count-n { color: var(--mu-pos); }
+.jf-import__count--warn .jf-import__count-n { color: var(--mu-status-warn); }
+.jf-import__cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--mu-s3); }
+.jf-import__col { display: flex; flex-direction: column; gap: 6px; padding: var(--mu-s2) var(--mu-s3); border: var(--mu-border); min-width: 0; }
+.jf-import__col-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jf-import__col-head .mu-caption { overflow-wrap: anywhere; }
+.jf-import__tabs { padding: 0 var(--mu-s3); }
+.jf-import__rows { padding: 0 var(--mu-s3); }
+.jf-import__rows .mu-listrow__title { overflow-wrap: anywhere; }

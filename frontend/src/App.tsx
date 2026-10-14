@@ -12,6 +12,7 @@ import { InvestmentsPage } from "./pages/Investments";
 import { InsightsPage } from "./pages/Insights";
 import { LiabilitiesPage } from "./pages/Liabilities";
 import { SettingsPage } from "./pages/Settings";
+import { ImportPage } from "./pages/Import";
 import { LinkOAuthPage } from "./pages/LinkOAuth";
 import { NotFoundPage } from "./pages/NotFound";
 import { DeniedPage } from "./pages/Denied";
@@ -24,6 +25,7 @@ const TITLES: Record<string, string> = {
   "/investments": "Investments",
   "/liabilities": "Liabilities",
   "/settings": "Settings",
+  "/import": "Import",
   "/link/oauth": "Connecting…",
 };
 
@@ -38,7 +40,10 @@ const NAV = [
       { to: "/liabilities", label: "Liabilities", icon: <Glyph d="M3 13V6l5-3 5 3v7M6 13V9h4v4" /> },
     ],
   },
-  { label: "manage", items: [{ to: "/settings", label: "Settings", icon: <Glyph d="M8 5a3 3 0 100 6 3 3 0 000-6zM8 1v2M8 13v2M1 8h2M13 8h2" /> }] },
+  { label: "manage", items: [
+    { to: "/import", label: "Import history", icon: <Glyph d="M8 2v8M5 7l3 3 3-3M3 13h10" /> },
+    { to: "/settings", label: "Settings", icon: <Glyph d="M8 5a3 3 0 100 6 3 3 0 000-6zM8 1v2M8 13v2M1 8h2M13 8h2" /> },
+  ] },
 ];
 
 function Glyph({ d }: { d: string }) {
@@ -104,6 +109,7 @@ export function App() {
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/liabilities" element={<LiabilitiesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/link/oauth" element={<LinkOAuthPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

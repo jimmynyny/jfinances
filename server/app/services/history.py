@@ -9,7 +9,9 @@ debit, and a card's balance owed was lower before a purchase.
 
 Rows go to balance_snapshots with source="derived" and are replaced on every
 run. Real snapshots (plaid, carry, manual) are never touched, and every
-derived day falls before the first real one. Investments, loans and offline
+derived day falls before the first real one. An imported bank export's
+end-of-day balances (source="import", services/importer.py) are exact: the walk
+back resets to each one it reaches, so years of history don't drift. Investments, loans and offline
 assets are left alone: their value moves with prices and interest, which
 transactions don't record (docs/20-data-model.md, balance_snapshots).
 """
@@ -26,6 +28,7 @@ from ..models import Account, BalanceSnapshot, PlaidItem, Transaction
 #: Account types whose past balances follow from their transactions.
 DERIVABLE_TYPES = ("depository", "credit")
 DERIVED = "derived"
+IMPORTED = "import"
 
 
 def derive_account(sess: Session, acct: Account) -> int:
@@ -36,7 +39,8 @@ def derive_account(sess: Session, acct: Account) -> int:
                                                BalanceSnapshot.source == DERIVED))
     anchor = sess.execute(
         select(BalanceSnapshot.as_of, BalanceSnapshot.current_balance)
-        .where(BalanceSnapshot.account_id == acct.id, BalanceSnapshot.current_balance.is_not(None))
+        .where(BalanceSnapshot.account_id == acct.id, BalanceSnapshot.current_balance.is_not(None),
+               BalanceSnapshot.source != IMPORTED)
         .order_by(BalanceSnapshot.as_of).limit(1)).first()
     if anchor is None:
         return 0
@@ -50,6 +54,9 @@ def derive_account(sess: Session, acct: Account) -> int:
         return 0
     # Days that already have a real row (one with no balance sits below the anchor) stay as they are.
     taken = set(sess.execute(select(BalanceSnapshot.as_of).where(BalanceSnapshot.account_id == acct.id)).scalars())
+    exact = dict(sess.execute(select(BalanceSnapshot.as_of, BalanceSnapshot.current_balance).where(
+        BalanceSnapshot.account_id == acct.id, BalanceSnapshot.source == IMPORTED,
+        BalanceSnapshot.current_balance.is_not(None))).all())
     # Stepping back over a day undoes its transactions: money out (+) returns
     # to a cash account, and comes off what a card owes.
     sign = Decimal(-1) if acct.is_liability else Decimal(1)
@@ -59,7 +66,9 @@ def derive_account(sess: Session, acct: Account) -> int:
     while day >= earliest:  # the last row is the balance before the first known transaction
         bal += sign * Decimal(flows.get(day, 0))
         day -= timedelta(days=1)
-        if day not in taken:
+        if day in exact:  # an imported closing balance is the truth for its day: carry on from it
+            bal = Decimal(exact[day])
+        elif day not in taken:
             rows.append(BalanceSnapshot(account_id=acct.id, as_of=day, current_balance=bal, source=DERIVED))
     sess.add_all(rows)
     sess.flush()

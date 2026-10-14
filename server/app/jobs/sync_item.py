@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..models import PlaidItem
 from ..plaid_client import PlaidError
-from ..services import history, plaid_sync
+from ..services import history, importer, plaid_sync
 from .queue import handler
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ def sync_item(sess: Session, payload: dict) -> None:
             enqueue_product_refreshes(sess, item)
         if item.has_product("transactions"):
             plaid_sync.sync_transactions(sess, item)
+            _reconcile_imports(sess, item)
             _derive_history(sess, item)
             from .queue import enqueue
             enqueue(sess, "detect_recurring", {})  # subscriptions, once per batch of syncs
@@ -49,6 +50,16 @@ def sync_item(sess: Session, payload: dict) -> None:
         if item.status in ("login_required", "removed"):
             return
         raise e
+
+
+def _reconcile_imports(sess: Session, item: PlaidItem) -> None:
+    """Imported history the connection now sends too is retired (services/importer.py),
+    in a savepoint: a failure here must never undo the sync."""
+    try:
+        with sess.begin_nested():
+            importer.reconcile(sess, [a.id for a in item.accounts])
+    except Exception:
+        log.exception("reconciling imported rows failed for item %s", item.id)
 
 
 def _derive_history(sess: Session, item: PlaidItem) -> None:

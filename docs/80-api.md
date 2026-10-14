@@ -282,6 +282,56 @@ prices cover the range.
 ### POST /prices/refresh → 202 (dashboard_only)
 Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queued).
 
+## Imports
+
+Bank exports (CSV from any bank, QFX/OFX) into a linked bank or card account's history, for
+the years a connection doesn't reach (services/importer.py, services/statement.py). The file
+travels as base64 in JSON (≤5 MB) and is never stored; only its name and SHA-256 are.
+
+### POST /imports/preview (dashboard_only)
+Body `{filename, content_b64, account_id?, mapping?}`. Writes nothing. Returns how the file is
+read and what importing it would do:
+```json
+{"format":"csv","account_id":"…","account_hint":"4821",
+ "columns":[{"index":1,"header":"Posting Date","samples":["10/13/2026","…"],"role":"date"}, …],
+ "mapping":{"header_row":0,"date":1,"description":2,"amount":3,"balance":5,"date_format":"%m/%d/%Y",
+            "sign":-1,"balance_sign":1,"chosen":[], …},
+ "date_ambiguous":false,"sign":{"basis":"matched","agree":2,"disagree":0},
+ "range":{"from":"2025-06-01","to":"2026-04-20"},"connection_from":"2026-04-17",
+ "gap":null,"balances":{"days":180,"from":"…","to":"…"},
+ "counts":{"total":202,"new":199,"review":1,"matched":2,"duplicate":0,"problems":0},
+ "rows":[{"index":0,"date":"2026-04-20","description":"CORNER DELI","amount":"9.50","balance":"…",
+          "status":"review","match":null}, …],"rows_shown":202,"problems":[]}
+```
+Columns are found by header name (ranked synonyms: "Post Date" over "Date", "Description" over
+"Details") and, without a header, by content (dates, a signed amount, a running balance that
+moves by it, the longest text). `sign` is which amounts are money out (`-1` negative, `1`
+positive, `0` a debit/credit type column decides); when guessed, the rows the connection already
+has settle it (`basis: "matched"`). Row statuses: `new` (older than the connection: added),
+`matched` (the connection has it: same amount, within 3 days), `duplicate` (imported before, by
+fingerprint), `review` (in the connection's period but not there: added only if ticked). The
+account is suggested from the last four digits in the file or its name, or the account this
+layout was last imported into. `mapping` with `chosen` (the roles the person set) replaces the
+guess; a confirmed layout is remembered by its header for next time.
+
+### POST /imports → 201 (dashboard_only)
+Body: the preview's plus `account_id` and `include` (the `index` of each ticked review row).
+Adds the rows, records every added and matched row in the ledger, writes the running balance as
+`import` balance snapshots on days before tracking began, rebuilds derived history, queues
+subscription detection. Returns the import: `{id, account_id, filename, format, created_at,
+date_from, date_to, rows_total, rows_added, rows_matched, rows_skipped, balances_added, status}`.
+
+### GET /imports?account_id=
+`{"imports":[import, …]}` newest first.
+
+### DELETE /imports/{id} (dashboard_only)
+Undo: removes the transactions, balances and ledger rows it added; returns the import with
+`status:"undone"` and `removed`.
+
+When a later sync brings rows an import supplied (the bank sent older history after all), the
+imported copies are retired (`removed_at`), their ledger rows marked `superseded`, and any
+category or note carried to the connection's row.
+
 ## Liabilities
 
 ### GET /liabilities

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AreaChart, Badge, Button, Delta, Drawer, EmptyState, KeyValue, Money, Num, Readout, Segmented, Skeleton,
   formatDate, formatMoney, formatRelative,
@@ -37,6 +38,10 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
   const [editing, setEditing] = useState<boolean | TermsKey>(false);
   useEffect(() => { setEditing(startEditing ? true : false); }, [a?.id, startEditing]);
   const d = details.data;
+  const navigate = useNavigate();
+  const imported = (hist.data ?? []).filter((p) => p.source === "import").length;
+  // Bank and card accounts take a bank's export for history the connection doesn't reach.
+  const canImport = !!a && a.kind === "plaid" && (a.type === "depository" || a.type === "credit");
   const missing = d ? d.sections.flatMap((s) => s.facts).filter((f) => f.value == null && f.field).length : 0;
   const points = (hist.data ?? []).map((p) => ({ date: p.date, balance: p.balance }));
   const carried = (hist.data ?? []).filter((p) => p.source === "carry").length;
@@ -53,6 +58,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
       onClose={onClose}
       title={a?.name ?? ""}
       footer={editing ? undefined : <>
+        {a && canImport && <Button variant="quiet" onClick={() => navigate(`/import?account=${a.id}`)}>Import history</Button>}
         {a && onRefresh && a.kind === "plaid" && <Button variant="quiet" loading={refreshing} onClick={() => onRefresh(a)}>Refresh balance</Button>}
         {a && onEdit && <Button variant="quiet" onClick={() => onEdit(a)}>Edit</Button>}
         <Button variant="quiet" onClick={onClose}>Close</Button>
@@ -110,6 +116,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
               ] : []),
               ...(carried > 0 ? [{ key: "carried days", value: `${carried} in range (no fresh balance those days)` }] : []),
               ...(derived > 0 ? [{ key: "estimated days", value: `${derived} in range (rebuilt from transactions, before linking)` }] : []),
+              ...(imported > 0 ? [{ key: "imported days", value: `${imported} in range (closing balances from bank exports)` }] : []),
               ...(a.official_name && a.official_name !== a.name ? [{ key: "official name", value: a.official_name }] : []),
             ]}
           />}

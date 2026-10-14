@@ -212,11 +212,15 @@ class Transaction(TimestampMixin, Base):
         Index("ix_transactions_account_date", "account_id", "date"),
         Index("ix_transactions_date", "date"),
         Index("ix_transactions_category", "category_primary"),
+        Index("ix_transactions_import", "import_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
-    plaid_transaction_id: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    #: None for a row imported from a bank export (`source` "import").
+    plaid_transaction_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="plaid", server_default="plaid")
+    import_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("imports.id", ondelete="SET NULL"))
     date: Mapped[date] = mapped_column(Date, nullable=False)
     authorized_date: Mapped[date | None] = mapped_column(Date)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)  # Plaid sign: positive = money out
@@ -233,6 +237,66 @@ class Transaction(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class Import(TimestampMixin, Base):
+    """One uploaded bank export (services/importer.py): the account, the file
+    (its name and hash, never its contents), how its columns were read, and what
+    came of its rows. Undoing it removes what it added."""
+    __tablename__ = "imports"
+    __table_args__ = (Index("ix_imports_account", "account_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    format: Mapped[str] = mapped_column(String(8), nullable=False)  # csv | ofx
+    mapping: Mapped[dict | None] = mapped_column(JSONB)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    date_from: Mapped[date | None] = mapped_column(Date)
+    date_to: Mapped[date | None] = mapped_column(Date)
+    rows_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rows_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rows_matched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rows_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    balances_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="applied")  # applied | undone
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ImportRow(Base):
+    """The ledger: every row an import added or matched, by its permanent
+    fingerprint (statement.fingerprint), so the same row in a later or
+    overlapping export is never added twice. `status`: added (it is in
+    transactions), matched (the connection already had it), superseded (added,
+    then the connection sent it too, so the imported copy was retired)."""
+    __tablename__ = "import_rows"
+    __table_args__ = (UniqueConstraint("account_id", "fingerprint", name="uq_import_rows_account_fingerprint"),
+                      Index("ix_import_rows_import", "import_id"))
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    import_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("imports.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False)
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id", ondelete="SET NULL"))
+    matched_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ImportProfile(TimestampMixin, Base):
+    """A bank's export layout, recognized by its header (statement.signature):
+    the confirmed column mapping, and the account it was last imported into."""
+    __tablename__ = "import_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    signature: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    mapping: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
 
 
 # ---------------------------------------------------------------------------

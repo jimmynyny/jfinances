@@ -186,3 +186,17 @@ export function useRevokeToken() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: api.revokeApiToken, onSuccess: () => void qc.invalidateQueries({ queryKey: qk.tokens }) });
 }
+
+/** Imports for one account (or all); an import or undo changes balances and transactions everywhere. */
+export const useImports = (accountId?: string) =>
+  useQuery({ queryKey: ["imports", accountId ?? "all"], queryFn: () => api.imports(accountId) });
+export function useImportChanged() {
+  const qc = useQueryClient();
+  const inv = useInvalidateMoney();
+  return useCallback(() => {
+    inv();
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+    void qc.invalidateQueries({ queryKey: ["transactions"] });
+    void qc.invalidateQueries({ queryKey: ["insights"] });
+  }, [qc, inv]);
+}

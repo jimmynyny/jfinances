@@ -5,7 +5,7 @@ import type {
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
-  WebhookEvent,
+  WebhookEvent, ImportFile, ImportPreview, ImportRecord,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -52,10 +52,14 @@ function dashboardOf(r: Raw): Dashboard {
 
 /** Decimal strings ("12.50") to numbers, recursively, leaving dates and words alone. */
 const DECIMAL = /^-?\d+(\.\d+)?$/;
-const KEEP_STRING = new Set(["id", "name", "label", "mask", "key", "kind", "category", "note", "source"]);
+const KEEP_STRING = new Set([
+  "id", "name", "label", "mask", "key", "kind", "category", "note", "source",
+  // an imported file's own text stays as written ("-9.50", a payee called "1234")
+  "samples", "header", "description", "filename", "format", "status", "basis", "why",
+]);
 function numbers(v: unknown, key = ""): unknown {
   if (typeof v === "string") return !KEEP_STRING.has(key) && DECIMAL.test(v) ? Number(v) : v;
-  if (Array.isArray(v)) return v.map((x) => numbers(x));
+  if (Array.isArray(v)) return v.map((x) => numbers(x, key)); // a list's items share its key
   if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, numbers(x, k)]));
   return v;
 }
@@ -419,6 +423,15 @@ export const api = {
   previewTerms: async (id: string, terms: TermsValues): Promise<AccountDetails> =>
     numbers(await request("POST", `/accounts/${id}/terms/preview`, terms)) as AccountDetails,
 
+  // Imports: the file travels as base64 in JSON (see fileToBase64).
+  previewImport: async (body: ImportFile): Promise<ImportPreview> =>
+    numbers(await request("POST", "/imports/preview", body)) as ImportPreview,
+  applyImport: async (body: ImportFile & { account_id: string; include: number[] }): Promise<ImportRecord> =>
+    numbers(await request("POST", "/imports", body)) as ImportRecord,
+  imports: async (accountId?: string): Promise<ImportRecord[]> =>
+    (numbers(await request("GET", "/imports", undefined, { account_id: accountId })) as { imports: ImportRecord[] }).imports,
+  undoImport: async (id: string): Promise<ImportRecord> => numbers(await request("DELETE", `/imports/${id}`)) as ImportRecord,
+
   liabilities: async (): Promise<Liabilities> => {
     const r = await request("GET", "/liabilities");
     return { total_owed: n0(r.total_owed), accounts: list(r.accounts, (a) => ({ account: account(a.account as Raw), detail: liabilityDetail(a.detail) })) };
@@ -546,3 +559,11 @@ function linkToken(r: Raw): LinkToken {
 }
 
 export type Api = typeof api;
+
+/** A file's bytes as base64, for the imports API (no multipart parser on the server). */
+export async function fileToBase64(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}

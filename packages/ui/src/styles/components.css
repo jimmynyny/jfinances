@@ -246,7 +246,7 @@
 .mu-drawer__head { display: flex; align-items: center; justify-content: space-between; padding: var(--mu-s3) var(--mu-s4); border-bottom: var(--mu-border); min-height: var(--mu-header-h); }
 .mu-drawer__title { font-weight: 600; }
 .mu-drawer__body { padding: var(--mu-s4); overflow: auto; flex: 1; display: flex; flex-direction: column; gap: var(--mu-s4); }
-.mu-drawer__foot { padding: var(--mu-s3) var(--mu-s4); border-top: var(--mu-border); display: flex; gap: var(--mu-s2); justify-content: flex-end; }
+.mu-drawer__foot { padding: var(--mu-s3) var(--mu-s4); border-top: var(--mu-border); display: flex; flex-wrap: wrap; gap: var(--mu-s2); justify-content: flex-end; }
 
 /* ---------- Toast ---------- */
 .mu-toasts { position: fixed; bottom: var(--mu-s4); right: var(--mu-s4); display: flex; flex-direction: column; gap: var(--mu-s2); z-index: 60; }
