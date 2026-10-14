@@ -1,13 +1,15 @@
 import type { SelectGroup } from "@mooney/ui";
 import type { Account } from "../api/types";
-import { groupAccounts } from "./groups";
+import { groupAccounts, groupOf } from "./groups";
 
 /** The Account filter: a labelled section per type, in the Accounts page's
  * order (Cash, Investments, Credit cards, Loans), each entry "Chase: Sapphire
- * ··1234" and sorted so an institution's accounts sit together. Manual
- * accounts (homes, cars) never have transactions, so they are left out. */
+ * ··1234" and sorted so an institution's accounts sit together. An offline
+ * account sits in the section its group puts it (its imported transactions
+ * count like any); homes and cars never have transactions, so they are left out. */
 export function accountFilterOptions(accounts: Account[] | undefined): SelectGroup[] {
-  return groupAccounts((accounts ?? []).filter((a) => a.kind !== "manual")).map((g) => ({
+  const holdsTransactions = (a: Account) => a.kind !== "manual" || !["real_estate", "vehicles"].includes(groupOf(a));
+  return groupAccounts((accounts ?? []).filter(holdsTransactions)).map((g) => ({
     group: g.label,
     options: g.accounts
       .map((a) => ({ value: a.id, label: accountFilterLabel(a) }))

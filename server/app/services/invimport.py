@@ -48,7 +48,9 @@ UNITS_TOLERANCE = Decimal("0.0015")
 
 
 def importable(a: Account) -> bool:
-    return a.kind == "plaid" and a.type == "investment" and a.closed_at is None
+    """An account counted as an investment, connected or kept by hand."""
+    from .networth import account_group
+    return a.closed_at is None and account_group(a) == "investments"
 
 
 def _words(text: str | None) -> set[str]:

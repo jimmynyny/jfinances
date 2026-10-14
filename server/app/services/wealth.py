@@ -27,7 +27,7 @@ from sqlalchemy import func, literal_column, select
 from sqlalchemy.orm import Session
 
 from ..models import SECURABLE_CATEGORIES, Account, BalanceSnapshot, Liability, PlaidItem, Transaction
-from .networth import ASSET_GROUPS, GROUPS, AccountRow, group_key
+from .networth import ASSET_GROUPS, GROUPS, AccountRow, account_group, group_key
 
 ZERO = Decimal(0)
 
@@ -182,7 +182,7 @@ def loans_payoff(sess: Session, today: date, extra: Decimal = ZERO) -> list[dict
     gaps filled from what the person entered (services/terms)."""
     from . import terms
     loans = [a for a in visible_accounts(sess)
-             if a.is_liability and a.type != "credit" and (a.current_balance or 0) > 0]
+             if a.is_liability and account_group(a) != "credit_cards" and (a.current_balance or 0) > 0]
     liabs, entered = terms.load(sess, loans)
     out = []
     for a in loans:
@@ -224,7 +224,7 @@ INTEREST_DETAILED = "BANK_FEES_INTEREST_CHARGE"
 
 def cards(sess: Session, start: date, end: date) -> dict:
     from . import terms
-    accounts = [a for a in visible_accounts(sess) if a.type == "credit"]
+    accounts = [a for a in visible_accounts(sess) if account_group(a) == "credit_cards"]
     days = month_ends(start, end)
     bal = balances_on(sess, accounts, days)
     _, entered = terms.load(sess, accounts)

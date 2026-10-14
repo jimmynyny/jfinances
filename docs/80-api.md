@@ -314,6 +314,9 @@ with the other transfers. Transactions show it as `category: "PAYMENT"`.
 ## Investments
 
 ### GET /holdings
+Every account counted as an investment (its `group`): connected ones with the holdings reported, and
+ones kept by hand with none (their value is their balance; performance counts their changes as growth,
+with no trades to say otherwise).
 ```json
 {"total_value":"542301.55","accounts":[
  {"account":account,"holdings_value":"180336.73","holdings":[

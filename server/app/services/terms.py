@@ -34,9 +34,11 @@ STALE_DUE_DAYS = 3
 # ---------------------------------------------------------------------------
 def kind_of(a: Account, L: Liability | None) -> str:
     """mortgage | student | loan | credit | depository | investment | asset | other."""
-    if a.kind == "manual":
-        return "loan" if a.is_liability else "asset"
+    from .networth import account_group
     by_group = {"cash": "depository", "investments": "investment", "credit_cards": "credit", "loans": "loan"}
+    if a.kind == "manual":  # kept by hand: what its group says it is
+        group = account_group(a)
+        return by_group.get(group) or ("loan" if a.is_liability else "asset")
     if a.group_override in by_group:  # the person's group: "other" at the bank, a loan to them
         return by_group[a.group_override]
     sub = (a.subtype or "").lower()

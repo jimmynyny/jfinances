@@ -1087,6 +1087,47 @@ def test_categories_are_learned_per_merchant_account_and_direction(client):
     assert card_id
 
 
+def test_offline_accounts_count_wherever_their_group_says(client):
+    """An offline account put in a group shows up where that group's accounts do:
+    investments on the Investments page, in performance and taking statements;
+    a card in the cards insight; a loan in payoffs; cash with a savings rate."""
+    import base64
+
+    from server.tests.test_invstatement import POS, TRUST, _buy, _ofx
+
+    def offline(name, category, value, group):
+        a = client.post("/api/v1/accounts/manual", json={"name": name, "manual_category": category,
+                                                         "value": value}).json()
+        r = client.patch(f"/api/v1/accounts/{a['id']}", json={"group": group})
+        assert r.status_code == 200 and r.json()["group"] == group, r.text
+        return a["id"]
+
+    fund = offline("Fundrise", "other_asset", 12000, "investments")
+    card = offline("Store card", "other_liability", 640, "credit_cards")
+    loan = offline("Family loan", "other_liability", 9000, "loans")
+    cash = offline("Credit union savings", "other_asset", 3000, "cash")
+
+    holdings = client.get("/api/v1/holdings").json()
+    held = {x["account"]["id"]: x for x in holdings["accounts"]}
+    assert fund in held and held[fund]["holdings"] == [] and cash not in held
+    perf = client.get("/api/v1/investments/performance", params={"range": "1y"}).json()
+    assert fund in {a["id"] for a in perf["accounts"]}
+    raw = _ofx(_buy("Z1", "20260901", "5", "10", "50"), POS, TRUST)
+    pv = client.post("/api/v1/imports/preview", json={"filename": "s.qfx", "account_id": fund,
+                                                      "content_b64": base64.b64encode(raw).decode()})
+    assert pv.status_code == 200 and pv.json()["format"] == "invofx", pv.text
+    csv = base64.b64encode(b"Date,Description,Amount\n09/01/2026,COFFEE,-4.00\n").decode()
+    wrong = client.post("/api/v1/imports/preview", json={"filename": "b.csv", "account_id": fund, "content_b64": csv})
+    assert wrong.status_code == 400  # a bank export belongs in a bank or card account
+
+    cards = client.get("/api/v1/insights/cards").json()
+    assert card in {c["id"] for c in cards["cards"]}
+    loans = client.get("/api/v1/insights/loans").json()
+    assert loan in {x["id"] for x in loans["loans"]} and card not in {x["id"] for x in loans["loans"]}
+    details = client.get(f"/api/v1/accounts/{cash}/details").json()
+    assert details["kind"] == "depository"  # a savings rate can be added, like a bank account's
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal

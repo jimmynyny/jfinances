@@ -263,12 +263,16 @@ def chain(values: dict[date, Decimal], flows: dict[date, Decimal]) -> list[dict]
 
 
 def investment_accounts(sess: Session, account_id: uuid.UUID | None = None) -> list[Account]:
+    """Every account counted as an investment (networth.account_group): connected, or kept
+    by hand (its values are its snapshots; with no trades recorded, a change is growth)."""
+    from .networth import account_group
     stmt = (select(Account).outerjoin(PlaidItem, PlaidItem.id == Account.item_id)
-            .where(Account.type == "investment", Account.is_hidden.is_(False), Account.closed_at.is_(None))
+            .where(Account.is_hidden.is_(False), Account.closed_at.is_(None))
             .where((PlaidItem.id.is_(None)) | (PlaidItem.status != "removed")))
     if account_id is not None:
         stmt = stmt.where(Account.id == account_id)
-    return list(sess.execute(stmt.order_by(Account.display_order, Account.name)).scalars())
+    return [a for a in sess.execute(stmt.order_by(Account.display_order, Account.name)).scalars()
+            if account_group(a) == "investments"]
 
 
 def performance(sess: Session, start: date, end: date, today: date, account_id: uuid.UUID | None = None) -> dict:

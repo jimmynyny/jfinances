@@ -22,12 +22,17 @@ export function InvestmentsPage() {
   const accounts = useMemo(() => q.data?.accounts ?? [], [q.data]);
   const biz = useMemo(() => new Set(accounts.filter((a) => a.account.is_business).map((a) => a.account.id)), [accounts]);
 
-  const byAccount = useMemo(() => accounts.map((a) => ({ key: a.account.id, label: a.account.name, value: a.holdings_value })), [accounts]);
+  // An account with no holdings reported (one kept by hand) counts at its balance.
+  const worth = (a: (typeof accounts)[number]) => (a.holdings.length > 0 ? a.holdings_value : a.account.current_balance ?? 0);
+  const byAccount = useMemo(() => accounts.map((a) => ({ key: a.account.id, label: a.account.name, value: worth(a) })), [accounts]);
   const byType = useMemo(() => {
     const m = new Map<string, number>();
-    for (const a of accounts) for (const h of a.holdings) {
-      const k = h.is_cash_equivalent ? "cash" : (h.type ?? "other").toLowerCase();
-      m.set(k, (m.get(k) ?? 0) + h.value);
+    for (const a of accounts) {
+      if (a.holdings.length === 0) m.set("kept by hand", (m.get("kept by hand") ?? 0) + (a.account.current_balance ?? 0));
+      for (const h of a.holdings) {
+        const k = h.is_cash_equivalent ? "cash" : (h.type ?? "other").toLowerCase();
+        m.set(k, (m.get(k) ?? 0) + h.value);
+      }
     }
     const rank = (k: string) => (TYPE_ORDER.includes(k) ? TYPE_ORDER.indexOf(k) : TYPE_ORDER.length);
     return [...m].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([k, v]) => ({ key: k, label: typeLabel(k), value: v }));
@@ -90,10 +95,11 @@ export function InvestmentsPage() {
           flush
           caption={a.account.institution_name ?? "account"}
           title={<>{a.account.name}{a.account.is_business && <BusinessMark />}</>}
-          actions={<span className="mu-row"><span className="mu-caption">priced {formatRelative(a.holdings[0]?.price_as_of ?? a.account.balance_updated_at)}</span><Money value={a.holdings_value} cents={false} mono={false} style={{ fontWeight: 600 }} />
+          actions={<span className="mu-row"><span className="mu-caption">{a.account.kind === "manual" ? "kept by hand" : "priced"} {formatRelative(a.holdings[0]?.price_as_of ?? a.account.balance_updated_at)}</span><Money value={worth(a)} cents={false} mono={false} style={{ fontWeight: 600 }} />
             <Button size="sm" variant="quiet" onClick={() => { setPerfAccount(a.account.id); document.getElementById("performance")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Performance</Button></span>}
         >
-          <DataTable columns={holdingCols(a.holdings_value)} rows={a.holdings} rowKey={(h) => h.id} defaultSort={{ key: "value", dir: "desc" }} compact empty="No holdings reported yet — the investments refresh runs daily." />
+          <DataTable columns={holdingCols(a.holdings_value)} rows={a.holdings} rowKey={(h) => h.id} defaultSort={{ key: "value", dir: "desc" }} compact
+            empty={a.account.kind === "manual" ? "An offline account: its value is what you set (or what its imported statements say). Holdings aren't listed." : "No holdings reported yet — the investments refresh runs daily."} />
         </Panel>
       ))}
       {q.isLoading && <Skeleton lines={6} height={36} />}

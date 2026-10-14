@@ -342,7 +342,9 @@ def categorize(r: st.Row, a: Account, learned: Learned) -> tuple[str | None, str
     """(primary, detailed, merchant name) for an imported row."""
     text = r.description
     if a.is_liability and r.amount < 0 and PAY_WORDS.search(text):
-        return "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT" if a.type == "credit" else None, None
+        from .networth import account_group
+        return "LOAN_PAYMENTS", ("LOAN_PAYMENTS_CREDIT_CARD_PAYMENT" if account_group(a) == "credit_cards"
+                                 else None), None
     if not a.is_liability and r.amount > 0 and CARD_WORDS.search(text) and PAY_WORDS.search(text):
         return "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", None
     words = _key(text)

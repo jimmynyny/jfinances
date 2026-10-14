@@ -44,10 +44,10 @@ const STATUS_TONE: Record<ImportRowStatus, "good" | "neutral" | "warn" | "accent
   new: "good", matched: "neutral", duplicate: "neutral", review: "warn",
 };
 
-/** Linked bank, card and investment accounts, and offline ones kept by hand as a bank or card. */
+/** Linked bank, card and investment accounts, and offline ones kept by hand as a bank, card or investment. */
 const importable = (a: Account) => !a.closed_at && (a.kind === "plaid"
   ? a.type === "depository" || a.type === "credit" || a.type === "investment"
-  : ["cash", "credit_cards", "other_assets", "other_liabilities"].includes(a.group ?? ""));
+  : ["cash", "credit_cards", "other_assets", "other_liabilities", "investments"].includes(a.group ?? ""));
 
 /**
  * Bank exports (CSV, QFX, OFX) into a linked account's history, for the years

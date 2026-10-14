@@ -40,7 +40,8 @@ IMPORTED = "import"
 
 def derive_account(sess: Session, acct: Account) -> int:
     """Replace `acct`'s derived snapshots. Returns how many days were written."""
-    if acct.kind == "plaid" and acct.type == "investment":
+    from .networth import account_group
+    if account_group(acct) == "investments":
         return derive_investment(sess, acct)
     # Balances follow transactions for cash and card accounts, for an account the bank
     # calls something else that the person counts as cash or a card, and for an offline

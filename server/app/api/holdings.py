@@ -10,6 +10,7 @@ from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
 from ..models import Account, Holding, InvestmentTransaction, PlaidItem, Security
+from ..services.networth import account_group
 from ._common import account_json, money, num, parse_uuid, ts
 
 router = APIRouter()
@@ -17,10 +18,11 @@ router = APIRouter()
 
 @router.get("/holdings")
 def holdings(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    # Every account counted as an investment: connected (holdings reported) or kept by hand.
     accts = sess.execute(select(Account).options(selectinload(Account.item))
-                         .where(Account.type == "investment", Account.closed_at.is_(None))
+                         .where(Account.closed_at.is_(None))
                          .order_by(Account.display_order, Account.name)).scalars().all()
-    accts = [a for a in accts if a.item is None or a.item.status != "removed"]
+    accts = [a for a in accts if (a.item is None or a.item.status != "removed") and account_group(a) == "investments"]
     rows = sess.execute(select(Holding, Security).join(Security, Security.id == Holding.security_id)
                         .where(Holding.account_id.in_([a.id for a in accts]))).all()
     by_acct: dict = {}
