@@ -44,11 +44,12 @@ const STATUS_TONE: Record<ImportRowStatus, "good" | "neutral" | "warn" | "accent
   new: "good", matched: "neutral", duplicate: "neutral", review: "warn",
 };
 
-const importable = (a: Account) => a.kind === "plaid" && (a.type === "depository" || a.type === "credit") && !a.closed_at;
+const importable = (a: Account) => a.kind === "plaid" && (a.type === "depository" || a.type === "credit" || a.type === "investment") && !a.closed_at;
 
 /**
  * Bank exports (CSV, QFX, OFX) into a linked account's history, for the years
- * a connection doesn't reach. The file is read and every row sorted before
+ * a connection doesn't reach, and investment statements (QFX, OFX) into an
+ * investment account's: its trades, contributions and past value. The file is read and every row sorted before
  * anything is saved: rows the connection has are matched, not added; rows in
  * its period that it doesn't have wait for a tick; re-uploads add nothing.
  */
@@ -138,7 +139,7 @@ export function ImportPage() {
       setPreview(null);
       setFile(null);
       changed();
-      toast(`Imported ${r.rows_added} transaction${r.rows_added === 1 ? "" : "s"}`);
+      toast(r.format === "invofx" ? `Imported ${r.rows_added} entr${r.rows_added === 1 ? "y" : "ies"}` : `Imported ${r.rows_added} transaction${r.rows_added === 1 ? "" : "s"}`);
     } catch (e) {
       error(e instanceof ApiError ? e.message : "The import failed. Nothing was saved.");
     } finally {
@@ -154,7 +155,7 @@ export function ImportPage() {
 
   return (
     <Page>
-      <PageHeader title="Import history" subtitle="Bank exports (CSV, QFX or OFX) for the history your connection doesn't reach." />
+      <PageHeader title="Import history" subtitle="Bank exports (CSV, QFX or OFX) and investment statements (QFX or OFX) for the history your connection doesn't reach." />
 
       <Panel caption="file">
         <div className="mu-stack">
@@ -172,7 +173,7 @@ export function ImportPage() {
           {problem && <span className="jf-import__problem" role="alert">{problem}</span>}
           {!file && !done && (
             <ul className="jf-import__how">
-              <li>Download your account&apos;s activity from the bank&apos;s website as CSV, QFX or OFX.</li>
+              <li>Download your account&apos;s activity from the bank&apos;s website as CSV, QFX or OFX; for a brokerage or 401(k), the QFX or OFX statement.</li>
               <li>Nothing is saved until you press Import. The columns are worked out for you; check them below.</li>
               <li>Rows your connection already has are matched, not added. Re-uploading the same or an overlapping file adds nothing new.</li>
               <li>If the file has a running balance, those become the account&apos;s exact past balances.</li>
@@ -181,7 +182,8 @@ export function ImportPage() {
         </div>
       </Panel>
 
-      {done && <DonePanel r={done} onAnother={() => { setDone(null); picker.current?.click(); }} onView={() => navigate(`/transactions?account=${done.account_id}`)} />}
+      {done && <DonePanel r={done} onAnother={() => { setDone(null); picker.current?.click(); }}
+        onView={() => navigate(done.format === "invofx" ? "/investments" : `/transactions?account=${done.account_id}`)} />}
 
       {reading && !preview && <Skeleton lines={6} />}
       {preview && (
@@ -202,7 +204,9 @@ export function ImportPage() {
                 <p className="jf-facts__note">
                   {preview.range ? <>{c?.total} rows from {formatDate(preview.range.from, { year: true })} to {formatDate(preview.range.to, { year: true })}. </> : null}
                   {preview.connection_from ? <>Your connection has this account from {formatDate(preview.connection_from, { year: true })}; rows from then on are only matched, or added if you tick them. </> : null}
-                  {preview.balances ? <>{preview.format === "venmo" ? "The statement's opening balance" : "The running balance"} sets {preview.balances.days} days of exact balances. </> : null}
+                  {preview.balances ? (preview.format === "invofx"
+                    ? <>The statement&apos;s holdings and the funds&apos; prices give the account&apos;s value for {preview.balances.days} days ({formatDate(preview.balances.from, { year: true })} – {formatDate(preview.balances.to, { year: true })}). </>
+                    : <>{preview.format === "venmo" ? "The statement's opening balance" : "The running balance"} sets {preview.balances.days} days of exact balances. </>) : null}
                 </p>
                 {(preview.notes ?? []).map((n) => <p key={n} className="jf-facts__note">{n}</p>)}
                 {preview.gap && (
@@ -353,16 +357,24 @@ function MappingPanel({ preview, mapping, onRole, onChoose, reading }: {
 }
 
 function DonePanel({ r, onAnother, onView }: { r: ImportRecord; onAnother: () => void; onView: () => void }) {
+  const investments = r.format === "invofx";
   return (
     <Panel caption="imported">
       <div className="mu-stack">
-        <p className="jf-facts__note">
-          Added {r.rows_added} transaction{r.rows_added === 1 ? "" : "s"}{r.rows_matched ? `, matched ${r.rows_matched} the connection already had` : ""}
-          {r.balances_added ? `, and set ${r.balances_added} days of balances` : ""}. Balance history and insights now include them;
-          subscriptions are looked for again in the background.
-        </p>
+        {investments ? (
+          <p className="jf-facts__note">
+            Added {r.rows_added} entr{r.rows_added === 1 ? "y" : "ies"}{r.rows_matched ? `, matched ${r.rows_matched} the connection already had` : ""}
+            {r.balances_added ? `, and valued the account for ${r.balances_added} days` : ""}. Net worth and investment performance now include them.
+          </p>
+        ) : (
+          <p className="jf-facts__note">
+            Added {r.rows_added} transaction{r.rows_added === 1 ? "" : "s"}{r.rows_matched ? `, matched ${r.rows_matched} the connection already had` : ""}
+            {r.balances_added ? `, and set ${r.balances_added} days of balances` : ""}. Balance history and insights now include them;
+            subscriptions are looked for again in the background.
+          </p>
+        )}
         <div className="mu-row">
-          <Button variant="primary" onClick={onView}>See the transactions</Button>
+          <Button variant="primary" onClick={onView}>{investments ? "See the account" : "See the transactions"}</Button>
           <Button variant="quiet" onClick={onAnother}>Import another file</Button>
         </div>
       </div>

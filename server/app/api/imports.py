@@ -1,4 +1,5 @@
-"""Bank exports into a linked account's history (services/importer.py).
+"""Bank exports into a linked account's history (services/importer.py), and
+investment statements into a linked investment account's (services/invimport.py).
 
 The browser sends the file itself (base64 in JSON: no multipart parser, and
 nothing is stored but its name and hash). Preview reads and classifies without
@@ -16,7 +17,8 @@ from ..auth.deps import current_user, dashboard_only
 from ..auth.human import Principal
 from ..db import get_session
 from ..models import Account, Import
-from ..services import importer
+from ..services import importer, invimport
+from ..services import invstatement as inv
 from ..services import statement as st
 from ._common import ApiError, parse_uuid
 
@@ -46,19 +48,35 @@ def _account(sess: Session, account_id: str | None) -> Account | None:
     if a is None:
         raise ApiError(404, "not_found", "account not found")
     if not importable(a):
-        raise ApiError(400, "bad_request", "history can be imported into linked bank and card accounts only")
+        raise ApiError(400, "bad_request", "history goes into linked bank, card and investment accounts only")
     return a
 
 
 def importable(a: Account) -> bool:
-    return importer.importable(a)
+    return importer.importable(a) or invimport.importable(a)
 
 
-def _read(sess: Session, body: FileIn, a: Account | None) -> tuple[bytes, st.Parsed, Account | None]:
+def _read_investment(sess: Session, raw: bytes, a: Account | None) -> tuple[bytes, inv.InvParsed, Account | None]:
+    try:
+        p = invimport.read(raw)
+    except importer.ImportProblem as e:
+        raise ApiError(400, "bad_file", str(e)) from e
+    if a is None:
+        a = invimport.suggest_account(sess, p)
+    elif not invimport.importable(a):
+        raise ApiError(400, "wrong_account", "this is an investment statement: choose an investment account")
+    return raw, p, a
+
+
+def _read(sess: Session, body: FileIn, a: Account | None) -> tuple[bytes, st.Parsed | inv.InvParsed, Account | None]:
     try:
         raw = importer.read_file(body.content_b64)
     except importer.ImportProblem as e:
         raise ApiError(400, "bad_file", str(e)) from e
+    if inv.is_investment(st.decode(raw)):
+        return _read_investment(sess, raw, a)
+    if a is not None and not importer.importable(a):
+        raise ApiError(400, "wrong_account", "this is a bank statement: choose a bank or card account")
     mapping = st.Mapping.from_json(body.mapping) if body.mapping else importer.profile_mapping(sess, raw, body.filename)
     probe = st.parse(raw, body.filename, liability=bool(a and a.is_liability), mapping=mapping)
     if a is None:
@@ -74,6 +92,12 @@ def _read(sess: Session, body: FileIn, a: Account | None) -> tuple[bytes, st.Par
 def preview(body: FileIn, _: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
     """What importing this file would do. Writes nothing."""
     raw, parsed, a = _read(sess, body, _account(sess, body.account_id))
+    if isinstance(parsed, inv.InvParsed):
+        if a is None:
+            return {"account_id": None, "format": parsed.format, "account_hint": parsed.account_hint, "columns": [],
+                    "mapping": None, "date_ambiguous": False, "counts": {"total": len(parsed.entries)}, "rows": [],
+                    "problems": parsed.problems[:20], "notes": parsed.notes}
+        return {**invimport.preview(sess, a, parsed), "account_hint": parsed.account_hint}
     if a is None:
         # No account chosen and none recognized: the columns and rows still show, statuses wait for one.
         return {"account_id": None, "format": parsed.format, "account_hint": parsed.account_hint,
@@ -89,6 +113,10 @@ def preview(body: FileIn, _: Principal = Depends(dashboard_only), sess: Session 
 def apply(body: ApplyIn, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
     a = _account(sess, body.account_id)
     raw, parsed, a = _read(sess, body, a)
+    if isinstance(parsed, inv.InvParsed):
+        imp = invimport.apply(sess, a, parsed, raw=raw, filename=body.filename, include=set(body.include),
+                              user_id=p.user_id)
+        return importer.import_json(imp)
     imp = importer.apply(sess, a, parsed, raw=raw, filename=body.filename, include=set(body.include),
                          user_id=p.user_id)
     from ..jobs.queue import enqueue

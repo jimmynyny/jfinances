@@ -298,7 +298,11 @@ accounts[{id, name, rebuilt, coverage, tracked_since}], benchmarks[{key, label,
 source, points[{date, return}]}], available[{key, label, available, since, note}]}`.
 `return` is a ratio (0.12 = +12%); `flows` is money moved in (+) or out (−);
 `estimated_before` is the first real snapshot when the line starts earlier
-(rebuilt before it). Benchmarks: `sp500`, `dow`, `nasdaq100`, `bitcoin`, `world`,
+(rebuilt before it, or valued from an imported statement). A fund with no market
+prices (a 401(k) trust) is priced from the prices it traded at, interpolated, and a
+ticker whose closes disagree with those prices (a trust carrying its retail fund's
+ticker) is not used; a 401(k) contribution counts as money in, not growth.
+Benchmarks: `sp500`, `dow`, `nasdaq100`, `bitcoin`, `world`,
 `bonds`, `gold`, `sixty_forty`, `inflation`; `source` is null when no stored
 prices cover the range.
 
@@ -308,7 +312,8 @@ Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queue
 ## Imports
 
 Bank exports (CSV from any bank, QFX/OFX, Venmo statements) into a linked bank or card account's
-history, for the years a connection doesn't reach (services/importer.py, services/statement.py). The file
+history, and investment statements (QFX/OFX) into a linked investment account's, for the years a
+connection doesn't reach (services/importer.py, statement.py; invimport.py, invstatement.py). The file
 travels as base64 in JSON (≤5 MB) and is never stored; only its name and SHA-256 are.
 
 ### POST /imports/preview (dashboard_only)
@@ -337,6 +342,23 @@ account is suggested from the last four digits in the file or its name, or the a
 layout was last imported into. `mapping` with `chosen` (the roles the person set) replaces the
 guess; a confirmed layout is remembered by its header for next time. A header may sit over an
 opening-balance line.
+
+An investment statement (QFX/OFX with `INVSTMTRS`: Vanguard, Fidelity, Schwab, a 401(k) plan;
+`format: "invofx"`) goes into a linked investment account (a bank or card account is a 400
+`wrong_account`, and the other way round). Entries the file repeats word for word count once.
+Each entry (one FITID) is one or two rows in the connection's shape: a 401(k) buy is a
+contribution and the buy (buys and sells on one day that balance are an exchange; a lone 401(k)
+sale is a withdrawal), a reinvested dividend is the dividend and the buy; fees, income, cash
+moves, share transfers and splits are one row. Statuses as for bank rows: `matched` is a
+connection row moving the same shares of the same fund within 3 days (a matched plain buy gains
+the statement's contribution when the connection has no row for that money), `review` is inside
+the period the connection has investment transactions for. The file's funds map to the account's
+holdings by CUSIP, ticker or name (a one-fund statement for a one-fund account needs no more); a
+fund the account doesn't hold is added as its own security. `balances` is the window the
+statement's holdings value the account for (its start to the day before tracking began); `notes`
+say what was merged, assumed or doesn't agree with the connection's holdings. The account is
+suggested by its number's last four digits, the funds it holds, or the broker. Undo removes the
+rows and any fund the import added.
 
 A Venmo statement (`format: "venmo"`, no `columns` or `mapping`) is read by its own layout. Only
 what moved the Venmo balance becomes a row: a payment made straight from a bank account or card

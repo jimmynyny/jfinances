@@ -31,7 +31,17 @@ from decimal import Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Account, BalanceSnapshot, Import, ImportProfile, ImportRow, Transaction
+from ..models import (
+    Account,
+    BalanceSnapshot,
+    Holding,
+    Import,
+    ImportProfile,
+    ImportRow,
+    InvestmentTransaction,
+    Security,
+    Transaction,
+)
 from . import statement as st
 from .insights import merchant_key
 
@@ -445,8 +455,20 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
 
 
 def undo(sess: Session, imp: Import) -> int:
-    """Remove what an import added: its transactions, its balances, its ledger."""
+    """Remove what an import added: its transactions (bank or investment), its
+    balances, its ledger, and any fund it brought that nothing else refers to."""
     removed = sess.execute(delete(Transaction).where(Transaction.import_id == imp.id)).rowcount or 0
+    funds = set(sess.execute(select(InvestmentTransaction.security_id).where(
+        InvestmentTransaction.import_id == imp.id, InvestmentTransaction.security_id.is_not(None))).scalars())
+    removed += sess.execute(delete(InvestmentTransaction)
+                            .where(InvestmentTransaction.import_id == imp.id)).rowcount or 0
+    for sid in funds:
+        sec = sess.get(Security, sid)
+        used = sess.execute(select(func.count()).select_from(InvestmentTransaction)
+                            .where(InvestmentTransaction.security_id == sid)).scalar() or 0
+        held = sess.execute(select(func.count()).select_from(Holding).where(Holding.security_id == sid)).scalar() or 0
+        if sec is not None and sec.plaid_security_id.startswith("import:") and not used and not held:
+            sess.delete(sec)
     sess.execute(delete(ImportRow).where(ImportRow.import_id == imp.id))
     sess.execute(delete(BalanceSnapshot).where(BalanceSnapshot.account_id == imp.account_id,
                                                BalanceSnapshot.source == "import",

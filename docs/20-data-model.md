@@ -111,11 +111,18 @@ first real snapshot, undoing each day's posted transactions, and writes one
 runs after every transactions sync (`sync_item`), in a savepoint so a failure
 is logged and never undoes the sync, and replaces only `derived` rows, which
 all fall before the first real one (a day that already has a real row keeps
-it). Investments, loans and
-offline assets are never derived: their value moves with prices and
-interest, which transactions don't record. The net worth chart holds those
-at their first recorded value on earlier days and says the stretch is
-estimated (`estimated_before` on `GET /networth/history`).
+it). Loans and offline assets are never derived: their value moves with
+interest and prices, which transactions don't record. An investment account
+is derived only over the window an imported statement covers
+(`history.derive_investment`): the statement's holdings on its last day
+(kept in the import's `mapping`), walked back through every trade in the
+window, each fund priced that day (`performance.price_curve`: market closes
+when the fund's ticker agrees with its trade prices, else the trade prices,
+interpolated). Elsewhere the net worth chart holds an account at its first
+recorded value on earlier days and says the stretch is estimated
+(`estimated_before` on `GET /networth/history`); derived days count as
+estimated too, and investment performance treats them as values, not
+tracking.
 
 ## transactions
 From `/transactions/sync` (`source = 'plaid'`), or from a bank export (`source = 'import'`,
@@ -132,7 +139,13 @@ From `/investments/holdings/get` and `/investments/transactions/get`.
 `securities` is global (one row per Plaid security). `holdings` is unique on
 `(account_id, security_id)` and is replaced wholesale on each refresh;
 positions Plaid stops reporting are deleted. `investment_transactions` are
-append/upsert by Plaid id.
+append/upsert by Plaid id (`source = 'plaid'`), or come from an investment
+statement (`source = 'import'`, `import_id` set, `plaid_investment_transaction_id`
+null): a 401(k) payroll buy is two rows, a `cash`/`contribution` and the `buy`,
+so walking history back finds no cash that never was and performance counts the
+contribution as money in, not growth. A fund an account doesn't hold becomes a
+`securities` row of its own (`plaid_security_id` = `import:<id type>:<id>`),
+removed with the import if nothing else uses it.
 
 ## liabilities
 One row per liability account (unique `account_id`). `kind` is `credit`,
@@ -154,7 +167,9 @@ is worked out on read by `services/terms.py` and `services/loanmath.py`, never
 stored.
 
 ## imports, import_rows, import_profiles
-A bank export imported into a linked account (services/importer.py). `imports` is one per
+A bank export imported into a linked account (services/importer.py), or an investment statement
+into a linked investment account (`format = 'invofx'`, services/invimport.py: `mapping` holds the
+statement's holdings on its last day, which anchor derived history). `imports` is one per
 file: its name and SHA-256 (never its contents), how its columns were read (`mapping`), the
 date range, counts, and `status` (`applied`, or `undone` with `undone_at`). `import_rows` is
 the ledger, unique on (`account_id`, `fingerprint`): every row an import added (`added`,

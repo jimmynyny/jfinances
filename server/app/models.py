@@ -250,7 +250,7 @@ class Import(TimestampMixin, Base):
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     filename: Mapped[str] = mapped_column(String(200), nullable=False)
     file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    format: Mapped[str] = mapped_column(String(8), nullable=False)  # csv | ofx | venmo
+    format: Mapped[str] = mapped_column(String(8), nullable=False)  # csv | ofx | venmo | invofx
     mapping: Mapped[dict | None] = mapped_column(JSONB)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     date_from: Mapped[date | None] = mapped_column(Date)
@@ -337,11 +337,14 @@ class Holding(TimestampMixin, Base):
 
 class InvestmentTransaction(TimestampMixin, Base):
     __tablename__ = "investment_transactions"
-    __table_args__ = (Index("ix_invtx_account_date", "account_id", "date"),)
+    __table_args__ = (Index("ix_invtx_account_date", "account_id", "date"), Index("ix_invtx_import", "import_id"))
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
-    plaid_investment_transaction_id: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    #: None for a row imported from an investment statement (`source` "import").
+    plaid_investment_transaction_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="plaid", server_default="plaid")
+    import_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("imports.id", ondelete="SET NULL"))
     security_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("securities.id", ondelete="SET NULL"))
     date: Mapped[date] = mapped_column(Date, nullable=False)
     name: Mapped[str | None] = mapped_column(String(300))

@@ -704,8 +704,8 @@ export interface ImportRowView {
   match: { date: string; name: string; amount: number; source: string } | null;
 }
 export interface ImportPreview {
-  /** venmo: a Venmo statement, read by its own layout (no columns to confirm). */
-  format: "csv" | "ofx" | "venmo";
+  /** venmo: a Venmo statement, read by its own layout (no columns to confirm); invofx: an investment statement. */
+  format: "csv" | "ofx" | "venmo" | "invofx";
   account_id: string | null;
   account_hint: string | null;
   columns: ImportColumn[];

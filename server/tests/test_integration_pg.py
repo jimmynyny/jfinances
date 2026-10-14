@@ -702,6 +702,109 @@ def test_bank_export_import_never_double_counts(client):
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "bad_file"
 
 
+def test_a_401k_statement_fills_in_contributions_prices_and_value_history(client):
+    """A Vanguard 401(k) statement into the linked account holding the same trust (no
+    public ticker): every entry once though the file repeats it, contributions as new
+    money, a buy the connection has matched, the account's value rebuilt from the
+    statement's holdings and the trust's own trade prices; re-upload adds nothing,
+    undo removes it all."""
+    import base64
+    from datetime import date
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from server.app.models import Account, BalanceSnapshot, Holding, InvestmentTransaction, Security
+    from server.app.services import performance
+    from server.tests.test_invstatement import POS, TRUST, _buy, _ofx
+
+    with db.session() as sess:
+        acct = Account(kind="plaid", name="401(k) Savings Plan", type="investment", subtype="401k", mask="6789",
+                       current_balance=Decimal("1320.00"))
+        bank = Account(kind="plaid", name="Checking", type="depository", subtype="checking", mask="1111")
+        sess.add_all([acct, bank])
+        sess.flush()
+        trust = Security(plaid_security_id="plaid-sec-trust", name="Vanguard Target Retirement 2045 Trust",
+                         type="mutual fund")
+        sess.add(trust)
+        sess.flush()
+        sess.add(Holding(account_id=acct.id, security_id=trust.id, quantity=Decimal("110"),
+                         institution_price=Decimal("12.00"), institution_price_as_of=date(2026, 10, 14),
+                         institution_value=Decimal("1320.00")))
+        # The connection has one buy already (a day later than the statement says).
+        sess.add(InvestmentTransaction(account_id=acct.id, plaid_investment_transaction_id="p-inv-1",
+                                       security_id=trust.id, date=date(2026, 10, 2), type="buy", subtype="buy",
+                                       quantity=Decimal("4"), amount=Decimal("44"), price=Decimal("11")))
+        sess.add(BalanceSnapshot(account_id=acct.id, as_of=date(2026, 10, 13), current_balance=Decimal("1320.00"),
+                                 source="plaid"))
+        acct_id, bank_id, trust_id = str(acct.id), str(bank.id), trust.id
+
+    once = (_buy("A1", "20260901", "5", "10", "50") + _buy("A2", "20260901", "2.5", "10", "25", "MATCH")
+            + _buy("A3", "20261001", "4", "11", "44")
+            + "<INVEXPENSE><INVTRAN><FITID>F1<DTTRADE>20260915</INVTRAN><SECID><UNIQUEID>VGI0001"
+              "<UNIQUEIDTYPE>CUSIP</SECID><TOTAL>-0.50<SUBACCTSEC>CASH<SUBACCTFUND>OTHER</INVEXPENSE>\n"
+            + "<TRANSFER><INVTRAN><FITID>T1<DTTRADE>20260920</INVTRAN><SECID><UNIQUEID>VGI0001"
+              "<UNIQUEIDTYPE>CUSIP</SECID><SUBACCTSEC>CASH<UNITS>0.1<TFERACTION>IN<POSTYPE>LONG"
+              "<UNITPRICE>10.5<INV401KSOURCE>MATCH</TRANSFER>\n")
+    raw = _ofx(once * 3, POS, TRUST, "<INV401K><EMPLOYERNAME>ACME 401(K)</INV401K>")
+    body = {"filename": "OfxDownload.qfx", "content_b64": base64.b64encode(raw).decode()}
+
+    pv = client.post("/api/v1/imports/preview", json=body)
+    assert pv.status_code == 200, pv.text
+    pv = pv.json()
+    assert pv["format"] == "invofx" and pv["account_id"] == acct_id  # by the account number's last four
+    # All older than the connection's first investment transaction (Oct 2): new, not for review.
+    assert pv["counts"] == {"total": 5, "new": 4, "review": 0, "matched": 1, "duplicate": 0, "problems": 0}
+    assert pv["balances"] == {"days": 73, "from": "2026-08-01", "to": "2026-10-12"}
+    assert any("more than once" in n for n in pv["notes"]) and any("contributions" in n for n in pv["notes"])
+    assert not any("Not held" in n for n in pv["notes"])  # the trust is the one the account holds
+    # A bank account is the wrong place for it.
+    wrong = client.post("/api/v1/imports/preview", json={**body, "account_id": bank_id})
+    assert wrong.status_code == 400 and "investment account" in wrong.json()["error"]["message"]
+
+    ticks = [r["index"] for r in pv["rows"] if r["status"] == "review"]
+    r = client.post("/api/v1/imports", json={**body, "account_id": acct_id, "include": ticks})
+    assert r.status_code == 201, r.text
+    imp = r.json()
+    assert (imp["rows_added"], imp["rows_matched"], imp["format"]) == (4, 1, "invofx")
+    assert imp["balances_added"] == 73
+
+    with db.session() as sess:
+        rows = sess.execute(select(InvestmentTransaction).where(
+            InvestmentTransaction.account_id == acct.id, InvestmentTransaction.source == "import")).scalars().all()
+        # The connection's Oct 2 buy says nothing of the paycheck behind it: the statement's contribution joins it.
+        assert sorted((t.type, t.subtype) for t in rows) == [
+            ("buy", "buy"), ("buy", "buy"), ("cash", "contribution"), ("cash", "contribution"),
+            ("cash", "contribution"), ("fee", "account fee"), ("transfer", "transfer")]
+        assert {t.security_id for t in rows if t.quantity} == {trust_id}
+        days = dict(sess.execute(select(BalanceSnapshot.as_of, BalanceSnapshot.current_balance).where(
+            BalanceSnapshot.account_id == acct.id, BalanceSnapshot.source == "derived")).all())
+        # 98.4 units before September's buys at the first trade price, plus the fee not yet taken.
+        assert days[date(2026, 8, 31)] == Decimal("984.50")
+        assert days[date(2026, 9, 1)] == Decimal("1059.50")  # 105.9 units at $10
+        # Between trades the trust's price runs straight from $11 (the connection's Oct 2 buy) to $12 (Oct 14).
+        assert days[date(2026, 10, 12)] == (Decimal("110") * (Decimal(11) + Decimal(10) / Decimal(12))).quantize(
+            Decimal("0.01"))
+        assert date(2026, 10, 13) not in days  # tracked from there
+        perf = performance.account_series(sess, sess.get(Account, acct.id), date(2026, 8, 1), date(2026, 10, 14),
+                                          date(2026, 10, 14))
+        assert perf.tracked_since == date(2026, 10, 13)
+        assert sum(perf.flows.values()) == Decimal("75") + Decimal("1.05") + Decimal("44")
+    hist = client.get("/api/v1/networth/history", params={"range": "1y"}).json()
+    sept1 = next(p for p in hist["points"] if p["date"] == "2026-09-01")
+    assert Decimal(sept1["assets"]) >= Decimal("1059.50")
+
+    again = client.post("/api/v1/imports/preview", json={**body, "account_id": acct_id}).json()
+    assert again["counts"]["duplicate"] == 5  # all in the ledger now, the matched one too
+
+    u = client.delete(f"/api/v1/imports/{imp['id']}")
+    assert u.status_code == 200 and u.json()["removed"] == 7
+    with db.session() as sess:
+        assert not sess.execute(select(InvestmentTransaction).where(InvestmentTransaction.source == "import")).first()
+        assert not sess.execute(select(BalanceSnapshot).where(BalanceSnapshot.account_id == acct.id,
+                                                              BalanceSnapshot.source == "derived")).first()
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal
