@@ -286,6 +286,15 @@
   .mu-side[data-open="true"] { transform: none; }
   .mu-side__toggle { display: inline-flex; }
 }
+/* On a phone or any touch screen the menu and close glyphs are 44px targets with a
+   glyph you can see, not 26px desktop buttons. Negative margins keep the bars' heights. */
+@media (max-width: 900px), (pointer: coarse) {
+  .mu-iconbtn.mu-side__toggle, .mu-iconbtn.mu-drawer__close { flex: none; width: 44px; height: 44px; font-size: 26px; }
+  .mu-side__toggle { margin-left: -10px; }
+  .mu-drawer__close { margin: -8px -10px -8px 0; }
+  .mu-drawer__close .mu-mono { font-size: inherit; }
+  .mu-toast__close { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; margin: -12px -12px -12px 0; font-size: 20px; }
+}
 
 /* ---------- ViewToggle ---------- */
 .mu-viewtoggle__opt { display: inline-flex; align-items: center; gap: 6px; }
