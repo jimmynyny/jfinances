@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The window's colours (the launch screen and what shows before Compose draws):
+     tokens from kit/ui/Theme.kt, whose palette is the one source of the rest. -->
+<resources>
+    <color name="jf_page">#0F1012</color>
+    <color name="jf_panel">#161719</color>
+    <color name="jf_accent">#FF6A34</color>
+</resources>

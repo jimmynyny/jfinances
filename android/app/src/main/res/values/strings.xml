@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">jfinances</string>
+    <string name="widget_net_worth">Net worth</string>
+    <string name="widget_net_worth_description">Net worth, its 30-day change and line.</string>
+    <string name="widget_month">This month</string>
+    <string name="widget_month_description">Money in and out this month, and where it went.</string>
+    <string name="widget_upcoming">Coming up</string>
+    <string name="widget_upcoming_description">Subscriptions and bills expected in the next two weeks.</string>
+    <string name="widget_account">Account</string>
+    <string name="widget_account_description">One account\'s balance and trend.</string>
+</resources>

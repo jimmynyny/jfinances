@@ -30,6 +30,8 @@ Every service runs migrations before it starts (`start.sh` → `server.tools.rel
 ## Code
 - Python: `uv run ruff check server && uv run pytest` before pushing.
 - Frontend: `npm run typecheck && npm run lint && npm run build`.
+- Android: `cd android && ./gradlew :app:testDebugUnitTest :app:assembleDebug`. The iPhone and Android apps are
+  twins (docs/85, docs/86): a screen or widget changed in one is changed in the other.
 - Design system lives in `packages/ui` (`@mooney/ui`). New UI goes through it; do not hand-roll styles in `frontend/`.
 - Money is `numeric`, never float. Plaid's sign convention (positive = outflow) is preserved in `transactions.amount`.
 - UI copy never names Plaid (or other plumbing): say bank, connection, institution. The public privacy page is the exception (Plaid's terms require the disclosure).

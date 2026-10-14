@@ -3,14 +3,15 @@
 Things deliberately *not* built yet, with the hooks left in place so they
 do not require a redesign.
 
-## iOS app: next steps
+## Phone apps: next steps
 
-The link flow and read-only phone tokens are built (docs/40 §5). Reserved:
+The link flow and read-only phone tokens are built for iPhone and Android
+(docs/40 §5, docs/85, docs/86). Reserved:
 
 - Writes from the phone (sync now, dismiss an alert, confirm a
   subscription). Each one is a deliberate decision: today `current_user`
   refuses every non-GET from a token.
-- Push notifications for alerts (needs APNs keys and a sender in `worker`).
+- Push notifications for alerts (needs APNs keys, FCM for Android, and a sender in `worker`).
 
 ## Google login in Access
 

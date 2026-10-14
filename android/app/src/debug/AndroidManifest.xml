@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: the widget gallery (Scripts/emu-tour.sh widgets). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".widgets.WidgetGalleryActivity"
+            android:exported="true"
+            android:theme="@style/Theme.JFinances" />
+    </application>
+</manifest>

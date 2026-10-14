@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window behind Compose: the desk colour, edge to edge. The launch
+         screen is the same colour with the icon, as iOS's LaunchBackground. -->
+    <style name="Theme.JFinances" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/jf_page</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">@color/jf_accent</item>
+        <item name="android:windowSplashScreenBackground">@color/jf_page</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/jf_panel</item>
+    </style>
+</resources>

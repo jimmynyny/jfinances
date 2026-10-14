@@ -14,7 +14,7 @@ If code and this doc disagree, fix one of them the same day.
                  Cloudflare (DNS proxy, WAF, Access)
                               │
      ┌────────────────────────┼─────────────────────────────┐
-     │ jfinances.sellingtcg.com│ jfinances-hooks.sellingtcg.com│ jfinances-api.sellingtcg.com (iOS app)
+     │ jfinances.sellingtcg.com│ jfinances-hooks.sellingtcg.com│ jfinances-api.sellingtcg.com (phone apps)
      │   behind Access         │   NO Access (Plaid posts here)│   NO Access (app-issued bearer tokens)
      ▼                         ▼                               ▼
  ┌────────┐              ┌─────────┐                     (same `web` service, second hostname)
@@ -125,8 +125,9 @@ trades the two-minute code it is handed for an app-issued 256-bit token, and
 sends `Authorization: Bearer` on the API hostname. Only SHA-256 hashes are
 stored (`mobile_link_codes`, `api_tokens`). The token resolves to a `users`
 row, so disabling the user stops the phone, and it is **read-only**:
-`current_user` refuses anything but GET/HEAD/OPTIONS from a token. Details in
-docs/40 §5.
+`current_user` refuses anything but GET/HEAD/OPTIONS from a token. The iPhone
+app (docs/85) and the Android app (docs/86) link this way; Android adds PKCE,
+because another app can claim its redirect. Details in docs/40 §5.
 
 **Principals.** `auth/deps.py` exposes `current_user()` which resolves a
 `Principal(email, user_id, via="access"|"token")`. Routers depend on it and

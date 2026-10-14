@@ -1,0 +1,167 @@
+# 86 — The Android app and widgets
+
+`android/` holds a native Jetpack Compose app, **jfinances**, and four
+home-screen widgets drawn with Glance. It is the iPhone app (docs/85) on
+Android: the same screens, the same reads, the same design-system dress, and it
+changes nothing: a phone's token is read-only on the server (docs/40 §5).
+
+## 1. What is in it
+
+The five tabs read what the iPhone's read, field for field:
+
+| Tab | What | Server reads |
+|---|---|---|
+| Overview | net worth readout and line (1m–all), owned / owed, this month in and out with top categories, the next 14 days of charges, alerts, totals by kind; a banner when a bank wants re-linking | `/glance`, `/networth/history`, `/alerts` |
+| Accounts | every visible account by kind with its dot-matrix trend; an account shows its balance line, credit use, the lender's details, performance and holdings (investments), and its transactions | `/overview`, `/accounts/{id}/history`, `/liabilities`, `/investments/performance`, `/holdings`, `/transactions` |
+| Activity | all transactions by day; search, account and category filters; tap for the full record and its account | `/transactions`, `/transactions/categories`, `/accounts` |
+| Insights | cash flow, spending (by category, then merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks | `/insights/*`, `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
+| Settings | who and which server, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
+
+**Blur**: the "blur" button top-right on every screen (and a switch in
+Settings) blurs every figure, radius scaled to the text, as on the web and the
+iPhone.
+
+**Widgets**, all from one `GET /glance` cached for five minutes so several
+widgets make one request; refreshed every 30 minutes (WorkManager, with a
+network) and whenever the app refreshes:
+
+| Widget | Sizes | Options |
+|---|---|---|
+| Net worth | small (2 × 2), medium (4 × 2) | show amounts |
+| This month | small, medium, large (4 × 4: waffle of categories) | show amounts |
+| Coming up | small, medium, large | show amounts |
+| Account | small, fixed | account, show amounts |
+
+A widget draws small, medium or large from the size the launcher gives it, so
+resizing one changes its layout. "Show amounts" off replaces figures with dots
+for a home screen others see; touch and hold a widget, then the pencil, for its
+options. Tapping a widget opens the matching screen (`jfinances://overview`,
+`://insights/cashflow`, `://insights/subscriptions`, `://account/<id>`). The
+widget picker (Android 15+) previews each widget with made-up figures, as the
+iPhone's gallery does.
+
+## 2. Signing in
+
+The sign-in screen picks a server (production or sandbox) and opens
+`GET /api/v1/mobile/link` on that dashboard hostname in a Custom Tab (Chrome's
+cookies, so an Access session already open there makes it one tap); Cloudflare
+Access asks for the emailed code; the server bounces to
+`jfinances://linked?code=…&nonce=…`, which comes back to the app.
+
+⚠ Unlike iOS's web-auth session, an Android redirect to a custom scheme can be
+claimed by any installed app, so this app links with **PKCE**: it sends
+`method=S256` and, as the nonce, `BASE64URL(SHA-256(verifier))` of a 384-bit
+secret it keeps; it checks the redirect answers that attempt and redeems with
+`{code, verifier, name}` on the API hostname. The verifier never travels in a
+URL, so a code read off the redirect is useless (docs/40 §5). The attempt
+survives Android ending the app while the browser is open (preferences, 15
+minutes).
+
+The token, its server and its person are encrypted with an AES-GCM key that
+never leaves the Android Keystore, in no-backup storage; backups and
+device-to-device transfer exclude everything (`data_extraction_rules.xml`), so
+a restored phone signs in again, as iOS's `ThisDeviceOnly`. The app and its
+widgets are one process, so they share the credential directly. A 401 for the
+token signs the phone out. The name the dashboard's Settings → phones shows is
+"<maker> <model> · Android <version>".
+
+Production needs `API_HOST=jfinances-api.sellingtcg.com` on the production
+`web` service and its Cloudflare CNAME (docs/55); until then the app's default
+server is sandbox (`DEFAULT_SERVER` in `app/build.gradle.kts`).
+
+## 3. Layout
+
+```
+android/
+  settings.gradle.kts, build.gradle.kts, gradle/   one module (:app); versions in gradle/libs.versions.toml;
+                                                   the wrapper pins Gradle by checksum
+  app/build.gradle.kts     minSdk 31 (Android 12), target 36; the build number and the release signing
+                           come from Gradle properties (Scripts/deploy-apk.sh passes them)
+  app/src/main/kotlin/com/daedalustcg/jfinances/
+    kit/                   what JFinancesKit is on iOS:
+      api/                   ApiClient (GETs with the phone's bearer, redeem with the verifier, unlink)
+      models/                the dashboard's JSON, field for field; Flex decodes "12.50" or 12.5
+      storage/               Server (hostnames), Keychain (Keystore-sealed credential), GlanceCache, Prefs
+      ui/                    tokens (colours, Plex + Doto faces), Readout, Panel, Delta, MoneyText,
+                             pixel sparkline / meter / bars / waffle, blur, Fmt (iOS's rounding)
+    app/                   AppModel, LinkService (Custom Tab + PKCE), tabs and stacks, the floating tab bar
+    components/            the screen scaffold (large titles, glass buttons, loader), rows, charts
+    screens/               Overview, Accounts, Activity, Insights, Settings, sign-in
+    widgets/               the four Glance widgets, their options screen, the 30-minute refresh
+  app/src/main/res/        fonts (the iOS app's files), colours (light and dark), icon, widget declarations
+  app/src/debug/           127.0.0.1 over plain HTTP, and the widget gallery: debug builds only
+  app/src/test/            unit tests for the kit (decoding, formatting, cells, axes)
+  Scripts/
+    deploy-apk.sh          build, sign with this Mac's key, serve on the tailnet (or install over USB)
+    emu-tour.sh            screenshots of every screen on an emulator, against a local server
+    make-icon.py           the adaptive icon: the iOS icon's PixelSparkline on the dark panel
+```
+
+## 4. Building and installing
+
+```
+cd android
+Scripts/deploy-apk.sh          # prints https://<this mac>.ts.net/jfinances-android/ ; open it in Chrome on the phone
+Scripts/deploy-apk.sh --adb    # or install on a phone plugged in with USB debugging on
+```
+
+It builds the release APK (R8-shrunk, about 4 MB) with a build number of
+minutes since 2026-01-01, so every build installs over the last, signs it, and
+serves it through `tailscale serve` at `/jfinances-android`, beside the
+iPhone's `/jfinances`. The phone needs Tailscale on and to allow Chrome to
+install apps; the Mac must stay awake while it downloads. Stop serving with
+`tailscale serve --set-path /jfinances-android off`.
+
+⚠ **The release key.** The first run makes a 4096-bit key in
+`~/Library/Application Support/JFinances/android/` (outside the repository and
+outside Dropbox), with its password in `release.properties` beside it, both
+mode 600; nothing prints either. Android installs an update only when the same
+key signed it, so keep that folder: lose it and the phone must uninstall the
+app (and sign in again) before a build signed with a new key installs. A debug
+build is signed with a different key, so it does not install over a release
+one either.
+
+JDK 21 and the Android SDK (platform 37, build tools 36) are what it builds
+with; `JAVA_HOME` and `ANDROID_HOME` default to the Homebrew JDK and
+`~/Library/Android/sdk`. Tests: `./gradlew :app:testDebugUnitTest`.
+
+## 5. Looking at it without a phone
+
+```
+API_HOST=127.0.0.1 uv run uvicorn server.app.web:app --port 8001   # repo root, local DB
+JF_DEBUG_TOKEN=<token> android/Scripts/emu-tour.sh /tmp/tour [dark|light]
+```
+
+Debug builds add a `local` server (the dashboard on 127.0.0.1:8000, the API on
+:8001, reached from the emulator over `adb reverse`; plain HTTP to 127.0.0.1 is
+allowed in debug builds only). The tour installs the debug build, signs it in
+with the token (an intent extra, never printed), walks every screen through
+deep links and writes a PNG per stop. Without a token it uses the emulator's
+existing sign-in; the real flow works locally too, since the local dashboard
+logs in as `DEV_LOGIN_EMAIL`.
+
+`adb shell am start -n com.daedalustcg.jfinances/.widgets.WidgetGalleryActivity`
+(debug builds) draws every widget at small, medium and large through Glance's
+RemoteViews, as a launcher would; `--es only month` narrows it, `--ez
+hide_amounts true` hides figures, and `--es pin account` asks the launcher to
+add that widget to the home screen. `./gradlew :app:assembleDebug -PjfMinify`
+builds a debug-type app optimised and renamed as R8 does a release, still with
+the local server, to run the tour against release-shaped code.
+
+## 6. Where it differs from the iPhone app
+
+- **No Lock Screen widgets.** Android phones have none; the iPhone's
+  accessory widgets (inline, circular, rectangular) have no counterpart, and
+  neither does `privacySensitive` (a locked Android phone does not show
+  home-screen widgets).
+- **Widget type.** A launcher cannot load a font or run a Canvas, so the
+  widgets draw their Plex and Doto text and pixel pieces into alpha masks and
+  tint them with the colour resources on the launcher, which keeps dark mode
+  live without a redraw. The picker's stored previews need full ARGB masks.
+- **Glyphs.** Material symbols stand in for SF Symbols; the Overview and
+  Activity tab glyphs are drawn to match `square.grid.2x2.fill` and
+  `list.bullet.rectangle.fill`.
+- **Glass.** The floating tab bar and the top-bar buttons are drawn as iOS
+  26's glass: a near-opaque fill and a hairline edge, without the live blur of
+  what scrolls beneath.
+- **Search** sits under the Activity title as a field, as iOS's search drawer.

@@ -19,6 +19,7 @@ and liabilities on a dashboard. No budgeting, no payments, no third parties.
 | Services | `web` (SPA + API), `hooks` (Plaid webhooks), `worker` (sync jobs + scheduler) — one image, three Railway services |
 | Edge | Cloudflare DNS + Access (one-time PIN, email allowlist); app re-verifies the Access JWT |
 | Deploys | Manual: `railway up --service <name> --ci` |
+| Phones | Read-only apps with home-screen widgets: SwiftUI in `ios/` (docs/85), Jetpack Compose in `android/` (docs/86) |
 
 Full documentation is in [`docs/`](docs/00-overview.md). Start with
 [`docs/10-architecture.md`](docs/10-architecture.md).

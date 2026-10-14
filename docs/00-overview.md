@@ -19,6 +19,7 @@ Read in this order:
 | `70-design-system.md` | `@mooney/ui`: tokens, components, charts, reuse in other dashboards. |
 | `80-api.md` | Every endpoint with examples. |
 | `85-ios.md` | The iPhone app and widgets: screens, sign-in, building, installing. |
+| `86-android.md` | The Android app and widgets, the iPhone app's twin; where they differ. |
 | `90-roadmap.md` | Phone writes, Google login, tailoring ideas, out-of-scope list. |
 
 Principles that every change should respect:
