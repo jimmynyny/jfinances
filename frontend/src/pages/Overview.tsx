@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AreaChart, Badge, Delta, EmptyState, Money, Page, PageHeader, Panel, PixelCalendar, PixelMeter, Readout, Segmented, Skeleton,
+  AreaChart, Badge, Delta, EmptyState, Money, Num, Page, PageHeader, Panel, PixelCalendar, PixelMeter, Readout, Segmented, Skeleton,
   formatDate, formatMoney, seriesColor, type CalendarDay,
 } from "@mooney/ui";
 import { useHistory, useOverview } from "../api/hooks";
@@ -90,7 +90,7 @@ export function OverviewPage() {
           <Readout
             value={formatMoney(d.net_worth, { cents: false })}
             delta={d.change_1m ? <Delta amount={d.change_1m.amount} pct={d.change_1m.pct ?? undefined} label="1 month" /> : undefined}
-            note={`${formatMoney(d.assets, { cents: false })} assets − ${formatMoney(d.liabilities, { cents: false })} liabilities`}
+            note={<><Num>{formatMoney(d.assets, { cents: false })}</Num> assets − <Num>{formatMoney(d.liabilities, { cents: false })}</Num> liabilities</>}
           />
         ) : <Skeleton width={320} height={56} />}
         <div className="jf-hero__chart">
@@ -176,7 +176,7 @@ function Split({ total, groups }: { total?: number; groups: OverviewGroup[] }) {
   const denom = groups.reduce((s, g) => s + Math.max(0, g.total), 0);
   return (
     <div className="jf-figure">
-      <div className="jf-figure__value">{formatMoney(total, { cents: false })}</div>
+      <div className="jf-figure__value"><Num>{formatMoney(total, { cents: false })}</Num></div>
       {groups.length > 0 ? (
         <>
           <PixelMeter size="lg" cells={30} segments={groups.map((g) => ({ value: Math.max(0, g.total), color: groupColor(g.key), label: g.label }))} />
@@ -185,7 +185,7 @@ function Split({ total, groups }: { total?: number; groups: OverviewGroup[] }) {
               <Fragment key={g.key}>
                 <span className="mu-cell" style={{ background: groupColor(g.key) }} aria-hidden />
                 <span>{g.label}</span>
-                <span className="mu-caption">{denom > 0 ? `${Math.round((Math.max(0, g.total) / denom) * 100)}%` : ""}</span>
+                <span className="mu-caption"><Num>{denom > 0 ? `${Math.round((Math.max(0, g.total) / denom) * 100)}%` : ""}</Num></span>
                 <Money value={g.total} cents={false} />
               </Fragment>
             ))}

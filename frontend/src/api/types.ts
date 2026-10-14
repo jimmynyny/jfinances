@@ -512,3 +512,51 @@ export interface Performance {
   benchmarks: BenchmarkLine[];
   available: Array<{ key: string; label: string; available: boolean; since: string | null; note: string }>;
 }
+
+// --- Net worth and debt (GET /insights/{networth,homes,loans,cards}; docs/80) ------------------
+
+export interface NetWorthByClass {
+  groups: Array<{ key: string; label: string; liability: boolean }>;
+  /** Month ends; each group key holds that group's total (debts positive). */
+  points: Array<{ date: string; assets: number; liabilities: number; net: number; [group: string]: number | string }>;
+}
+
+export interface Home {
+  id: string;
+  name: string;
+  category: string;
+  value: number;
+  owed: number;
+  equity: number;
+  ltv: number | null;
+  loans: Array<{ id: string; name: string; mask: string | null; balance: number; rate: number | null }>;
+  history: Array<{ date: string; value: number; owed: number; equity: number }>;
+}
+
+export interface LoanPayoff {
+  id: string;
+  name: string;
+  kind?: string;
+  balance: number;
+  rate: number | null;
+  scheduled_payment?: number | null;
+  maturity_date?: string | null;
+  ytd_interest?: number | null;
+  note?: string;
+  schedule: null | {
+    payment: number;
+    payoff: string | null;
+    months: number | null;
+    interest: number | null;
+    per_year: Array<{ year: number; interest: number; principal: number }>;
+  };
+  what_if?: null | { extra: number; payoff: string; months: number; interest: number; months_saved: number; interest_saved: number };
+}
+
+export interface CardsInsight {
+  cards: Array<{ id: string; name: string; mask: string | null; limit: number | null; balance: number; utilization: number | null;
+    history: Array<{ date: string; balance: number; utilization: number | null }> }>;
+  overall: Array<{ date: string; utilization: number | null }>;
+  charges: Array<{ month: string; interest: number; fees: number }>;
+  totals: { interest: number; fees: number };
+}

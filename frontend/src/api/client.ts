@@ -2,6 +2,7 @@ import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
   Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
+  CardsInsight, Home, LoanPayoff, NetWorthByClass,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
@@ -36,6 +37,16 @@ function change(v: unknown): Change | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Raw;
   return { amount: n0(r.amount), pct: toNumber(r.pct), since: str(r.since) ?? undefined };
+}
+
+/** Decimal strings ("12.50") to numbers, recursively, leaving dates and words alone. */
+const DECIMAL = /^-?\d+(\.\d+)?$/;
+const KEEP_STRING = new Set(["id", "name", "label", "mask", "key", "kind", "category", "note", "source"]);
+function numbers(v: unknown, key = ""): unknown {
+  if (typeof v === "string") return !KEEP_STRING.has(key) && DECIMAL.test(v) ? Number(v) : v;
+  if (Array.isArray(v)) return v.map((x) => numbers(x));
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, numbers(x, k)]));
+  return v;
 }
 
 type UpcomingCadence = RecurringStream["cadence"];
@@ -473,6 +484,12 @@ export const api = {
     };
   },
   refreshPrices: () => request("POST", "/prices/refresh"),
+  // Net worth and debt: decimal strings become numbers all the way down.
+  netWorthByClass: async (range: string): Promise<NetWorthByClass> => numbers(await request("GET", "/insights/networth", undefined, { range })) as NetWorthByClass,
+  homes: async (): Promise<Home[]> => numbers((await request("GET", "/insights/homes")).homes) as Home[],
+  loanPayoffs: async (extra: number): Promise<LoanPayoff[]> =>
+    numbers((await request("GET", "/insights/loans", undefined, { extra: extra > 0 ? extra : undefined })).loans) as LoanPayoff[],
+  cardsInsight: async (range: string): Promise<CardsInsight> => numbers(await request("GET", "/insights/cards", undefined, { range })) as CardsInsight,
   insightPatterns: async (s: InsightSlice, category?: string | null): Promise<PatternsInsight> => {
     const r = await request("GET", "/insights/patterns", undefined, sliceQuery(s, { category }));
     return {

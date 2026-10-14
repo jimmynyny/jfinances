@@ -1,5 +1,5 @@
 import {
-  Badge, DataTable, EmptyState, KeyValue, Money, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select, Skeleton,
+  Badge, DataTable, EmptyState, KeyValue, Money, Num, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select, Skeleton,
   ViewToggle, formatDate, formatPct, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useLiabilities, useUpdateAccount } from "../api/hooks";
@@ -54,8 +54,11 @@ function Progress({ r, size = "lg", cells = 30 }: { r: Row; size?: "sm" | "lg"; 
   );
 }
 
-/** The no-break space keeps the mask with the institution's last word when the line wraps. */
-const where = (a: Account) => `${a.institution_name ?? ""}${a.mask ? `\u00a0··${a.mask}` : ""}`;
+/** Institution and last 4 (blurred with the numbers). The no-break space keeps the mask with the
+ *  institution's last word when the line wraps. */
+const where = (a: Account) => (a.institution_name || a.mask
+  ? <>{a.institution_name ?? ""}{a.mask ? <>{"\u00a0··"}<Num>{a.mask}</Num></> : null}</>
+  : null);
 
 type SortMode = "amount" | "name";
 const SORT_MODES: readonly SortMode[] = ["amount", "name"];

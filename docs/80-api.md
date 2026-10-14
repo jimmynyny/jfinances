@@ -292,6 +292,27 @@ is one value per month of the range.
 `weekdays[{weekday 0=Mon, total, per_day}]` and `month_days[{day, total,
 per_day}]`; `per_day` divides by how many of that day the range holds.
 
+### GET /insights/networth?range=1y|2y|5y|10y
+Month-end totals per account group (the net worth chart's rules): `{groups[{key, label,
+liability}], points[{date, assets, liabilities, net, <group key>…}]}`; debts are positive.
+
+### GET /insights/homes
+`{"homes":[{id, name, category, value, owed, equity, ltv, loans[{id, name, mask, balance,
+rate}], history[{date, value, owed, equity}]}]}`: real estate (and other property with a
+loan linked by `secured_by_id`), month ends for two years.
+
+### GET /insights/loans?extra=0
+`{"extra", "loans":[{id, name, kind, balance, rate, scheduled_payment, maturity_date,
+ytd_interest, schedule{payment, payoff, months, interest, per_year[{year, interest,
+principal}]}, what_if{extra, payoff, months, interest, months_saved, interest_saved}}]}`.
+`payment` is principal and interest from an amortization to the maturity date (the bill
+may include escrow); `ytd_interest` is the lender's figure when reported.
+
+### GET /insights/cards?range=1y
+`{cards[{id, name, mask, limit, balance, utilization, history[…]}], overall[{date,
+utilization}], charges[{month, interest, fees}], totals{interest, fees}}`: utilization
+against today's limits; interest and fees from `BANK_FEES_*` transactions.
+
 ## Subscriptions and alerts
 Found in transactions after every sync (docs/20 `recurring_streams`).
 

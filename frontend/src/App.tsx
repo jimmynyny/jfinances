@@ -4,6 +4,7 @@ import { AppShell, Badge, type NavItem } from "@mooney/ui";
 import { useMe } from "./api/hooks";
 import { ApiError } from "./api/client";
 import { SyncIndicator } from "./components/SyncIndicator";
+import { BlurToggle } from "./components/BlurToggle";
 import { OverviewPage } from "./pages/Overview";
 import { AccountsPage } from "./pages/Accounts";
 import { TransactionsPage } from "./pages/Transactions";
@@ -85,7 +86,7 @@ export function App() {
         </NavLink>
       )}
       title={<span className="mu-bracket">{title.toLowerCase()}</span>}
-      topbar={<SyncIndicator />}
+      topbar={<><SyncIndicator /><BlurToggle /></>}
       footer={
         <>
           <span>{me.data?.email ?? "…"}</span>

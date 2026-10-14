@@ -310,3 +310,16 @@
 .mu-listrow__title { display: flex; align-items: center; gap: var(--mu-s2); flex-wrap: wrap; }
 .mu-listrow__value { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .mu-listrow__actions { flex: none; display: flex; gap: var(--mu-s1); }
+
+
+/* Blur numbers (privacy for screenshots): <html data-blur="on">, switched from the top bar. Every number
+   the kit draws carries one of these classes; anything else goes in <Num>. Words, dates and shapes stay. */
+:root[data-blur="on"] :is(
+  .mu-num, .mu-money, .mu-delta, .mu-stat__value, .mu-readout__value, .mu-readout__unit, .mu-pmeter__val,
+  .mu-table td.mu-td--num, .mu-legend__value, .mu-donut__val, .mu-donut__pct, .mu-donut__center,
+  .mu-waffle__val, .mu-waffle__pct, .mu-pcal__summary, .mu-pcal__scale, .mu-pbars__unit,
+  .mu-chart__tip-v, .mu-chart__endlabel, .mu-chart__tick--y, .mu-flow__value
+) {
+  filter: blur(5px);
+  user-select: none;
+}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  Badge, Button, Checkbox, DataTable, Drawer, Input, Money, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
+  Badge, Button, Checkbox, DataTable, Drawer, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
@@ -259,7 +259,7 @@ function TxnForm({ t, account, onShowAccount, onSave }: {
         <div className="mu-stack">
           <span className="mu-caption">account</span>
           <dl className="mu-kv">
-            <dt>name</dt><dd>{account.name}{account.mask ? ` ··${account.mask}` : ""}</dd>
+            <dt>name</dt><dd>{account.name}{account.mask ? <> ··<Num>{account.mask}</Num></> : null}</dd>
             <dt>institution</dt><dd>{account.institution_name ?? "—"}</dd>
             <dt>type</dt><dd>{account.subtype ?? GROUP_LABEL[groupOf(account)]}</dd>
             <dt>{account.is_liability ? "owed now" : "balance now"}</dt><dd><Money value={account.current_balance ?? 0} currency={account.iso_currency} /></dd>

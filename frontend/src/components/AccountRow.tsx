@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { Badge, Delta, Money, PixelSparkline, formatRelative } from "@mooney/ui";
+import { Badge, Delta, Money, Num, PixelSparkline, formatRelative } from "@mooney/ui";
 import type { Account } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
 
@@ -38,7 +38,7 @@ export function AccountRow({ account: a, upIsGood = true, actions, showStatus = 
           <div className="jf-acct__name">{a.name}</div>
         )}
         <div className="jf-acct__meta mu-caption">
-          <span>{a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? ` ··${a.mask}` : ""}</span>
+          <span>{a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? <> ··<Num>{a.mask}</Num></> : null}</span>
           {a.subtype && <span>· {a.subtype.replace(/_/g, " ")}</span>}
           {showStatus && (needs || a.kind === "manual") && <Badge tone={itemStatusTone(a.item_status)}>{itemStatusLabel(a.kind === "manual" ? null : a.item_status)}</Badge>}
           {a.is_hidden && <Badge dot={false}>hidden</Badge>}

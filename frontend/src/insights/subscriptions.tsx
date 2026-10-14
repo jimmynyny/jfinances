@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
-  Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Panel, Segmented, Skeleton, formatDate, useToast, type Column,
+  Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Num, Panel, Segmented, Skeleton, formatDate, useToast, type Column,
 } from "@mooney/ui";
 import { ApiError } from "../api/client";
 import { useAlerts, useDetectRecurring, useDismissAlert, useRecurring, useUpcoming, useUpdateRecurring } from "../api/hooks";
@@ -41,7 +41,7 @@ function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: strin
       <div className="mu-listrow__main">
         <div className="mu-listrow__title">{s.label} {s.is_business && <Badge dot={false}>business</Badge>} <PriceStep s={s} /></div>
         <div className="mu-caption">
-          {CADENCE[s.cadence]} · next {formatDate(s.next_date)}{s.account_name ? ` · ${s.account_name}${s.account_mask ? ` ··${s.account_mask}` : ""}` : ""}
+          {CADENCE[s.cadence]} · next {formatDate(s.next_date)}{s.account_name ? <> · {s.account_name}{s.account_mask ? <> ··<Num>{s.account_mask}</Num></> : null}</> : null}
           {s.category ? ` · ${categoryLabel(s.category)}` : ""}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  AreaChart, Badge, Button, Delta, Drawer, EmptyState, KeyValue, Money, Readout, Segmented, Skeleton,
+  AreaChart, Badge, Button, Delta, Drawer, EmptyState, KeyValue, Money, Num, Readout, Segmented, Skeleton,
   formatDate, formatMoney, formatRelative,
 } from "@mooney/ui";
 import { useAccountHistory, useAccounts } from "../api/hooks";
@@ -49,7 +49,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
       {a && (
         <>
           <div className="mu-caption">
-            {a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? ` ··${a.mask}` : ""} · {(a.subtype ?? a.manual_category ?? a.type).replace(/_/g, " ")}
+            {a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? <> ··<Num>{a.mask}</Num></> : null} · {(a.subtype ?? a.manual_category ?? a.type).replace(/_/g, " ")}
           </div>
           <Readout
             size="md"
@@ -78,7 +78,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
               { key: "last update", value: a.balance_updated_at ? formatDate(a.balance_updated_at.slice(0, 10), { year: true }) : "—" },
               ...(securedBy ? [{ key: "secured by", value: securedBy.name }] : []),
               ...(loans.length > 0 ? [
-                { key: "loans", value: <>{loans.map((x) => <div key={x.id}>{x.name}{x.mask ? ` ··${x.mask}` : ""} · <Money value={x.current_balance ?? 0} cents={false} /></div>)}</> },
+                { key: "loans", value: <>{loans.map((x) => <div key={x.id}>{x.name}{x.mask ? <> ··<Num>{x.mask}</Num></> : null} · <Money value={x.current_balance ?? 0} cents={false} /></div>)}</> },
                 { key: "equity", value: <Money value={(a.current_balance ?? 0) - owedOnIt} currency={a.iso_currency} cents={false} /> },
               ] : []),
               ...(carried > 0 ? [{ key: "carried days", value: `${carried} in range (no fresh balance those days)` }] : []),

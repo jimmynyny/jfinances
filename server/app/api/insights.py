@@ -7,6 +7,7 @@ accounts.is_business) and repeatable `account_id`. Read-only.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
-from ..services import insights
+from ..services import insights, wealth
 from ..services.insights import Filters, Grain, Scope
 from ._common import ApiError, parse_uuid
 from ._common import plain as _json
@@ -86,3 +87,40 @@ def patterns(category: str | None = None, s: Slice = Depends(), _: Principal = D
     f = s.filters
     data = insights.patterns(insights.load_rows(sess, f), f, category=category)
     return _json({**s.echo(), "category": category, **data})
+
+
+# --- net worth and debt (services/wealth.py) ----------------------------------------------------
+
+WEALTH_RANGES = {"1y": 12, "2y": 24, "5y": 60, "10y": 120}
+
+
+def _months_back(today: date, months: int) -> date:
+    m = today.month - 1 - months
+    return date(today.year + m // 12, m % 12 + 1, 1)
+
+
+@router.get("/insights/networth")
+def networth_by_class(range: str = "2y", _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Net worth by asset class at each month end."""
+    today = datetime.now(UTC).date()
+    return _json(wealth.by_class(sess, _months_back(today, WEALTH_RANGES.get(range, 24)), today))
+
+
+@router.get("/insights/homes")
+def homes(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Each home (and other property with loans): value, owed, equity, loan-to-value, history."""
+    return _json({"homes": wealth.homes(sess, datetime.now(UTC).date())})
+
+
+@router.get("/insights/loans")
+def loans(extra: Decimal = Query(default=Decimal(0), ge=0, le=100000), _: Principal = Depends(current_user),
+          sess: Session = Depends(get_session)):
+    """Payoff schedule per loan; `extra` is a monthly amount to see what paying more would save."""
+    return _json({"extra": extra, "loans": wealth.loans_payoff(sess, datetime.now(UTC).date(), extra)})
+
+
+@router.get("/insights/cards")
+def cards(range: str = "1y", _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Utilization per card and overall by month, and interest and fees charged."""
+    today = datetime.now(UTC).date()
+    return _json(wealth.cards(sess, _months_back(today, WEALTH_RANGES.get(range, 12)), today))

@@ -90,7 +90,7 @@ export function BarChart({
             {plot.ticks.map((t) => (
               <g key={t} transform={`translate(0,${plot.sy(t).toFixed(1)})`}>
                 <line className="mu-chart__grid" x1={0} x2={plot.w} />
-                <text className="mu-chart__tick" x={-8} dy="0.35em" textAnchor="end">{formatValue(t)}</text>
+                <text className="mu-chart__tick mu-chart__tick--y" x={-8} dy="0.35em" textAnchor="end">{formatValue(t)}</text>
               </g>
             ))}
             <line className="mu-chart__axis" x1={0} x2={plot.w} y1={plot.zero} y2={plot.zero} />
