@@ -663,6 +663,8 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     rows += [(ago(n), "45.00", "Shell", "TRANSPORTATION") for n in (100, 80, 45, 30)] + [(ago(5), "180.00", "Shell",
                                                                                          "TRANSPORTATION")]
     rows += [(ago(6), "412.40", "Delta", "TRAVEL"), (ago(5), "412.40", "Delta", "TRAVEL")]  # charged twice
+    rows += [(d, a, "Trader Joe's", "FOOD_AND_DRINK") for d, a in
+             zip([add_months(ago(9), -3 * k) for k in (2, 1, 0)], ["63.29", "64.10", "62.80"], strict=True)]  # shopping
     with db.session() as sess:
         card = Account(kind="plaid", name="Sub card", type="credit", subtype="credit card", is_liability=True)
         sess.add(card)

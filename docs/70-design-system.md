@@ -135,6 +135,7 @@ import { Button, Panel, Money } from "@mooney/ui";
 | `Skeleton` | `width`, `height`, `lines` | Shimmer respects reduced motion. |
 | `KeyValue` | `items[{key,value}]`, `align` | Mono keys, tabular values. |
 | `.mu-linkbtn` (class) | on a `<button>` | Reads as inline underlined text: a drill-down inside a list row (Insights' category names). Focus ring like every control. |
+| `.mu-listrow` (class) | `__lead`, `__main`, `__title`, `__value`, `__actions` | One item in a stacked list: an optional lead (a date), title + caption, a right-aligned tabular value, actions; hairline between rows. The row never wraps; the main text wraps in its own column so dates and amounts keep their places. Subscriptions, alerts, upcoming charges. |
 | `PageHeader` / `Page` | `title`, `subtitle`, `actions` | Page container is max 1480px with 16px gutters. |
 | `AppShell` | `brand`, `brandAside`, `groups[{label, items[{to,label,icon}]}]`, `renderLink`, `title`, `topbar`, `footer` | Router-agnostic: `renderLink(item, className)` returns your `<NavLink>`. Collapses to a slide-in drawer under 900px. |
 

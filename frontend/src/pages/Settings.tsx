@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
+import { SubscriptionSettings } from "../insights/subscriptions";
 
 const MANUAL: Array<{ value: ManualCategory; label: string }> = [
   { value: "real_estate", label: "Real estate" },
@@ -129,6 +130,7 @@ export function SettingsPage() {
         />
       </Panel>
 
+      <SubscriptionSettings />
       <Panel flush caption="sync" foot={sync.data ? `last webhook ${formatRelative(lastWebhook)} · refreshes every 10s` : undefined}>
         <DataTable className="jf-stack-sm" columns={jobCols} rows={(sync.data?.jobs ?? []).slice(0, 20)} rowKey={(j) => j.id} compact empty="No recent jobs." />
       </Panel>

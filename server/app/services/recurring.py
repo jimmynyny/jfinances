@@ -13,16 +13,19 @@ out; not transfers, not card or loan payments) become recurring streams:
    cadence, weekly to annual, within that cadence's tolerance, and it has
    enough charges (three up to monthly, two beyond). Amounts must be steady
    (within 5% of the median), except monthly-or-longer bills in categories
-   that vary by nature (utilities, loans, services, medical): a weekly grocery
-   run is not a subscription.
+   that vary by nature (utilities, loans, services, medical). In shopping
+   categories (groceries, restaurants, stores, gas, travel) only an exact
+   repeat price counts, on a tight rhythm: a weekly grocery run is not a
+   subscription, Amazon Prime is.
 4. The next charge is the last plus the cadence (same day of the month for
    monthly and longer). A stream overdue by more than its tolerance has
    lapsed, most likely cancelled.
 
 `sync_streams` keeps recurring_streams in step. A found stream updates the
 row for the same merchant whose amount is close (same cadence preferred);
-otherwise it is added as "detected". The user's verdict and name are never
-changed by detection.
+otherwise it is added as "detected". A "detected" row that detection no
+longer finds is removed; confirmed and dismissed rows (the user's verdicts)
+and names are never changed by detection.
 """
 from __future__ import annotations
 
@@ -64,6 +67,9 @@ CADENCES = (
 BY_NAME = {c.name: c for c in CADENCES}
 #: Categories whose bills move from one charge to the next.
 VARIABLE_OK = {"RENT_AND_UTILITIES", "LOAN_PAYMENTS", "GENERAL_SERVICES", "MEDICAL", "GOVERNMENT_AND_NON_PROFIT"}
+#: Where repeat charges are mostly shopping (a weekly grocery run, a monthly lunch spot): there only an
+#: exact repeat price (or a clean step between exact prices), on a tight rhythm, counts.
+SHOPPING = {"FOOD_AND_DRINK", "GENERAL_MERCHANDISE", "TRANSPORTATION", "TRAVEL", "HOME_IMPROVEMENT", "PERSONAL_CARE"}
 LOOKBACK_DAYS = 800
 DAYS_PER_MONTH = Decimal("30.44")
 
@@ -117,6 +123,11 @@ def steady(amounts: list[Decimal], within: Decimal = Decimal("0.05")) -> bool:
     return med > 0 and (max(amounts) - min(amounts)) <= med * within * 2
 
 
+def exact(amounts: list[Decimal]) -> bool:
+    med = statistics.median(amounts)
+    return med > 0 and (max(amounts) - min(amounts)) <= max(Decimal("0.10"), med * Decimal("0.01"))
+
+
 def _cadence_of(gaps: list[int]) -> tuple[Cadence, int] | None:
     """The cadence most gaps match, and how many do."""
     best = None
@@ -164,7 +175,13 @@ def evaluate(charges: list[Charge]) -> Found | None:
     previous, changed_on = _price_change(occurrences)
     recent = [c.amount for c in occurrences if changed_on is None or c.date >= changed_on][-3:]
     category = occurrences[-1].category
-    if not steady(recent) and not (cadence.months >= 1 and category in VARIABLE_OK):
+    if category in SHOPPING:
+        # Exact repeats only: the same price throughout, or a clean step between two exact runs.
+        before = [c.amount for c in occurrences if changed_on is not None and c.date < changed_on][-3:]
+        stepped = len(before) >= 2 and exact(before) and exact(recent)
+        if hits < round(len(gaps) * 0.8) or not (exact([c.amount for c in occurrences][-3:]) or stepped):
+            return None
+    elif not steady(recent) and not (cadence.months >= 1 and category in VARIABLE_OK):
         return None
     matched = [g for g in gaps if abs(g - cadence.days) <= cadence.tolerance]
     return Found(
@@ -246,5 +263,9 @@ def sync_streams(sess: Session, today: date | None = None) -> int:
         row.category = f.last.category
         row.account_id = f.last.account_id
         row.seen_at = now
+    # A suggestion detection no longer makes goes away; a verdict the user gave stays.
+    for r in rows:
+        if id(r) not in taken and r.status == "detected":
+            sess.delete(r)
     sess.flush()
     return len(found)

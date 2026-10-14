@@ -10,6 +10,7 @@ import { ConnectButton } from "../components/ConnectButton";
 import { AccountRow } from "../components/AccountRow";
 import { AccountDetail } from "../components/AccountDetail";
 import { ChevronIcon } from "../components/Icons";
+import { AlertsView, UpcomingView } from "../insights/subscriptions";
 import { ErrorNote } from "../components/ErrorNote";
 import { ASSET_GROUPS, LIABILITY_GROUPS, upIsGood } from "../lib/groups";
 
@@ -126,6 +127,11 @@ export function OverviewPage() {
             </div>
           ) : <Skeleton lines={3} />}
         </Panel>
+      </div>
+
+      <div className="mu-grid mu-grid--2">
+        <UpcomingView />
+        <AlertsView />
       </div>
 
       <Panel marks caption="daily change · last 12 months">

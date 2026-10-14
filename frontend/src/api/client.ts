@@ -1,6 +1,7 @@
 import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
+  Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
@@ -35,6 +36,19 @@ function change(v: unknown): Change | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Raw;
   return { amount: n0(r.amount), pct: toNumber(r.pct), since: str(r.since) ?? undefined };
+}
+
+type UpcomingCadence = RecurringStream["cadence"];
+
+function recurringStream(r: Raw): RecurringStream {
+  return {
+    id: String(r.id), merchant: String(r.merchant), name: str(r.name), label: String(r.label ?? r.merchant),
+    cadence: r.cadence as RecurringStream["cadence"], amount: n0(r.amount), last_amount: n0(r.last_amount),
+    previous_amount: r.previous_amount == null ? null : n0(r.previous_amount), price_changed_on: str(r.price_changed_on),
+    first_date: String(r.first_date), last_date: String(r.last_date), next_date: String(r.next_date), charge_count: n0(r.charge_count),
+    category: str(r.category), account_name: str(r.account_name), account_mask: str(r.account_mask), is_business: bool(r.is_business),
+    status: r.status as RecurringStatus, state: r.state === "lapsed" ? "lapsed" : "active", monthly: n0(r.monthly),
+  };
 }
 
 /** The shared Insights query: the slice plus a view's own parameters. */
@@ -421,6 +435,29 @@ export const api = {
       first_seen: str(m.first_seen), last_seen: String(m.last_seen), is_new: bool(m.is_new),
       trend: Array.isArray(m.trend) ? (m.trend as unknown[]).map(n0) : [],
     })),
+  recurring: async (): Promise<RecurringList> => {
+    const r = await request("GET", "/recurring");
+    return { streams: list(r.streams, recurringStream), monthly_confirmed: n0(r.monthly_confirmed), monthly_detected: n0(r.monthly_detected) };
+  },
+  updateRecurring: async (id: string, patch: { status?: RecurringStatus; name?: string | null }): Promise<RecurringStream> =>
+    recurringStream(await request("PATCH", `/recurring/${id}`, patch)),
+  detectRecurring: async (): Promise<{ found: number }> => ({ found: n0((await request("POST", "/recurring/detect")).found) }),
+  upcoming: async (days = 30): Promise<Upcoming> => {
+    const r = await request("GET", "/recurring/upcoming", undefined, { days });
+    return {
+      from: String(r.from), to: String(r.to), total: n0(r.total),
+      items: list(r.items, (x) => ({ stream_id: String(x.stream_id), label: String(x.label), date: String(x.date), overdue: bool(x.overdue),
+        amount: n0(x.amount), cadence: x.cadence as UpcomingCadence, status: x.status as RecurringStatus, account_name: str(x.account_name) })),
+    };
+  },
+  alerts: async (days = 60): Promise<Alert[]> =>
+    list((await request("GET", "/alerts", undefined, { days })).alerts, (a) => ({
+      key: String(a.key), kind: a.kind as Alert["kind"], date: String(a.date), merchant: String(a.merchant), amount: n0(a.amount),
+      previous: a.previous == null ? null : n0(a.previous), usual: a.usual == null ? null : n0(a.usual),
+      basis: (a.basis as Alert["basis"]) ?? undefined, category: str(a.category),
+      transaction_ids: Array.isArray(a.transaction_ids) ? (a.transaction_ids as unknown[]).map(String) : [],
+    })),
+  dismissAlert: (key: string) => request("POST", "/alerts/dismiss", { key }),
   insightPatterns: async (s: InsightSlice, category?: string | null): Promise<PatternsInsight> => {
     const r = await request("GET", "/insights/patterns", undefined, sliceQuery(s, { category }));
     return {

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Page, PageHeader, Segmented, Select, formatDate } from "@mooney/ui";
 import { useAccounts } from "../api/hooks";
 import { accountFilterOptions } from "../lib/accountOptions";
+import { AlertsView, SubscriptionsView, UpcomingView } from "../insights/subscriptions";
 import { useStoredChoice } from "../lib/storedView";
 import { GRAIN_KEYS, GRAINS, RANGE_KEYS, RANGES, SCOPE_KEYS, SCOPES, sliceOf } from "../insights/settings";
 import {
@@ -51,6 +52,13 @@ export function InsightsPage() {
       <div className="mu-grid mu-grid--main">
         <MoneyFlowView slice={slice} grain={grain} />
         <IncomeSourcesView slice={slice} grain={grain} />
+      </div>
+      <div className="mu-grid mu-grid--main">
+        <SubscriptionsView />
+        <div className="mu-stack">
+          <UpcomingView />
+          <AlertsView />
+        </div>
       </div>
       <SpendingView slice={slice} grain={grain} category={category} onCategory={setCategory} />
       <MerchantsView slice={slice} category={category} />

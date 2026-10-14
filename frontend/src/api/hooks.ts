@@ -39,6 +39,26 @@ export const useCompare = (s: InsightSlice, category?: string | null) =>
   useQuery({ queryKey: ["insights", "compare", s, category ?? null], queryFn: () => api.insightCompare(s, category), placeholderData: (prev) => prev });
 export const useMerchants = (s: InsightSlice, category?: string | null) =>
   useQuery({ queryKey: ["insights", "merchants", s, category ?? null], queryFn: () => api.insightMerchants(s, { category }), placeholderData: (prev) => prev });
+// Subscriptions and alerts: one shared cache; any change refreshes all three.
+const recurringKeys = { list: ["recurring"] as const, upcoming: (days: number) => ["recurring", "upcoming", days] as const, alerts: ["alerts"] as const };
+export const useRecurring = () => useQuery({ queryKey: recurringKeys.list, queryFn: api.recurring });
+export const useUpcoming = (days = 30) => useQuery({ queryKey: recurringKeys.upcoming(days), queryFn: () => api.upcoming(days) });
+export const useAlerts = () => useQuery({ queryKey: recurringKeys.alerts, queryFn: () => api.alerts() });
+export function useUpdateRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; patch: Parameters<typeof api.updateRecurring>[1] }) => api.updateRecurring(v.id, v.patch),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["recurring"] }); void qc.invalidateQueries({ queryKey: recurringKeys.alerts }); },
+  });
+}
+export function useDetectRecurring() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: api.detectRecurring, onSuccess: () => { void qc.invalidateQueries({ queryKey: ["recurring"] }); void qc.invalidateQueries({ queryKey: recurringKeys.alerts }); } });
+}
+export function useDismissAlert() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: api.dismissAlert, onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKeys.alerts }) });
+}
 export const usePatterns = (s: InsightSlice, category?: string | null) =>
   useQuery({ queryKey: ["insights", "patterns", s, category ?? null], queryFn: () => api.insightPatterns(s, category), placeholderData: (prev) => prev });
 export const useInvestmentActivity = () => useQuery({ queryKey: [...qk.holdings, "activity"], queryFn: () => api.holdingsTransactions({ limit: 200 }) });

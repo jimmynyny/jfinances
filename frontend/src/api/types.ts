@@ -413,3 +413,70 @@ export interface PatternsInsight {
   weekdays: Array<{ weekday: number; total: number; per_day: number }>;
   month_days: Array<{ day: number; total: number; per_day: number }>;
 }
+
+// --- Subscriptions and alerts (GET /recurring, /alerts; docs/80) ------------------------------
+
+export type RecurringStatus = "detected" | "confirmed" | "dismissed";
+export type Cadence = "weekly" | "biweekly" | "monthly" | "quarterly" | "semiannual" | "annual";
+
+export interface RecurringStream {
+  id: string;
+  merchant: string;
+  name: string | null;
+  /** The user's name, or the merchant's. */
+  label: string;
+  cadence: Cadence;
+  amount: number;
+  last_amount: number;
+  previous_amount: number | null;
+  price_changed_on: string | null;
+  first_date: string;
+  last_date: string;
+  next_date: string;
+  charge_count: number;
+  category: string | null;
+  account_name: string | null;
+  account_mask: string | null;
+  is_business: boolean;
+  status: RecurringStatus;
+  state: "active" | "lapsed";
+  /** Amount per month, whatever the cadence. */
+  monthly: number;
+}
+
+export interface RecurringList {
+  streams: RecurringStream[];
+  monthly_confirmed: number;
+  monthly_detected: number;
+}
+
+export interface UpcomingCharge {
+  stream_id: string;
+  label: string;
+  date: string;
+  overdue: boolean;
+  amount: number;
+  cadence: Cadence;
+  status: RecurringStatus;
+  account_name: string | null;
+}
+
+export interface Upcoming {
+  from: string;
+  to: string;
+  items: UpcomingCharge[];
+  total: number;
+}
+
+export interface Alert {
+  key: string;
+  kind: "price" | "duplicate" | "large";
+  date: string;
+  merchant: string;
+  amount: number;
+  previous?: number | null;
+  usual?: number | null;
+  basis?: "merchant" | "category";
+  category?: string | null;
+  transaction_ids: string[];
+}
