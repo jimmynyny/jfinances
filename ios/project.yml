@@ -1,0 +1,147 @@
+# jfinances for iPhone (docs/85-ios.md). `xcodegen generate` writes
+# JFinances.xcodeproj from this file; the .xcodeproj is a build product and is
+# not committed. Scripts/deploy-ota.sh builds the same sources without Xcode.
+name: JFinances
+options:
+  bundleIdPrefix: com.daedalustcg
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "27.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    DEVELOPMENT_TEAM: TH5WXDPTS8
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    GENERATE_INFOPLIST_FILE: NO
+packages:
+  JFinancesKit:
+    path: JFinancesKit
+targets:
+  JFinances:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: JFinancesKit
+      - target: JFinancesWidgets
+        embed: true
+        codeSign: true
+    info:
+      path: Config/App-Info.plist
+      properties:
+        CFBundleDisplayName: jfinances
+        CFBundleName: JFinances
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Viewer
+            CFBundleURLName: com.daedalustcg.jfinances
+            CFBundleURLSchemes: [jfinances]
+        # Which server the sign-in screen offers first (sandbox until
+        # production has the API hostname).
+        JFDefaultServer: sandbox
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+        UIAppFonts:
+          - IBMPlexSans-Regular.ttf
+          - IBMPlexSans-Medium.ttf
+          - IBMPlexSans-SemiBold.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-Medium.ttf
+          - IBMPlexMono-SemiBold.ttf
+          - JFDotoPixel.ttf
+    entitlements:
+      path: Config/JFinances.entitlements
+      properties:
+        keychain-access-groups: [$(AppIdentifierPrefix)com.daedalustcg.jfinances]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daedalustcg.jfinances
+        PRODUCT_NAME: JFinances
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+  JFinancesWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: App/Fonts
+        buildPhase: resources
+    dependencies:
+      - package: JFinancesKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: Config/Widgets-Info.plist
+      properties:
+        CFBundleDisplayName: jfinances
+        CFBundleName: JFinancesWidgets
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        UIAppFonts:
+          - IBMPlexSans-Regular.ttf
+          - IBMPlexSans-Medium.ttf
+          - IBMPlexSans-SemiBold.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-Medium.ttf
+          - IBMPlexMono-SemiBold.ttf
+          - JFDotoPixel.ttf
+    entitlements:
+      path: Config/JFinancesWidgets.entitlements
+      properties:
+        keychain-access-groups: [$(AppIdentifierPrefix)com.daedalustcg.jfinances]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daedalustcg.jfinances.widgets
+        PRODUCT_NAME: JFinancesWidgets
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        SKIP_INSTALL: YES
+  # Simulator only: walks the screens and keeps screenshots (Scripts/sim-tour.sh).
+  JFinancesUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: JFinances
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daedalustcg.jfinances.uitests
+        TEST_TARGET_NAME: JFinances
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  JFinances:
+    build:
+      targets:
+        JFinances: all
+        JFinancesWidgets: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - JFinancesUITests
+    archive:
+      config: Release
