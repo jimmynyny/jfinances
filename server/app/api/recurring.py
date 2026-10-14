@@ -125,6 +125,17 @@ def list_alerts(days: int = Query(default=60, ge=7, le=365), _: Principal = Depe
     return {"days": days, "alerts": plain(alerts.find_alerts(sess, _today(), days))}
 
 
+@router.post("/alerts/dismiss-all")
+def dismiss_all(days: int = Query(default=60, ge=7, le=365), p: Principal = Depends(current_user),
+                sess: Session = Depends(get_session)):
+    """Wave off every alert showing now (the same window as GET /alerts)."""
+    keys = [a["key"] for a in alerts.find_alerts(sess, _today(), days)]
+    for key in keys:
+        sess.add(DismissedAlert(key=key, dismissed_by=p.user_id))
+    sess.flush()
+    return {"dismissed": len(keys)}
+
+
 class DismissIn(BaseModel):
     key: str = Field(min_length=3, max_length=200)
 

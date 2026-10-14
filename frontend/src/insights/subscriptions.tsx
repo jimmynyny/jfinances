@@ -3,7 +3,7 @@ import {
   Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Num, Panel, Segmented, Skeleton, formatDate, useToast, type Column,
 } from "@mooney/ui";
 import { ApiError } from "../api/client";
-import { useAlerts, useDetectRecurring, useDismissAlert, useRecurring, useUpcoming, useUpdateRecurring } from "../api/hooks";
+import { useAlerts, useDetectRecurring, useDismissAlert, useDismissAllAlerts, useRecurring, useUpcoming, useUpdateRecurring } from "../api/hooks";
 import type { Alert, RecurringStatus, RecurringStream } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
 import { categoryLabel } from "./settings";
@@ -112,16 +112,47 @@ const ALERT_BADGE: Record<Alert["kind"], { label: string; tone: "warn" | "seriou
   large: { label: "unusual", tone: "accent" },
 };
 
+const ALERTS_PER_PAGE = 10;
+
 export function AlertsView({ actions }: { actions?: ReactNode }) {
   const q = useAlerts();
   const dismiss = useDismissAlert();
+  const dismissAll = useDismissAllAlerts();
+  const { toast, error } = useToast();
+  const [page, setPage] = useState(0);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const all = q.data ?? [];
+  const pages = Math.max(1, Math.ceil(all.length / ALERTS_PER_PAGE));
+  const p = Math.min(page, pages - 1); // stays in range as alerts are dismissed
+  const shown = all.slice(p * ALERTS_PER_PAGE, (p + 1) * ALERTS_PER_PAGE);
+  const allButton = all.length > 1 && (confirmAll ? (
+    <>
+      <Button size="sm" variant="danger" loading={dismissAll.isPending}
+        onClick={() => dismissAll.mutate(undefined, {
+          onSuccess: (n) => { setConfirmAll(false); setPage(0); toast(`Dismissed ${n} alert${n === 1 ? "" : "s"}`); },
+          onError: (e) => error(e instanceof ApiError ? e.message : "Could not dismiss. Try again."),
+        })}>
+        Dismiss all {all.length}
+      </Button>
+      <Button size="sm" variant="quiet" onClick={() => setConfirmAll(false)}>Cancel</Button>
+    </>
+  ) : <Button size="sm" variant="quiet" onClick={() => setConfirmAll(true)}>Dismiss all</Button>);
   return (
-    <Panel caption="alerts · last 60 days" actions={actions}>
-      {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : !q.data ? <Skeleton height={120} /> : q.data.length === 0 ? (
+    <Panel caption="alerts · last 60 days" actions={<>{actions}{allButton}</>}
+      foot={pages > 1 ? (
+        <span className="mu-row" style={{ justifyContent: "space-between" }}>
+          <span>{p * ALERTS_PER_PAGE + 1}–{Math.min(all.length, (p + 1) * ALERTS_PER_PAGE)} of {all.length}</span>
+          <span className="mu-row">
+            <Button size="sm" variant="quiet" disabled={p === 0} onClick={() => setPage(p - 1)}>Previous</Button>
+            <Button size="sm" variant="quiet" disabled={p >= pages - 1} onClick={() => setPage(p + 1)}>Next</Button>
+          </span>
+        </span>
+      ) : undefined}>
+      {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : !q.data ? <Skeleton height={120} /> : all.length === 0 ? (
         <span className="mu-caption">Nothing unusual in the last 60 days.</span>
       ) : (
         <div className="mu-stack">
-          {q.data.map((a) => (
+          {shown.map((a) => (
             <div key={a.key} className="mu-listrow">
               <div className="mu-listrow__main">
                 <div><Badge tone={ALERT_BADGE[a.kind].tone} dot={false}>{ALERT_BADGE[a.kind].label}</Badge> {alertText(a)}</div>

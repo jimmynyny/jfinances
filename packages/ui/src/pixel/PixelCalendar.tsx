@@ -44,7 +44,8 @@ export function PixelCalendar({
   arms = ["down day", "up day"], summary, ariaLabel,
 }: PixelCalendarProps) {
   const [ref, width] = useMeasure<HTMLDivElement>();
-  const [hover, setHover] = useState<{ date: string; value: number | null; x: number; y: number } | null>(null);
+  // x, y in the SVG's own units; scale = drawn px per unit (the chart CSS stretches the SVG to its panel).
+  const [hover, setHover] = useState<{ date: string; value: number | null; x: number; y: number; scale: number } | null>(null);
 
   const model = useMemo(() => {
     const byDate = new Map(days.map((d) => [d.date, d.value] as const));
@@ -118,11 +119,13 @@ export function PixelCalendar({
           role="img"
           aria-label={label}
           onPointerMove={(e) => {
+            // The SVG is drawn at whatever width its panel gives it, so map the pointer back into viewBox units.
             const r = e.currentTarget.getBoundingClientRect();
-            const col = Math.floor((e.clientX - r.left - LEFT) / pitch);
-            const row = Math.floor((e.clientY - r.top - TOP) / pitch);
+            const scale = r.width / W || 1;
+            const col = Math.floor(((e.clientX - r.left) / scale - LEFT) / pitch);
+            const row = Math.floor(((e.clientY - r.top) / (r.height / H || 1) - TOP) / pitch);
             const c = model.cells.find((x) => x.col === col && x.row === row);
-            setHover(c ? { date: c.date, value: c.value, x: LEFT + col * pitch, y: TOP + row * pitch } : null);
+            setHover(c ? { date: c.date, value: c.value, x: LEFT + col * pitch, y: TOP + row * pitch, scale } : null);
           }}
           onPointerLeave={() => setHover(null)}
         >
@@ -142,7 +145,7 @@ export function PixelCalendar({
         </svg>
       )}
       {hover && (
-        <div className="mu-chart__tip" style={{ left: clamp(hover.x + cell + 8, 0, Math.max(0, width - 170)), top: hover.y + cell + 6 }}>
+        <div className="mu-chart__tip" style={{ left: clamp((hover.x + cell + 8) * hover.scale, 0, Math.max(0, width - 170)), top: (hover.y + cell + 6) * hover.scale }}>
           <div className="mu-chart__tip-h">{formatDate(hover.date, { year: true })}</div>
           <div className="mu-chart__tip-row">
             <span>{hover.value === null ? "no data" : hover.value > 0 ? arms[1] : hover.value < 0 ? arms[0] : "no change"}</span>

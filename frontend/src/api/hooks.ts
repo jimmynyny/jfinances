@@ -55,6 +55,10 @@ export function useDetectRecurring() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: api.detectRecurring, onSuccess: () => { void qc.invalidateQueries({ queryKey: ["recurring"] }); void qc.invalidateQueries({ queryKey: recurringKeys.alerts }); } });
 }
+export function useDismissAllAlerts() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.dismissAllAlerts(), onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKeys.alerts }) });
+}
 export function useDismissAlert() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: api.dismissAlert, onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKeys.alerts }) });

@@ -702,6 +702,9 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     assert found["large"]["merchant"] == "Shell" and found["large"]["usual"] == "45.00"
     assert client.post("/api/v1/alerts/dismiss", json={"key": found["duplicate"]["key"]}).status_code == 204
     assert "duplicate" not in {a["kind"] for a in client.get("/api/v1/alerts").json()["alerts"]}
+    assert client.post("/api/v1/alerts/dismiss-all").json() == {"dismissed": 2}  # the price change and the large one
+    assert client.get("/api/v1/alerts").json()["alerts"] == []
+    assert client.post("/api/v1/alerts/dismiss-all").json() == {"dismissed": 0}
 
 
 def test_dashboard_is_per_person_seeded_pinned_and_arranged(client):

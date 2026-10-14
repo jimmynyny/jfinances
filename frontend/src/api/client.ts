@@ -479,6 +479,7 @@ export const api = {
       transaction_ids: Array.isArray(a.transaction_ids) ? (a.transaction_ids as unknown[]).map(String) : [],
     })),
   dismissAlert: (key: string) => request("POST", "/alerts/dismiss", { key }),
+  dismissAllAlerts: async (days = 60): Promise<number> => n0((await request("POST", "/alerts/dismiss-all", undefined, { days })).dismissed),
   performance: async (q: { range: PerfRange; account_id?: string; benchmarks: string[] }): Promise<Performance> => {
     const r = await request("GET", "/investments/performance", undefined,
       { range: q.range, account_id: q.account_id, benchmark: q.benchmarks.length ? q.benchmarks.join(",") : undefined });

@@ -344,6 +344,10 @@ or category for a merchant with little history). Dismissed keys never return.
 ### POST /alerts/dismiss → 204
 Body: `{"key": "…"}`.
 
+### POST /alerts/dismiss-all?days=60
+Dismisses every alert showing in that window (what GET /alerts returns now): `{"dismissed": n}`.
+The panel shows alerts ten to a page.
+
 ## Dashboard (each person's Overview)
 
 ### GET /dashboard
