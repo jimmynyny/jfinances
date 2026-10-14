@@ -225,6 +225,53 @@ def test_phone_link_flow(client, monkeypatch):
     tok._bad_attempts.clear()
 
 
+
+def test_phone_link_pkce(client, monkeypatch):
+    """The Android app links with PKCE: the nonce in the redirect is the SHA-256
+    of a secret the app keeps, and only that secret redeems the code, so an app
+    that claims the scheme and reads the redirect gets nothing it can use."""
+    import base64
+    import hashlib
+    import secrets
+    from urllib.parse import parse_qs, urlparse
+
+    from server.app.auth import tokens as tok
+
+    monkeypatch.setenv("API_HOST", "api.example.com")
+    reset_settings_cache()
+    tok._bad_attempts.clear()
+    api = {"host": "api.example.com"}
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+
+    def mint(query):
+        r = client.get(f"/api/v1/mobile/link?{query}", follow_redirects=False)
+        assert r.status_code == 302, r.text
+        q = parse_qs(urlparse(r.headers["location"]).query)
+        return q["code"][0], q["nonce"][0]
+
+    def redeem(**body):
+        return client.post("/api/v1/mobile/redeem", headers=api, json=body)
+
+    assert client.get(f"/api/v1/mobile/link?nonce={challenge}&method=plain", follow_redirects=False).status_code == 400
+    assert client.get("/api/v1/mobile/link?nonce=nonce-1234&method=S256", follow_redirects=False).status_code == 400
+    code, echoed = mint(f"nonce={challenge}&method=S256&name=Pixel%209")
+    assert echoed == challenge
+    # everything the redirect carries is not enough
+    assert redeem(code=code, nonce=challenge).status_code == 400
+    assert redeem(code=code, verifier=secrets.token_urlsafe(48)).status_code == 400
+    assert redeem(code=code, verifier="short").status_code == 422
+    r = redeem(code=code, verifier=verifier)
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Pixel 9"
+    assert redeem(code=code, verifier=verifier).status_code == 400
+
+    # a code minted without a method still wants its nonce, not a verifier
+    code, _ = mint("nonce=nonce-5678")
+    assert redeem(code=code, verifier=verifier).status_code == 400
+    assert redeem(code=code, nonce="nonce-5678").status_code == 200
+    tok._bad_attempts.clear()
+
 def test_reorder_accounts(client):
     def manual(name):
         r = client.post("/api/v1/accounts/manual", json={"name": name, "manual_category": "vehicle", "value": "1000"})

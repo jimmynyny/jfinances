@@ -50,8 +50,9 @@ minutes) tells you which phone is in use.
 
 ## mobile_link_codes
 The two-minute codes `GET /api/v1/mobile/link` mints behind Access: `user_id`,
-the app's `nonce`, SHA-256 `code_hash`, `expires_at`, `used_at` (set by the
-one redeem that wins). Rows more than a day past expiry are deleted whenever
+the app's `nonce`, `challenge_method` (`S256` when the nonce is a PKCE challenge
+and only its verifier redeems the code: the Android app; null for iOS), SHA-256
+`code_hash`, `expires_at`, `used_at` (set by the one redeem that wins). Rows more than a day past expiry are deleted whenever
 a new code is minted.
 
 ## plaid_items

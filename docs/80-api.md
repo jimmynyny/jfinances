@@ -593,15 +593,19 @@ default sections again.
 A token is read-only: anything but GET/HEAD/OPTIONS with a token is 403
 `auth.read_only`. docs/40 §5 has the whole flow.
 
-### GET /mobile/link?nonce=N&name=… (dashboard hostname, dashboard_only)
+### GET /mobile/link?nonce=N&name=…[&method=S256] (dashboard hostname, dashboard_only)
 Opened by the app in a system web sheet. Mints a one-time code (120 s) and
 answers 302 `jfinances://linked?code=…&nonce=N`. `nonce`: 8–64 of
-`[A-Za-z0-9_-]`, else 400.
+`[A-Za-z0-9_-]`, else 400. `method=S256` (the Android app): `nonce` is a PKCE
+challenge, `BASE64URL(SHA-256(verifier))`, 43 characters, and only the
+verifier redeems the code.
 
 ### POST /mobile/redeem (API hostname only, no auth)
-`{"code","nonce","name"?}` → `{"token":"<shown once>","id","name","email","display_name"}`.
-400 `auth.bad_link_code` for an unknown, used, expired or mismatched code; 429
-after 20 bad attempts a minute from one address.
+`{"code","nonce","name"?}`, or `{"code","verifier","name"?}` for an `S256` code
+→ `{"token":"<shown once>","id","name","email","display_name"}`.
+400 `auth.bad_link_code` for an unknown, used, expired or mismatched code (an
+`S256` code with only its nonce included); 429 after 20 bad attempts a minute
+from one address.
 
 ### POST /mobile/unlink (API hostname only, bearer)
 Revokes the presenting token → `{"revoked":true,"id"}`.

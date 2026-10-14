@@ -89,6 +89,13 @@ web  --> {token, id, name, email}                    (a new api_tokens row; only
 
 - The nonce is made by the app for each attempt and must come back with the
   code, so a code lifted from a redirect is useless to anyone else.
+- **Android uses PKCE** (RFC 7636). An iOS web-auth session hands the redirect
+  to the app that opened it; on Android any app can claim the `jfinances`
+  scheme and read the redirect, nonce included. So the Android app adds
+  `method=S256` and sends, as the nonce, `BASE64URL(SHA-256(verifier))` of a
+  secret it keeps; it redeems with `{code, verifier, name}`. A code minted
+  with `S256` is refused with the nonce alone, and the verifier never travels
+  in a URL (`mobile_link_codes.challenge_method`).
 - The burn is a conditional UPDATE; two redeems of one code cannot both win.
 - `mobile/link` needs an Access session (`dashboard_only`): a phone cannot
   mint codes for another phone.

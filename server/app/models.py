@@ -93,6 +93,9 @@ class MobileLinkCode(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: None: the nonce itself redeems (iOS). "S256": the nonce is the SHA-256 of a
+    #: secret only the app holds, and redeeming takes the secret (PKCE, Android).
+    challenge_method: Mapped[str | None] = mapped_column(String(8))
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     device_name: Mapped[str | None] = mapped_column(String(120))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
