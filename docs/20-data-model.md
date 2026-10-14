@@ -135,8 +135,27 @@ The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler
 name; `payload` is small JSON (usually `{"item_id": ...}`); `status` is
 `queued` → `running` → `done` | `failed`; `run_after` schedules retries with
 backoff; `attempts`/`max_attempts` bound them. The expression index on
-`(kind, payload->>'item_id')` makes dedupe cheap. Done/failed rows are
-pruned after 30 days.
+`(kind, payload->>'item_id')` makes dedupe cheap; a household-wide job (no
+payload: `sync_all`, `detect_recurring`) has at most one queued copy.
+Done/failed rows are pruned after 30 days.
+
+## recurring_streams
+Subscriptions and bills found in transactions (`services/recurring.py`),
+never Plaid's paid Recurring product. Detection runs after every
+transactions sync (`detect_recurring` job) and refreshes the numbers:
+`merchant`, `cadence` (weekly, biweekly, monthly, quarterly, semiannual,
+annual), `interval_days`, `amount` (typical: median of the latest three
+since any price step), `last_amount`, `previous_amount` + `price_changed_on`
+(the latest step in a steady price), `first_date`, `last_date`, `next_date`,
+`charge_count`, `category`, `account_id`, `seen_at`. The user's verdict
+`status` (`detected` → `confirmed` | `dismissed`) and `name` are never
+changed by detection; a found stream updates the row for the same merchant
+whose amount is close (same cadence preferred). Overdue by more than the
+cadence's tolerance = lapsed (computed, not stored).
+
+## dismissed_alerts
+Alerts the user waved off (`services/alerts.py`), by stable key:
+`dup:<txn>:<txn>`, `large:<txn>`, `price:<stream>:<date>`.
 
 ## webhook_events
 Every verified webhook, as received, with `processed_at` or `error`. This is

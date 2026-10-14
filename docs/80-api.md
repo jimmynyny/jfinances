@@ -275,6 +275,37 @@ is one value per month of the range.
 `weekdays[{weekday 0=Mon, total, per_day}]` and `month_days[{day, total,
 per_day}]`; `per_day` divides by how many of that day the range holds.
 
+## Subscriptions and alerts
+Found in transactions after every sync (docs/20 `recurring_streams`).
+
+### GET /recurring
+`{"streams":[{id, merchant, name, label, cadence, interval_days, amount, last_amount,
+previous_amount, price_changed_on, first_date, last_date, next_date, charge_count,
+category, account_id, account_name, account_mask, is_business, status, state, monthly}],
+"monthly_confirmed", "monthly_detected"}`. `state` is `active` or `lapsed`;
+`monthly` is the amount per month; the totals add up active streams per status.
+
+### PATCH /recurring/{id}
+Body: `{"status"?: "detected"|"confirmed"|"dismissed", "name"?: str|null}` → stream.
+The verdict and name survive detection.
+
+### GET /recurring/upcoming?days=30
+Expected charges from active, non-dismissed streams: `{from, to, items[{stream_id,
+label, date, overdue, amount, cadence, status, category, account_name, is_business}],
+total}`. A weekly stream appears once per week.
+
+### POST /recurring/detect
+Runs detection now: `{"found": n}`.
+
+### GET /alerts?days=60
+`{"days", "alerts":[{key, kind, date, merchant, amount, ...}]}`: `price` (with
+`previous`, `stream_id`), `duplicate` (same merchant and amount within two days
+on one account, `transaction_ids`), `large` (with `usual` and `basis`: merchant,
+or category for a merchant with little history). Dismissed keys never return.
+
+### POST /alerts/dismiss → 204
+Body: `{"key": "…"}`.
+
 ## Sync
 
 ### GET /sync/status

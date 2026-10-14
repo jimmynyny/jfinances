@@ -44,6 +44,10 @@ def enqueue(sess: Session, kind: str, payload: dict | None = None, *,
         ).first()
         if dup:
             return None
+    elif not payload:
+        # A household-wide job (sync_all, detect_recurring, ...): one queued copy is enough.
+        if sess.execute(select(Job.id).where(Job.kind == kind, Job.status == "queued")).first():
+            return None
     job = Job(kind=kind, payload=payload, run_after=run_after or datetime.now(UTC),
               max_attempts=max_attempts)
     sess.add(job)

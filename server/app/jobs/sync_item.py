@@ -39,6 +39,8 @@ def sync_item(sess: Session, payload: dict) -> None:
         if item.has_product("transactions"):
             plaid_sync.sync_transactions(sess, item)
             _derive_history(sess, item)
+            from .queue import enqueue
+            enqueue(sess, "detect_recurring", {})  # subscriptions, once per batch of syncs
         else:
             log.info("item %s has no transactions product; balances only", item.id)
     except PlaidError as e:

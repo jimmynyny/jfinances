@@ -22,6 +22,19 @@ def money(v: Decimal | None) -> str | None:
     return None if v is None else format(Decimal(v).quantize(Decimal("0.01")), "f")
 
 
+def plain(v: Any) -> Any:
+    """Decimals as money strings and dates as ISO, all the way down: for service results."""
+    if isinstance(v, Decimal):
+        return money(v)
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {k: plain(x) for k, x in v.items()}
+    if isinstance(v, list | tuple):
+        return [plain(x) for x in v]
+    return v
+
+
 def num(v: Decimal | None) -> str | None:
     return None if v is None else format(Decimal(v).normalize(), "f")
 

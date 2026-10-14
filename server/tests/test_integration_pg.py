@@ -214,6 +214,10 @@ def test_summary_splits_in_and_out_and_excludes_transfers(client):
 
     # Chronological; both directions present; transfers and card payments left out.
     assert months() == [("2026-08", "1000.00", "50.00", "-950.00"), ("2026-09", "20.00", "80.00", "60.00")]
+    with db.session() as sess:  # no category at all (Plaid sends none sometimes): still counted
+        sess.add(Transaction(account_id=acct, plaid_transaction_id="sum-nocat", date=date(2026, 9, 9),
+                             amount="5.00", name="MYSTERY", pending=False))
+    assert months()[1] == ("2026-09", "20.00", "85.00", "65.00")
     assert months(include_transfers="true")[0] == ("2026-08", "1000.00", "850.00", "-150.00")
 
 
@@ -627,3 +631,72 @@ def test_release_boots_older_code_on_a_newer_schema(client):
         with db.engine().begin() as conn:
             conn.execute(text("UPDATE alembic_version SET version_num = :h"), {"h": head})
     assert release.main() == 0  # at head: the normal path
+
+
+def test_subscriptions_are_found_flagged_and_alerted(client):
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from server.app.models import Account, Transaction
+    from server.app.services.recurring import add_months
+
+    today = datetime.now(UTC).date()
+
+    def ago(n):
+        return today - timedelta(days=n)
+
+    def monthly(last, count):
+        return [add_months(last, -k) for k in range(count - 1, -1, -1)]
+
+    rows = []  # (date, amount, merchant, primary)
+    rows += [(d, a, "Netflix", "ENTERTAINMENT") for d, a in
+             zip(monthly(ago(10), 6), ["15.49"] * 4 + ["17.99"] * 2, strict=True)]  # a price rise
+    rows += [(d, "11.99", "Spotify", "ENTERTAINMENT") for d in monthly(ago(3), 6)]
+    rows += [(d, "2.99", "Apple", "GENERAL_SERVICES") for d in monthly(ago(20), 6)]  # two plans, one merchant
+    rows += [(d, "10.99", "Apple", "GENERAL_SERVICES") for d in monthly(ago(7), 6)]
+    rows += [(d, a, "Con Edison", "RENT_AND_UTILITIES") for d, a in
+             zip(monthly(ago(15), 5), ["96.40", "132.10", "118.75", "88.20", "104.00"], strict=True)]
+    rows += [(ago(340 + 365), "139.00", "Amazon Prime", "GENERAL_MERCHANDISE"), (ago(340), "139.00", "Amazon Prime",
+                                                                               "GENERAL_MERCHANDISE")]
+    rows += [(ago(2 + 7 * k), a, "Whole Foods", "FOOD_AND_DRINK") for k, a in
+             enumerate(["80", "120", "95", "150", "110", "190", "70", "135"])]  # weekly, but shopping
+    rows += [(ago(n), "45.00", "Shell", "TRANSPORTATION") for n in (100, 80, 45, 30)] + [(ago(5), "180.00", "Shell",
+                                                                                         "TRANSPORTATION")]
+    rows += [(ago(6), "412.40", "Delta", "TRAVEL"), (ago(5), "412.40", "Delta", "TRAVEL")]  # charged twice
+    with db.session() as sess:
+        card = Account(kind="plaid", name="Sub card", type="credit", subtype="credit card", is_liability=True)
+        sess.add(card)
+        sess.flush()
+        for i, (d, amt, merchant, primary) in enumerate(rows):
+            sess.add(Transaction(account_id=card.id, plaid_transaction_id=f"sub-{i}", date=d, amount=Decimal(amt),
+                                 name=merchant.upper(), merchant_name=merchant, pending=False,
+                                 category_primary=primary))
+
+    assert client.post("/api/v1/recurring/detect").json() == {"found": 6}
+    streams = {(s["merchant"], s["amount"]): s for s in client.get("/api/v1/recurring").json()["streams"]}
+    assert {(m, a, s["cadence"]) for (m, a), s in streams.items()} == {
+        ("Netflix", "17.99", "monthly"), ("Spotify", "11.99", "monthly"), ("Apple", "2.99", "monthly"),
+        ("Apple", "10.99", "monthly"), ("Con Edison", "104.00", "monthly"), ("Amazon Prime", "139.00", "annual")}
+    netflix = streams[("Netflix", "17.99")]
+    assert netflix["previous_amount"] == "15.49" and netflix["price_changed_on"] == monthly(ago(10), 6)[4].isoformat()
+    assert netflix["next_date"] == add_months(ago(10), 1).isoformat() and netflix["state"] == "active"
+
+    # The user's verdict and name survive detection.
+    r = client.patch(f"/api/v1/recurring/{netflix['id']}", json={"status": "confirmed", "name": "Netflix Premium"})
+    assert r.json()["label"] == "Netflix Premium"
+    client.patch(f"/api/v1/recurring/{streams[('Con Edison', '104.00')]['id']}", json={"status": "dismissed"})
+    client.post("/api/v1/recurring/detect")
+    after = {s["id"]: s for s in client.get("/api/v1/recurring").json()["streams"]}
+    assert after[netflix["id"]]["status"] == "confirmed" and after[netflix["id"]]["name"] == "Netflix Premium"
+    assert client.get("/api/v1/recurring").json()["monthly_confirmed"] == "17.99"
+
+    up = client.get("/api/v1/recurring/upcoming", params={"days": 30}).json()
+    labels = [i["label"] for i in up["items"]]
+    assert "Netflix Premium" in labels and "Amazon Prime" in labels and "Con Edison" not in labels  # dismissed
+
+    found = {a["kind"]: a for a in client.get("/api/v1/alerts").json()["alerts"]}
+    assert found["price"]["merchant"] == "Netflix Premium" and found["price"]["previous"] == "15.49"
+    assert found["duplicate"]["merchant"] == "Delta" and found["duplicate"]["amount"] == "412.40"
+    assert found["large"]["merchant"] == "Shell" and found["large"]["usual"] == "45.00"
+    assert client.post("/api/v1/alerts/dismiss", json={"key": found["duplicate"]["key"]}).status_code == 204
+    assert "duplicate" not in {a["kind"] for a in client.get("/api/v1/alerts").json()["alerts"]}

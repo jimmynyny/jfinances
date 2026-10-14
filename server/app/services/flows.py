@@ -26,7 +26,8 @@ PAYMENT = "PAYMENT"
 
 
 def is_liability_payment_clause():
-    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
+    # Never NULL: a NULL here would make `~clause` NULL too and drop the row (see is_transfer_clause).
+    effective = func.coalesce(Transaction.user_category, Transaction.category_primary, "")
     return and_(Account.is_liability.is_(True), Transaction.amount < 0, effective.in_(PAYMENT_PRIMARY))
 
 
@@ -39,7 +40,12 @@ def display_category(t: Transaction, a: Account | None) -> str | None:
 
 
 def is_transfer_clause():
-    """SQL predicate for internal transfers, honouring the user's category."""
-    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
+    """SQL predicate for internal transfers, honouring the user's category.
+
+    Never NULL: callers filter with `~is_transfer_clause()`, and NOT NULL is
+    NULL, which WHERE treats as false. A transaction with no category would
+    silently drop out of every total."""
+    effective = func.coalesce(Transaction.user_category, Transaction.category_primary, "")
+    detailed = func.coalesce(Transaction.category_detailed, "")
     return or_(effective.in_(TRANSFER_PRIMARY),
-               and_(Transaction.user_category.is_(None), Transaction.category_detailed == CARD_PAYMENT_DETAILED))
+               and_(Transaction.user_category.is_(None), detailed == CARD_PAYMENT_DETAILED))

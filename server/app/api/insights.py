@@ -7,8 +7,7 @@ accounts.is_business) and repeatable `account_id`. Read-only.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from decimal import Decimal
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -18,21 +17,10 @@ from ..auth.human import Principal
 from ..db import get_session
 from ..services import insights
 from ..services.insights import Filters, Grain, Scope
-from ._common import ApiError, money, parse_uuid
+from ._common import ApiError, parse_uuid
+from ._common import plain as _json
 
 router = APIRouter()
-
-
-def _json(v: Any) -> Any:
-    if isinstance(v, Decimal):
-        return money(v)
-    if isinstance(v, date):
-        return v.isoformat()
-    if isinstance(v, dict):
-        return {k: _json(x) for k, x in v.items()}
-    if isinstance(v, list | tuple):
-        return [_json(x) for x in v]
-    return v
 
 
 def _year_earlier(d: date) -> date:

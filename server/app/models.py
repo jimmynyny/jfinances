@@ -301,6 +301,52 @@ class Liability(TimestampMixin, Base):
 
 
 # ---------------------------------------------------------------------------
+# Subscriptions and alerts (services/recurring.py, services/alerts.py)
+# ---------------------------------------------------------------------------
+RECURRING_STATUSES = ("detected", "confirmed", "dismissed")
+
+
+class RecurringStream(TimestampMixin, Base):
+    """A charge that repeats on a schedule, found in transactions (never Plaid's
+    paid Recurring product). Detection refreshes the numbers; the user's
+    verdict (`status`: detected, confirmed, dismissed) and `name` survive it."""
+    __tablename__ = "recurring_streams"
+    __table_args__ = (Index("ix_recurring_merchant", "merchant"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    merchant: Mapped[str] = mapped_column(String(300), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200))
+    cadence: Mapped[str] = mapped_column(String(12), nullable=False)
+    interval_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Typical charge: the median of the latest three.
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    last_amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    #: The price before the latest increase or cut, and when it changed.
+    previous_amount: Mapped[Decimal | None] = mapped_column(MONEY)
+    price_changed_on: Mapped[date | None] = mapped_column(Date)
+    first_date: Mapped[date] = mapped_column(Date, nullable=False)
+    last_date: Mapped[date] = mapped_column(Date, nullable=False)
+    next_date: Mapped[date] = mapped_column(Date, nullable=False)
+    charge_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80))
+    account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="detected")
+    status_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The last detection run that still found it.
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DismissedAlert(Base):
+    """An alert the user waved off, never shown again. Keys are stable per
+    finding: "dup:<txn>:<txn>", "large:<txn>", "price:<stream>:<date>"."""
+    __tablename__ = "dismissed_alerts"
+
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    dismissed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    dismissed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+# ---------------------------------------------------------------------------
 # Plumbing: jobs, webhooks, link sessions
 # ---------------------------------------------------------------------------
 JOB_STATUSES = ("queued", "running", "done", "failed")
