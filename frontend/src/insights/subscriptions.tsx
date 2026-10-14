@@ -36,6 +36,19 @@ function PriceStep({ s }: { s: RecurringStream }) {
   );
 }
 
+const VERDICTS: Array<{ value: RecurringStatus; label: string }> = [
+  { value: "confirmed", label: "recurring" },
+  { value: "dismissed", label: "not recurring" },
+];
+
+/** Recurring or not: neither pressed while it waits for review; pressing the pressed one puts it back. */
+function Verdict({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: string, st: RecurringStatus) => void }) {
+  return (
+    <Segmented size="sm" options={VERDICTS} value={s.status} aria-label={`${s.label}: recurring?`}
+      onChange={(v) => onVerdict(s.id, v === s.status ? "detected" : v)} />
+  );
+}
+
 function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: string, st: RecurringStatus) => void }) {
   return (
     <div className="mu-listrow">
@@ -51,14 +64,7 @@ function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: strin
         {s.cadence !== "monthly" && <div className="mu-caption"><Money value={s.monthly} cents={false} /> / mo</div>}
       </div>
       <div className="mu-listrow__actions">
-        {s.status === "detected" ? (
-          <>
-            <Button size="sm" variant="quiet" onClick={() => onVerdict(s.id, "confirmed")}>Real</Button>
-            <Button size="sm" variant="quiet" onClick={() => onVerdict(s.id, "dismissed")}>Not one</Button>
-          </>
-        ) : (
-          <Badge tone="good" dot={false}>confirmed</Badge>
-        )}
+        <Verdict s={s} onVerdict={onVerdict} />
       </div>
     </div>
   );
@@ -67,9 +73,10 @@ function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: strin
 export function SubscriptionsView({ actions }: { actions?: ReactNode }) {
   const q = useRecurring();
   const verdict = useVerdict();
+  // The server lists recurring ones first, then those to review, each soonest next charge first.
   const active = (q.data?.streams ?? []).filter((s) => s.state === "active" && s.status !== "dismissed");
-  const review = active.filter((s) => s.status === "detected").sort((a, b) => b.monthly - a.monthly);
-  const confirmed = active.filter((s) => s.status === "confirmed").sort((a, b) => b.monthly - a.monthly);
+  const review = active.filter((s) => s.status === "detected");
+  const confirmed = active.filter((s) => s.status === "confirmed");
   return (
     <Panel caption="subscriptions" actions={actions}>
       {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : !q.data ? <Skeleton height={200} /> : active.length === 0 ? (
@@ -77,17 +84,16 @@ export function SubscriptionsView({ actions }: { actions?: ReactNode }) {
       ) : (
         <div className="mu-stack">
           <div className="jf-cats__head">
-            <span>confirmed, per month</span>
+            <span>recurring, per month</span>
             <Money value={q.data.monthly_confirmed} cents={false} />
           </div>
+          {confirmed.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} />)}
           {review.length > 0 && (
             <>
-              <span className="mu-caption">to review: are these real? ({review.length}, <Money value={q.data.monthly_detected} cents={false} /> / mo)</span>
+              <span className="mu-caption">to review: recurring or not? ({review.length}, <Money value={q.data.monthly_detected} cents={false} /> / mo)</span>
               {review.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} />)}
             </>
           )}
-          {confirmed.length > 0 && review.length > 0 && <span className="mu-caption">confirmed</span>}
-          {confirmed.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} />)}
         </div>
       )}
     </Panel>
@@ -196,13 +202,11 @@ export function UpcomingView({ days = 30, actions }: { days?: number; actions?: 
   );
 }
 
-const VERDICTS: Array<{ value: RecurringStatus; label: string }> = [
-  { value: "confirmed", label: "real" },
-  { value: "detected", label: "review" },
-  { value: "dismissed", label: "not one" },
-];
-
-/** Settings: every subscription found, including dismissed and lapsed ones; verdicts, names, and a fresh look. */
+/**
+ * Settings: the subscriptions found, recurring ones first, then those to review (each
+ * soonest next charge first); a verdict, a name, and a fresh look. Not recurring ones,
+ * and ones two of their own periods without a charge, are left out.
+ */
 export function SubscriptionSettings() {
   const q = useRecurring();
   const verdict = useVerdict();
@@ -232,10 +236,7 @@ export function SubscriptionSettings() {
         : <span className="mu-mono">{formatDate(s.next_date)}</span>,
       sortValue: (s) => s.next_date,
     },
-    {
-      key: "status", header: "Is it a subscription?", mobile: "full",
-      cell: (s) => <Segmented size="sm" options={VERDICTS} value={s.status} onChange={(v) => verdict(s.id, v)} aria-label={`${s.label}: is it a subscription?`} />,
-    },
+    { key: "status", header: "Recurring?", mobile: "full", cell: (s) => <Verdict s={s} onVerdict={verdict} /> },
     { key: "rename", header: "", mobile: "full", cell: (s) => <Button size="sm" variant="quiet" onClick={() => { setRenaming(s); setName(s.name ?? ""); }}>Rename</Button> },
   ];
   return (
@@ -253,7 +254,7 @@ export function SubscriptionSettings() {
       }
     >
       {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : (
-        <DataTable columns={cols} rows={q.data?.streams ?? []} rowKey={(s) => s.id} defaultSort={{ key: "monthly", dir: "desc" }}
+        <DataTable columns={cols} rows={q.data?.streams ?? []} rowKey={(s) => s.id}
           empty={q.isLoading ? <Skeleton lines={3} /> : <span className="mu-caption">None found yet. They're found in your transactions after each sync.</span>} />
       )}
       <Drawer

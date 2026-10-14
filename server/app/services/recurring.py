@@ -114,6 +114,12 @@ def is_lapsed(next_date: date, cadence: str, today: date) -> bool:
     return today > next_date + timedelta(days=BY_NAME[cadence].tolerance)
 
 
+def is_stale(last_date: date, cadence: str, today: date) -> bool:
+    """Two of its own periods without a charge (a monthly one quiet for two months):
+    it isn't recurring any more, so it isn't listed or asked about."""
+    return (today - last_date).days >= 2 * BY_NAME[cadence].days
+
+
 def monthly_cost(amount: Decimal, cadence: str) -> Decimal:
     return amount * DAYS_PER_MONTH / Decimal(str(BY_NAME[cadence].days))
 

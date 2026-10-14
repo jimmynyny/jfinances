@@ -488,6 +488,10 @@ previous_amount, price_changed_on, first_date, last_date, next_date, charge_coun
 category, account_id, account_name, account_mask, is_business, status, state, monthly}],
 "monthly_confirmed", "monthly_detected"}`. `state` is `active` or `lapsed`;
 `monthly` is the amount per month; the totals add up active streams per status.
+Recurring ones (`confirmed`) come first, then those to review (`detected`), each soonest
+`next_date` first. Ones marked not recurring (`dismissed`), and ones two of their own periods
+without a charge (a monthly one quiet for two months: it stopped), are left out; `?all=true`
+lists everything.
 
 ### PATCH /recurring/{id}
 Body: `{"status"?: "detected"|"confirmed"|"dismissed", "name"?: str|null}` → stream.

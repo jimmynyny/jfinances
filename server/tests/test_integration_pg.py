@@ -1262,6 +1262,7 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     rows += [(ago(6), "412.40", "Delta", "TRAVEL"), (ago(5), "412.40", "Delta", "TRAVEL")]  # charged twice
     rows += [(d, a, "Trader Joe's", "FOOD_AND_DRINK") for d, a in
              zip([add_months(ago(9), -3 * k) for k in (2, 1, 0)], ["63.29", "64.10", "62.80"], strict=True)]  # shopping
+    rows += [(d, "7.99", "Hulu", "ENTERTAINMENT") for d in monthly(ago(70), 6)]  # stopped: quiet for two months
     with db.session() as sess:
         card = Account(kind="plaid", name="Sub card", type="credit", subtype="credit card", is_liability=True)
         sess.add(card)
@@ -1271,8 +1272,12 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
                                  name=merchant.upper(), merchant_name=merchant, pending=False,
                                  category_primary=primary))
 
-    assert client.post("/api/v1/recurring/detect").json() == {"found": 6}
+    assert client.post("/api/v1/recurring/detect").json() == {"found": 7}
     streams = {(s["merchant"], s["amount"]): s for s in client.get("/api/v1/recurring").json()["streams"]}
+    # Hulu was found, but two months without a charge isn't recurring: not listed, not asked about.
+    assert ("Hulu", "7.99") not in streams
+    assert ("Hulu", "7.99") in {(s["merchant"], s["amount"]) for s in
+                                client.get("/api/v1/recurring", params={"all": "true"}).json()["streams"]}
     assert {(m, a, s["cadence"]) for (m, a), s in streams.items()} == {
         ("Netflix", "17.99", "monthly"), ("Spotify", "11.99", "monthly"), ("Apple", "2.99", "monthly"),
         ("Apple", "10.99", "monthly"), ("Con Edison", "104.00", "monthly"), ("Amazon Prime", "139.00", "annual")}
@@ -1285,8 +1290,12 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     assert r.json()["label"] == "Netflix Premium"
     client.patch(f"/api/v1/recurring/{streams[('Con Edison', '104.00')]['id']}", json={"status": "dismissed"})
     client.post("/api/v1/recurring/detect")
-    after = {s["id"]: s for s in client.get("/api/v1/recurring").json()["streams"]}
+    listed = client.get("/api/v1/recurring").json()["streams"]
+    after = {s["id"]: s for s in listed}
     assert after[netflix["id"]]["status"] == "confirmed" and after[netflix["id"]]["name"] == "Netflix Premium"
+    assert streams[("Con Edison", "104.00")]["id"] not in after  # not recurring: gone from the list
+    assert listed[0]["id"] == netflix["id"]  # recurring ones first, then the rest by their next charge
+    assert [s["next_date"] for s in listed[1:]] == sorted(s["next_date"] for s in listed[1:])
     assert client.get("/api/v1/recurring").json()["monthly_confirmed"] == "17.99"
 
     up = client.get("/api/v1/recurring/upcoming", params={"days": 30}).json()

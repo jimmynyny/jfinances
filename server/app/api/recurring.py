@@ -52,11 +52,18 @@ def stream_json(r: RecurringStream, today: date, accounts: dict[uuid.UUID, Accou
 
 
 @router.get("/recurring")
-def list_streams(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
-    """Every stream; `monthly_*` add up the active ones per verdict."""
+def list_streams(all: bool = False, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """The streams worth a look: recurring ones (confirmed) first, then those to review,
+    each soonest next charge first. Ones marked not recurring, and ones two of their own
+    periods without a charge, are left out (`all=true` lists them too). `monthly_*` add
+    up the active ones per verdict."""
     today = _today()
     accounts = _accounts(sess)
-    rows = sess.execute(select(RecurringStream).order_by(RecurringStream.next_date)).scalars()
+    rows = sess.execute(select(RecurringStream)).scalars().all()
+    if not all:
+        rows = [r for r in rows if r.status != "dismissed" and not recurring.is_stale(r.last_date, r.cadence, today)]
+    rank = {"confirmed": 0, "detected": 1, "dismissed": 2}
+    rows = sorted(rows, key=lambda r: (rank.get(r.status, 1), r.next_date, (r.name or r.merchant).lower()))
     items = [stream_json(r, today, accounts) for r in rows]
 
     def monthly(status: str) -> str | None:
