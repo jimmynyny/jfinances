@@ -48,6 +48,8 @@ def derive_account(sess: Session, acct: Account) -> int:
         .group_by(Transaction.date)).all())
     if not flows:
         return 0
+    # Days that already have a real row (one with no balance sits below the anchor) stay as they are.
+    taken = set(sess.execute(select(BalanceSnapshot.as_of).where(BalanceSnapshot.account_id == acct.id)).scalars())
     # Stepping back over a day undoes its transactions: money out (+) returns
     # to a cash account, and comes off what a card owes.
     sign = Decimal(-1) if acct.is_liability else Decimal(1)
@@ -57,7 +59,8 @@ def derive_account(sess: Session, acct: Account) -> int:
     while day >= earliest:  # the last row is the balance before the first known transaction
         bal += sign * Decimal(flows.get(day, 0))
         day -= timedelta(days=1)
-        rows.append(BalanceSnapshot(account_id=acct.id, as_of=day, current_balance=bal, source=DERIVED))
+        if day not in taken:
+            rows.append(BalanceSnapshot(account_id=acct.id, as_of=day, current_balance=bal, source=DERIVED))
     sess.add_all(rows)
     sess.flush()
     return len(rows)

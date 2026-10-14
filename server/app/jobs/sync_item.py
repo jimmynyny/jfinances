@@ -38,7 +38,7 @@ def sync_item(sess: Session, payload: dict) -> None:
             enqueue_product_refreshes(sess, item)
         if item.has_product("transactions"):
             plaid_sync.sync_transactions(sess, item)
-            history.derive_item(sess, item)  # cash and card balances before linking
+            _derive_history(sess, item)
         else:
             log.info("item %s has no transactions product; balances only", item.id)
     except PlaidError as e:
@@ -47,6 +47,17 @@ def sync_item(sess: Session, payload: dict) -> None:
         if item.status in ("login_required", "removed"):
             return
         raise e
+
+
+def _derive_history(sess: Session, item: PlaidItem) -> None:
+    """Cash and card balances before linking (services/history.py). Best
+    effort, in a savepoint: a failure here must never undo the transactions
+    sync it follows, or the item would stop syncing."""
+    try:
+        with sess.begin_nested():
+            history.derive_item(sess, item)
+    except Exception:
+        log.exception("deriving balance history failed for item %s", item.id)
 
 
 @handler("sync_all")

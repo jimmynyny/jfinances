@@ -458,3 +458,42 @@ def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     assert nw["points"][0]["net"] == "5570.00" and nw["points"][-1]["net"] == "5700.00"
     hist = client.get(f"/api/v1/accounts/{chk_id}/history", params={"range": "1m"}).json()["points"]
     assert [p["source"] for p in hist] == ["derived"] * 3 + ["plaid"]
+
+
+def test_history_keeps_real_rows_and_never_breaks_a_sync(client, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from server.app.jobs import sync_item as job
+    from server.app.models import Account, BalanceSnapshot, PlaidItem, Transaction
+    from server.app.services import history
+
+    today = datetime.now(UTC).date()
+    with db.session() as sess:
+        chk = Account(kind="plaid", name="Gap checking", type="depository", subtype="checking", current_balance=100)
+        sess.add(chk)
+        sess.flush()
+        sess.add_all([  # a day Plaid gave no balance sits below the first usable one
+            BalanceSnapshot(account_id=chk.id, as_of=today - timedelta(days=1), current_balance=None, source="plaid"),
+            BalanceSnapshot(account_id=chk.id, as_of=today, current_balance=100, source="plaid"),
+            Transaction(account_id=chk.id, plaid_transaction_id="g1", date=today - timedelta(days=2),
+                        amount=Decimal("10"), name="g1"),
+        ])
+        sess.flush()
+        assert history.derive_account(sess, chk) == 2  # days 2 and 3; day 1 keeps its real row
+
+    def boom(sess, item):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(job.history, "derive_item", boom)
+    with db.session() as sess:
+        item = PlaidItem(item_id="item-gap", institution_name="Gap", access_token_enc=b"x", status="active")
+        sess.add(item)
+        sess.flush()
+        job._derive_history(sess, item)  # logged, not raised
+        item.institution_name = "Gap Bank"  # the sync's own work still commits
+    with db.session() as sess:
+        assert sess.execute(select(PlaidItem.institution_name)
+                            .where(PlaidItem.item_id == "item-gap")).scalar() == "Gap Bank"

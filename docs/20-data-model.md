@@ -98,8 +98,10 @@ hands over up to two years of transactions. For cash (`depository`) and card
 (`credit`) accounts, `services/history.py` walks back from the account's
 first real snapshot, undoing each day's posted transactions, and writes one
 `derived` row per day back to the day before its earliest transaction. It
-runs after every transactions sync (`sync_item`) and replaces only `derived`
-rows, which all fall before the first real one. Investments, loans and
+runs after every transactions sync (`sync_item`), in a savepoint so a failure
+is logged and never undoes the sync, and replaces only `derived` rows, which
+all fall before the first real one (a day that already has a real row keeps
+it). Investments, loans and
 offline assets are never derived: their value moves with prices and
 interest, which transactions don't record. The net worth chart holds those
 at their first recorded value on earlier days and says the stretch is
