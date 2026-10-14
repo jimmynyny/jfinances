@@ -12,7 +12,16 @@ export interface Drill extends TransactionDrill {
   from?: string;
   to?: string;
   category?: string | null;
+  /** List the biggest amounts first. */
+  sort?: "newest" | "largest";
+  /** Why the list was opened, when the numbers need saying (see WHY). */
+  why?: keyof typeof WHY;
 }
+
+/** What a list opened from Insights is for, when its numbers alone don't say. */
+export const WHY = {
+  savings: "Spending beyond income in this range is drawn from savings (or debt). These are the spending transactions, biggest first: a transfer to your own account, a reimbursement or income filed as spending makes the gap look bigger; edit those. Income that lands in an account that isn't connected is missing altogether: import that account's history.",
+} as const;
 
 const LISTS = ["not_category", "not_detailed", "not_source"] as const;
 const TEXTS = ["flow", "scope", "detailed", "merchant", "income_kind", "direction"] as const;
@@ -30,6 +39,8 @@ export function txLink(slice: InsightSlice, d: Drill): string {
   for (const k of TEXTS) if (k !== "scope" && d[k]) p.set(k, String(d[k]));
   for (const k of NUMBERS) if (d[k] !== undefined) p.set(k, String(d[k]));
   for (const k of LISTS) for (const v of d[k] ?? []) p.append(k, v);
+  if (d.sort) p.set("sort", d.sort);
+  if (d.why) p.set("why", d.why);
   return `/transactions?${p.toString()}`;
 }
 
@@ -40,6 +51,8 @@ export interface DrillParams {
   account?: string;
   category?: string;
   drill: TransactionDrill | null;
+  sort?: "newest" | "largest";
+  why?: keyof typeof WHY;
 }
 
 export function readDrill(params: URLSearchParams): DrillParams {
@@ -69,6 +82,8 @@ export function readDrill(params: URLSearchParams): DrillParams {
     account: params.get("account") ?? undefined,
     category: params.get("category") ?? undefined,
     drill: drill.flow ? drill : null,
+    sort: params.get("sort") === "largest" ? "largest" : params.get("sort") === "newest" ? "newest" : undefined,
+    why: (params.get("why") ?? "") in WHY ? (params.get("why") as keyof typeof WHY) : undefined,
   };
 }
 

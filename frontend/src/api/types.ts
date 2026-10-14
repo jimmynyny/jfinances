@@ -217,6 +217,8 @@ export interface TransactionQuery extends TransactionDrill {
   pending?: boolean;
   page?: number;
   page_size?: number;
+  /** newest (default) or largest: biggest amounts first, either way. */
+  sort?: "newest" | "largest";
 }
 
 export interface SummaryRow {

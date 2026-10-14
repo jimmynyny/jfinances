@@ -151,22 +151,26 @@ def _rows_stmt(tq: TxQuery, **kw):
 
 
 NEWEST_FIRST = (Transaction.date.desc(), Transaction.created_at.desc())
+#: Biggest money first, either way: what to look at when a total seems too big.
+LARGEST_FIRST = (func.abs(Transaction.amount).desc(), *NEWEST_FIRST)
 
 
 @router.get("/transactions")
 def list_transactions(tq: TxQuery = Depends(), page: int = Query(default=1, ge=1),
                       page_size: int = Query(default=50, ge=1, le=500),
+                      sort: Literal["newest", "largest"] = "newest",
                       _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     stmt = _rows_stmt(tq)
+    order = LARGEST_FIRST if sort == "largest" else NEWEST_FIRST
     if tq.needs_python:
-        rows = [r for r in sess.execute(stmt.order_by(*NEWEST_FIRST)).all() if tq.keep(r[0])]
+        rows = [r for r in sess.execute(stmt.order_by(*order)).all() if tq.keep(r[0])]
         total, total_sum = len(rows), sum((r[0].amount for r in rows), ZERO)
         rows = rows[(page - 1) * page_size:page * page_size]
     else:
         total, total_sum = sess.execute(
             select(func.count(), func.coalesce(func.sum(Transaction.amount), 0))
             .join(Account, Account.id == Transaction.account_id).where(*tq.clauses())).one()
-        rows = sess.execute(stmt.order_by(*NEWEST_FIRST).offset((page - 1) * page_size).limit(page_size)).all()
+        rows = sess.execute(stmt.order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     return {"page": page, "page_size": page_size, "total": total, "sum": money(total_sum),
             "transactions": [_tx_json(t, a, inst) for t, a, inst in rows]}
 

@@ -136,7 +136,10 @@ export function flowNodes(d: CashflowInsight, open?: (drill: Drill) => void): { 
     onSelect: on(c.key === "OTHER" ? { flow: "spending", not_category: named } : { flow: "spending", category: c.key }),
   }));
   if (d.totals.net > 0) uses.push({ key: "saved", label: "saved", value: d.totals.net, color: IN, onSelect: on({ flow: "all" }) });
-  if (d.totals.net < 0) sources.push({ key: "in:savings", label: "from savings", value: -d.totals.net, color: "var(--mu-ink-3)" });
+  if (d.totals.net < 0) {
+    sources.push({ key: "in:savings", label: "from savings", value: -d.totals.net, color: "var(--mu-ink-3)",
+      onSelect: on({ flow: "spending", sort: "largest", why: "savings" }) });
+  }
   return { sources, uses };
 }
 

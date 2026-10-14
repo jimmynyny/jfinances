@@ -52,11 +52,8 @@ def parse_uuid(value: str, what: str = "id") -> uuid.UUID:
 
 def account_group(a: Account, *, natural: bool = False) -> str:
     """The networth group an account counts in; `natural`: by its type alone."""
-    from ..services.networth import AccountRow, group_key, natural_group
-    row = AccountRow(id=str(a.id), name=a.name, kind=a.kind, type=a.type, subtype=a.subtype,
-                     manual_category=a.manual_category, is_liability=a.is_liability, is_hidden=a.is_hidden,
-                     current_balance=a.current_balance, group_override=None if natural else a.group_override)
-    return natural_group(row) if natural else group_key(row)
+    from ..services.networth import account_group as group
+    return group(a, natural=natural)
 
 
 def account_json(a: Account, item: PlaidItem | None = None) -> dict[str, Any]:

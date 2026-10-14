@@ -54,7 +54,8 @@ export function PixelBars({
 }: PixelBarsProps) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const sel = useMarkSelect<number>(ref);
-  const hover = sel.hover;
+  // A column hovered when the data changed under it (a click narrowed the range) is gone.
+  const hover = sel.hover !== null && sel.hover < data.length ? sel.hover : null;
   // Colours stay with their series; the legend hides and shows them.
   const colorOf = new Map(series.map((s, i) => [s.key, s.color ?? seriesColor(i)]));
   const toggle = useSeriesToggle(series.map((s) => s.key));

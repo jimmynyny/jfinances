@@ -52,7 +52,8 @@ export function BarChart({
 }: BarChartProps) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const sel = useMarkSelect<number>(ref);
-  const hover = sel.hover;
+  // A column hovered when the data changed under it (a click narrowed the range) is gone.
+  const hover = sel.hover !== null && sel.hover < data.length ? sel.hover : null;
   // The legend hides and shows series; the rest are drawn and scaled.
   const toggle = useSeriesToggle(series.map((s) => s.key));
   const shown = useMemo(() => series.filter((s) => !toggle.hidden.has(s.key)), [series, toggle.hidden]);

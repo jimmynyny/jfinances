@@ -44,7 +44,10 @@ const STATUS_TONE: Record<ImportRowStatus, "good" | "neutral" | "warn" | "accent
   new: "good", matched: "neutral", duplicate: "neutral", review: "warn",
 };
 
-const importable = (a: Account) => a.kind === "plaid" && (a.type === "depository" || a.type === "credit" || a.type === "investment") && !a.closed_at;
+/** Linked bank, card and investment accounts, and offline ones kept by hand as a bank or card. */
+const importable = (a: Account) => !a.closed_at && (a.kind === "plaid"
+  ? a.type === "depository" || a.type === "credit" || a.type === "investment"
+  : ["cash", "credit_cards", "other_assets", "other_liabilities"].includes(a.group ?? ""));
 
 /**
  * Bank exports (CSV, QFX, OFX) into a linked account's history, for the years
@@ -155,7 +158,7 @@ export function ImportPage() {
 
   return (
     <Page>
-      <PageHeader title="Import history" subtitle="Bank exports (CSV, QFX or OFX) and investment statements (QFX or OFX) for the history your connection doesn't reach." />
+      <PageHeader title="Import history" subtitle="Bank exports (CSV, QFX or OFX) and investment statements (QFX or OFX): history a connection doesn't reach, or an offline account's transactions." />
 
       <Panel caption="file">
         <div className="mu-stack">
@@ -176,6 +179,7 @@ export function ImportPage() {
               <li>Download your account&apos;s activity from the bank&apos;s website as CSV, QFX or OFX; for a brokerage or 401(k), the QFX or OFX statement.</li>
               <li>Nothing is saved until you press Import. The columns are worked out for you; check them below.</li>
               <li>Rows your connection already has are matched, not added. Re-uploading the same or an overlapping file adds nothing new.</li>
+              <li>A bank the app can&apos;t connect to: add it as an offline account (cash), then import its exports here whenever you like. Its transactions count in Insights and subscriptions like any other.</li>
               <li>If the file has a running balance, those become the account&apos;s exact past balances.</li>
             </ul>
           )}
@@ -204,6 +208,7 @@ export function ImportPage() {
                 <p className="jf-facts__note">
                   {preview.range ? <>{c?.total} rows from {formatDate(preview.range.from, { year: true })} to {formatDate(preview.range.to, { year: true })}. </> : null}
                   {preview.connection_from ? <>Your connection has this account from {formatDate(preview.connection_from, { year: true })}; rows from then on are only matched, or added if you tick them. </> : null}
+                  {account?.kind === "manual" ? <>It&apos;s an offline account: every new row is added, and the file&apos;s balances keep the account&apos;s balance up to date. </> : null}
                   {preview.balances ? (preview.format === "invofx"
                     ? <>The statement&apos;s holdings and the funds&apos; prices give the account&apos;s value for {preview.balances.days} days ({formatDate(preview.balances.from, { year: true })} – {formatDate(preview.balances.to, { year: true })}). </>
                     : <>{preview.format === "venmo" ? "The statement's opening balance" : "The running balance"} sets {preview.balances.days} days of exact balances. </>) : null}

@@ -184,7 +184,9 @@ normalized description and which of the identical same-day rows it is. `import_p
 remembers a confirmed CSV layout by its header signature, and the account it last went into.
 Imported transactions have `source = 'import'`, `import_id`, and no `plaid_transaction_id`;
 everything else reads them like any other. Their running balances are `balance_snapshots`
-with `source = 'import'` (and `note = 'import:<id>'`), only on days before tracking began.
+with `source = 'import'` (and `note = 'import:<id>'`), only on days before tracking began; for
+an offline account (no tracking: kept by hand), on every day without a typed (`manual`) value,
+and the daily carry-forward never overwrites one.
 
 ## jobs
 The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler

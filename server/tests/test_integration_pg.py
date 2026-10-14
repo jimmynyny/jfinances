@@ -855,6 +855,68 @@ def test_an_account_counts_where_the_person_puts_it(client):
     assert client.patch(f"/api/v1/accounts/{house_id}", json={"group": "attic"}).status_code == 422
 
 
+def test_an_offline_bank_takes_its_exports_and_counts_in_insights(client):
+    """A bank the connection can't reach, kept as an offline account: its export is
+    imported (every row new), its paychecks count as income and its card payment as a
+    transfer, its statement balances fill the days nobody typed, a newer statement
+    keeps its balance, and undo removes it all."""
+    import base64
+    import uuid
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+
+    from sqlalchemy import delete, select
+
+    from server.app.models import Account, BalanceSnapshot, Transaction
+
+    r = client.post("/api/v1/accounts/manual", json={"name": "Schwab Checking", "manual_category": "other_asset",
+                                                     "value": 2500, "iso_currency": "USD"})
+    assert r.status_code == 201, r.text
+    acct = r.json()
+    assert acct["group"] == "other_assets"
+    csv_text = ("Date,Description,Amount,Balance\n"
+                "09/01/2026,ACME CORP PAYROLL PPD ID: 7,3200.00,4200.00\n"
+                "09/03/2026,CHASE CREDIT CRD AUTOPAY,-900.00,3300.00\n"
+                "09/15/2026,ACME CORP PAYROLL PPD ID: 7,3200.00,6500.00\n"
+                "09/20/2026,LANDLORD LLC RENT,-2400.00,4100.00\n")
+    body = {"filename": "Schwab_Checking.csv", "content_b64": base64.b64encode(csv_text.encode()).decode(),
+            "account_id": acct["id"]}
+    pv = client.post("/api/v1/imports/preview", json=body)
+    assert pv.status_code == 200, pv.text
+    pv = pv.json()
+    assert pv["counts"]["new"] == 4 and pv["connection_from"] is None and pv["balances"]["days"] == 4
+    imp = client.post("/api/v1/imports", json=body)
+    assert imp.status_code == 201, imp.text
+    imp = imp.json()
+    assert (imp["rows_added"], imp["balances_added"]) == (4, 4)
+
+    cf = client.get("/api/v1/insights/cashflow", params={"from": "2026-09-01", "to": "2026-09-30"}).json()
+    assert cf["totals"]["income"] == "6400.00"  # the paychecks count, like any account's
+    assert cf["totals"]["spending"] == "2400.00"  # the rent; the card payment is a transfer
+    with db.session() as sess:
+        a = sess.get(Account, uuid.UUID(acct["id"]))
+        assert a.current_balance == Decimal("2500")  # typed today, newer than the statement
+        days = dict(sess.execute(select(BalanceSnapshot.as_of, BalanceSnapshot.source)
+                                 .where(BalanceSnapshot.account_id == a.id)).all())
+        assert days[date(2026, 9, 20)] == "import"
+        assert sess.execute(select(Transaction).where(Transaction.account_id == a.id)).scalars().all()
+
+    # A newer statement than anything typed keeps the balance current.
+    with db.session() as sess:
+        sess.execute(delete(BalanceSnapshot).where(BalanceSnapshot.account_id == uuid.UUID(acct["id"]),
+                                                   BalanceSnapshot.source == "manual"))
+    later = ("Date,Description,Amount,Balance\n"
+             f"{datetime.now(UTC).date():%m/%d/%Y},COFFEE,-4.00,4096.00\n")
+    r = client.post("/api/v1/imports", json={**body, "filename": "later.csv",
+                                             "content_b64": base64.b64encode(later.encode()).decode()})
+    assert r.status_code == 201, r.text
+    acc = next(x for x in client.get("/api/v1/accounts").json()["accounts"] if x["id"] == acct["id"])
+    assert acc["current_balance"] == "4096.00"
+
+    u = client.delete(f"/api/v1/imports/{imp['id']}")
+    assert u.status_code == 200 and u.json()["removed"] == 4
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal

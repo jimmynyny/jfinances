@@ -59,7 +59,14 @@ class ImportProblem(ValueError):
 
 
 def importable(a: Account) -> bool:
-    return a.kind == "plaid" and a.type in IMPORTABLE_TYPES and a.closed_at is None
+    """A linked bank or card account, or an offline one kept by hand as cash or a card
+    (or still "other": a bank the connection can't reach)."""
+    from .networth import OFFLINE_IMPORT_GROUPS, account_group
+    if a.closed_at is not None:
+        return False
+    if a.kind == "plaid":
+        return a.type in IMPORTABLE_TYPES
+    return a.kind == "manual" and account_group(a) in OFFLINE_IMPORT_GROUPS
 
 
 def read_file(content_b64: str) -> bytes:
@@ -232,9 +239,15 @@ def end_of_day_balances(p: st.Parsed) -> dict[date, Decimal]:
 
 
 def balance_days(sess: Session, a: Account, balances: dict[date, Decimal]) -> dict[date, Decimal]:
-    """The days an import may set: before tracking began, and not already set."""
+    """The days an import may set: before tracking began, and not already set. An
+    offline account is kept by hand, so a statement's balances fill every day the
+    person didn't set themselves (replacing carried-forward copies)."""
     if not balances:
         return {}
+    if a.kind == "manual":
+        mine = set(sess.execute(select(BalanceSnapshot.as_of).where(
+            BalanceSnapshot.account_id == a.id, BalanceSnapshot.source.in_(("manual", "import")))).scalars())
+        return {d: v for d, v in balances.items() if d not in mine}
     live_start = sess.execute(select(func.min(BalanceSnapshot.as_of)).where(
         BalanceSnapshot.account_id == a.id, BalanceSnapshot.source.in_(LIVE))).scalar_one_or_none()
     taken = set(sess.execute(select(BalanceSnapshot.as_of).where(
@@ -438,10 +451,11 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
     balances = balance_days(sess, a, end_of_day_balances(p))
     if balances:
         sess.execute(delete(BalanceSnapshot).where(BalanceSnapshot.account_id == a.id,
-                                                   BalanceSnapshot.source == history.DERIVED,
+                                                   BalanceSnapshot.source.in_((history.DERIVED, "carry")),
                                                    BalanceSnapshot.as_of.in_(list(balances))))
         sess.add_all([BalanceSnapshot(account_id=a.id, as_of=d, current_balance=v, source="import",
                                       note=f"import:{imp.id}") for d, v in balances.items()])
+        _keep_current(sess, a, balances)
     imp.rows_added, imp.rows_matched, imp.rows_skipped, imp.balances_added = added, matched, skipped, len(balances)
     if p.signature and (p.mapping is not None or p.format == "venmo"):  # next time: these columns, this account
         prof = sess.execute(select(ImportProfile).where(ImportProfile.signature == p.signature)).scalar_one_or_none()
@@ -452,6 +466,19 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
     sess.flush()
     _rederive(sess, a)
     return imp
+
+
+def _keep_current(sess: Session, a: Account, balances: dict[date, Decimal]) -> None:
+    """An offline account's balance follows its newest statement, unless the person
+    typed a value for a later day."""
+    if a.kind != "manual":
+        return
+    last = max(balances)
+    typed = sess.execute(select(func.max(BalanceSnapshot.as_of)).where(
+        BalanceSnapshot.account_id == a.id, BalanceSnapshot.source == "manual")).scalar_one_or_none()
+    if typed is None or last >= typed:
+        a.current_balance = balances[last]
+        a.balance_updated_at = datetime.now(UTC)
 
 
 def undo(sess: Session, imp: Import) -> int:

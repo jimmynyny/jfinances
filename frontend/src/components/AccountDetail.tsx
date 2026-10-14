@@ -41,8 +41,11 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
   const d = details.data;
   const navigate = useNavigate();
   const imported = (hist.data ?? []).filter((p) => p.source === "import").length;
-  // Bank and card accounts take a bank's export for history the connection doesn't reach.
-  const canImport = !!a && a.kind === "plaid" && (a.type === "depository" || a.type === "credit");
+  // Bank and card accounts take a bank's export for history the connection doesn't reach,
+  // investment accounts a statement, and an offline bank or card its exports.
+  const canImport = !!a && !a.closed_at && (a.kind === "plaid"
+    ? a.type === "depository" || a.type === "credit" || a.type === "investment"
+    : ["cash", "credit_cards", "other_assets", "other_liabilities"].includes(a.group ?? ""));
   const missing = d ? d.sections.flatMap((s) => s.facts).filter((f) => f.value == null && f.field).length : 0;
   const points = (hist.data ?? []).map((p) => ({ date: p.date, balance: p.balance }));
   const carried = (hist.data ?? []).filter((p) => p.source === "carry").length;

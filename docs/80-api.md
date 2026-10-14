@@ -217,7 +217,7 @@ Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (stat
 ## Transactions
 
 ### GET /transactions
-Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount contains), `category` (the user's or the bank's; `UNCATEGORIZED` for neither), `pending` (bool), `page` (1-based), `page_size` (≤500, default 50).
+Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount contains), `category` (the user's or the bank's; `UNCATEGORIZED` for neither), `pending` (bool), `page` (1-based), `page_size` (≤500, default 50), `sort` (`newest`, the default, or `largest`: biggest amounts first, in or out).
 
 The rows behind an Insights number (every number on Insights links here, `frontend/src/lib/drill.ts`):
 `flow` = `income` | `spending` | `all` applies Insights' rules (posted, not removed, no transfers
@@ -326,7 +326,13 @@ Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queue
 
 Bank exports (CSV from any bank, QFX/OFX, Venmo statements) into a linked bank or card account's
 history, and investment statements (QFX/OFX) into a linked investment account's, for the years a
-connection doesn't reach (services/importer.py, statement.py; invimport.py, invstatement.py). The file
+connection doesn't reach (services/importer.py, statement.py; invimport.py, invstatement.py). An
+offline account kept by hand as a bank or card (its group is cash, credit cards, other assets or
+other liabilities) takes bank exports too, as often as the person likes: with no connection every
+new row is added, its statement balances fill every day the person didn't type a value (replacing
+carried-forward copies), the newest one becomes its balance unless a later value was typed, and
+its history walks back from there like a bank account's. Its transactions count everywhere
+(Insights, subscriptions) like a connected account's. The file
 travels as base64 in JSON (≤5 MB) and is never stored; only its name and SHA-256 are.
 
 ### POST /imports/preview (dashboard_only)

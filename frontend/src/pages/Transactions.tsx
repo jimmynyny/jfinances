@@ -14,7 +14,7 @@ import {
   BANK, BusinessPicker, CategoryPicker, businessChoice, businessValue, categoryWords, resolveCategory,
   type BusinessChoice, type CategoryChoice,
 } from "../components/CategoryPicker";
-import { describeDrill, readDrill } from "../lib/drill";
+import { WHY, describeDrill, readDrill } from "../lib/drill";
 import { GROUP_LABEL, groupOf, monthLabel } from "../lib/groups";
 
 type Preset = "30d" | "90d" | "mtd" | "ytd" | "custom";
@@ -42,6 +42,8 @@ export function TransactionsPage() {
   const [accountId, setAccountId] = useState(() => linked.account ?? "");
   const [category, setCategory] = useState(() => linked.category ?? "");
   const [drill, setDrill] = useState<TransactionDrill | null>(() => linked.drill);
+  const [sort, setSort] = useState<"newest" | "largest">(() => linked.sort ?? "newest");
+  const [why, setWhy] = useState<keyof typeof WHY | undefined>(() => linked.why);
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
@@ -51,6 +53,8 @@ export function TransactionsPage() {
     if (linked.account !== undefined) setAccountId(linked.account);
     if (linked.drill || linked.category !== undefined) setCategory(linked.category ?? "");
     if (linked.drill) setDrill(linked.drill);
+    if (linked.sort) setSort(linked.sort);
+    setWhy(linked.why);
     setPage(1);
   }, [linked]);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -64,11 +68,11 @@ export function TransactionsPage() {
 
   const range = preset === "custom" ? custom : presetRange(preset);
   const query = useMemo(
-    () => ({ from: range.from, to: range.to, account_id: accountId || undefined, category: category || undefined, q: qDebounced || undefined, pending: pendingOnly || undefined, ...drill, page, page_size: PAGE_SIZE }),
-    [range.from, range.to, accountId, category, qDebounced, pendingOnly, drill, page],
+    () => ({ from: range.from, to: range.to, account_id: accountId || undefined, category: category || undefined, q: qDebounced || undefined, pending: pendingOnly || undefined, ...drill, page, page_size: PAGE_SIZE, sort }),
+    [range.from, range.to, accountId, category, qDebounced, pendingOnly, drill, page, sort],
   );
-  // A different list: what was ticked in the last one no longer applies.
-  const listKey = JSON.stringify({ ...query, page: undefined });
+  // A different list: what was ticked in the last one no longer applies (the same rows in another order do).
+  const listKey = JSON.stringify({ ...query, page: undefined, sort: undefined });
   useEffect(() => setSelected(new Set()), [listKey]);
   const tx = useTransactions(query);
   const accounts = useAccounts();
@@ -81,6 +85,8 @@ export function TransactionsPage() {
   /** Leave the Insights grouping: the whole list again, with the page's own filters. */
   function showAll() {
     setDrill(null);
+    setWhy(undefined);
+    setSort("newest");
     setPreset("30d");
     setCategory("");
     setAccountId("");
@@ -152,6 +158,22 @@ export function TransactionsPage() {
     };
   }, [rows]);
   const catName = (label: string) => label.toLowerCase().replace(/_/g, " ");
+  /** A summary row filters the list to its category; the same row again clears it. */
+  function pickCategory(key: string) {
+    setCategory((c) => (c === key ? "" : key));
+    setPage(1);
+  }
+  /** A month's columns set the range to that month (to today, for this one). */
+  function pickMonth(key: string | undefined) {
+    const m = /^(\d{4})-(\d{2})$/.exec(key ?? "");
+    if (!m) return;
+    const from = `${m[1]}-${m[2]}-01`;
+    const last = toISODate(new Date(Number(m[1]), Number(m[2]), 0));
+    const today = toISODate(new Date());
+    setPreset("custom");
+    setCustom({ from, to: last > today ? today : last });
+    setPage(1);
+  }
 
   return (
     <Page>
@@ -179,7 +201,7 @@ export function TransactionsPage() {
           </>
         )}
         <Select label="Account" placeholder="All accounts" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }} options={accountFilterOptions(accounts.data)} style={{ minWidth: 180 }} />
-        <Select label="Category" placeholder="All categories" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} options={categories.map((c) => ({ value: c, label: c.toLowerCase().replace(/_/g, " ") }))} style={{ minWidth: 180 }} />
+        <Select label="Category" placeholder="All categories" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} options={[...categories, ...(category && !categories.includes(category) ? [category] : [])].map((c) => ({ value: c, label: c.toLowerCase().replace(/_/g, " ") }))} style={{ minWidth: 180 }} />
         <Input
           label="Search"
           placeholder="merchant, memo…"
@@ -196,6 +218,7 @@ export function TransactionsPage() {
         <Panel caption="from insights" actions={<Button size="sm" variant="quiet" onClick={showAll}>Show all transactions</Button>}>
           <div className="mu-stack" style={{ gap: 4 }}>
             <span>{drillText}</span>
+            {why && <span className="mu-caption">{WHY[why]}</span>}
             <span className="mu-caption">
               {tx.data ? <>{total.toLocaleString()} transaction{total === 1 ? "" : "s"} · {drill.flow === "income" ? "income " : drill.flow === "spending" ? (drill.direction === "out" ? "purchases " : "spending ") : "net "}
                 <Money value={drill.flow === "spending" ? tx.data.sum : -tx.data.sum} signed={drill.flow === "all"} /></> : <Skeleton width={160} />}
@@ -206,7 +229,11 @@ export function TransactionsPage() {
 
       <div className="mu-grid mu-grid--main">
         <Panel flush caption="activity" foot={tx.isFetching ? "updating…" : `page ${page} of ${pages}`}
-          actions={<Button size="sm" variant="quiet" onClick={() => { setSelecting((s) => !s); setSelected(new Set()); setEditing(null); }}>{selecting ? "Done" : "Select"}</Button>}>
+          actions={<>
+            <Segmented size="sm" aria-label="Order" value={sort} onChange={(v) => { setSort(v); setPage(1); }}
+              options={[{ value: "newest", label: "newest" }, { value: "largest", label: "largest" }]} />
+            <Button size="sm" variant="quiet" onClick={() => { setSelecting((s) => !s); setSelected(new Set()); setEditing(null); }}>{selecting ? "Done" : "Select"}</Button>
+          </>}>
           {tx.error ? (
             <div style={{ padding: 16 }}><ErrorNote error={tx.error} retry={() => tx.refetch()} /></div>
           ) : (
@@ -250,7 +277,7 @@ export function TransactionsPage() {
               <div className="jf-cats__head"><span>{onLiability ? "charges" : "money out"}</span><Money value={outTotal} cents={false} /></div>
               {spending.slice(0, 12).map((r) => (
                 <div key={r.key} className="jf-cats__row">
-                  <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
+                  <span className="jf-cats__name"><CategoryFilter k={r.key} label={catName(r.label)} on={category === r.key} onPick={pickCategory} /> <span className="mu-caption">· {r.count}</span></span>
                   <PixelMeter size="sm" cells={16} tone="ink" ratio={outTotal > 0 ? r.outflow / outTotal : 0} label={formatMoney(r.outflow, { cents: false })} ariaLabel={`${catName(r.label)} spending`} />
                 </div>
               ))}
@@ -260,7 +287,7 @@ export function TransactionsPage() {
                   <div className="jf-cats__head"><span>{onLiability ? "payments & credits" : "money in"}</span><Money value={inTotal} cents={false} /></div>
                   {income.map((r) => (
                     <div key={r.key} className="jf-cats__row">
-                      <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
+                      <span className="jf-cats__name"><CategoryFilter k={r.key} label={catName(r.label)} on={category === r.key} onPick={pickCategory} /> <span className="mu-caption">· {r.count}</span></span>
                       <PixelMeter size="sm" cells={16} tone="series" color="var(--mu-div-pos)" ratio={inTotal > 0 ? r.inflow / inTotal : 0} label={formatMoney(r.inflow, { cents: false })} ariaLabel={`${catName(r.label)} money in`} />
                     </div>
                   ))}
@@ -274,6 +301,8 @@ export function TransactionsPage() {
               series={[{ key: "inflow", label: "In", color: "var(--mu-div-pos)" }, { key: "outflow", label: "Out", color: "var(--mu-div-neg)" }]}
               stale={summary.isFetching}
               ariaLabel="Money in and out by month"
+              onSelect={(i) => pickMonth(rows[i]?.key)}
+              selectHint="show that month"
             />
           ) : <span className="mu-caption">nothing in range</span>}
           {summary.data && (
@@ -425,5 +454,16 @@ function TxnForm({ t, categories, account, onShowAccount, onSave }: {
       <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>
+  );
+}
+
+/** A category in the summary: pressing it filters the list to that category (pressed: shown only). */
+function CategoryFilter({ k, label, on, onPick }: { k: string; label: string; on: boolean; onPick: (key: string) => void }) {
+  if (k === "PAYMENT") return <>{label}</>; // payments into the account: not a category to filter by
+  return (
+    <button type="button" className="mu-linkbtn" aria-pressed={on} title={on ? "Show every category" : `Show only ${label}`}
+      style={on ? { fontWeight: 600 } : undefined} onClick={() => onPick(k)}>
+      {label}
+    </button>
   );
 }

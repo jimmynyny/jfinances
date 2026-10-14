@@ -121,3 +121,16 @@ def pct_change(now: Decimal, then: Decimal | None) -> Decimal | None:
     if then is None or then == 0:
         return None
     return ((now - then) / abs(then) * 100).quantize(Decimal("0.1"))
+
+
+def account_group(a, *, natural: bool = False) -> str:
+    """The group an account (an ORM Account, or anything with its fields) counts in;
+    `natural`: by its type alone, ignoring the person's choice."""
+    row = AccountRow(id=str(a.id), name=a.name, kind=a.kind, type=a.type, subtype=a.subtype,
+                     manual_category=a.manual_category, is_liability=a.is_liability, is_hidden=a.is_hidden,
+                     current_balance=a.current_balance, group_override=None if natural else a.group_override)
+    return natural_group(row) if natural else group_key(row)
+
+
+#: Offline groups whose accounts hold transactions (a bank or card kept by hand), so take imports.
+OFFLINE_IMPORT_GROUPS = ("cash", "credit_cards", "other_assets", "other_liabilities")
