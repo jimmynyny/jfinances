@@ -21,6 +21,7 @@ export * from "./charts/Sparkline";
 export * from "./charts/AreaChart";
 export * from "./charts/BarChart";
 export * from "./charts/DonutChart";
+export * from "./charts/FlowChart";
 export * from "./pixel/cells";
 export * from "./pixel/Readout";
 export * from "./pixel/PixelSparkline";

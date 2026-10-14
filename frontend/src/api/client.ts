@@ -1,5 +1,6 @@
 import type {
-  Account, AccountHistoryPoint, ApiErrorBody, ApiToken, Change, Holding, Holdings, InvestmentTransaction, Item, Job,
+  Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
+  InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
@@ -34,6 +35,15 @@ function change(v: unknown): Change | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Raw;
   return { amount: n0(r.amount), pct: toNumber(r.pct), since: str(r.since) ?? undefined };
+}
+
+/** The shared Insights query: the slice plus a view's own parameters. */
+function sliceQuery(s: InsightSlice, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { from: s.from, to: s.to, scope: s.scope, account_id: s.account_ids?.length ? s.account_ids : undefined, ...extra };
+}
+
+function rateOf(v: unknown): number | null {
+  return v === null || v === undefined ? null : Number(v);
 }
 
 function account(r: Raw): Account {
@@ -231,7 +241,8 @@ async function request<T = Raw>(method: string, path: string, body?: unknown, qu
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v === undefined || v === null || v === "") continue;
-      url.searchParams.set(k, String(v));
+      if (Array.isArray(v)) for (const x of v) url.searchParams.append(k, String(x)); // repeated: ?k=a&k=b
+      else url.searchParams.set(k, String(v));
     }
   }
   const res = await fetch(url.toString(), {
@@ -370,6 +381,53 @@ export const api = {
     return { items: list(r.items, item), jobs: list(r.jobs, job), webhooks: list(r.webhooks, webhook) };
   },
   syncAll: () => request("POST", "/sync/all"),
+
+  // Insights: every number arrives as a decimal string; n0 makes it a number.
+  insightCashflow: async (s: InsightSlice, grain: Grain): Promise<CashflowInsight> => {
+    const r = await request("GET", "/insights/cashflow", undefined, sliceQuery(s, { grain }));
+    const t = (r.totals ?? {}) as Raw, a = (r.averages ?? {}) as Raw;
+    return {
+      grain: (r.grain as Grain) ?? grain,
+      periods: list(r.periods, (p) => ({ period: String(p.period), label: String(p.label), income: n0(p.income), spending: n0(p.spending), net: n0(p.net), savings_rate: rateOf(p.savings_rate) })),
+      totals: { income: n0(t.income), spending: n0(t.spending), net: n0(t.net), savings_rate: rateOf(t.savings_rate) },
+      averages: { income: n0(a.income), spending: n0(a.spending), net: n0(a.net), periods: n0(a.periods) },
+      income_sources: list(r.income_sources, (x) => ({ kind: String(x.kind), label: String(x.label), amount: n0(x.amount), count: n0(x.count) })),
+      spending_categories: list(r.spending_categories, (x) => ({ key: String(x.key), amount: n0(x.amount) })),
+    };
+  },
+  insightSpending: async (s: InsightSlice, q: { grain: Grain; group?: "category" | "merchant"; category?: string | null; top?: number }): Promise<SpendingInsight> => {
+    const r = await request("GET", "/insights/spending", undefined, sliceQuery(s, { grain: q.grain, group: q.group, category: q.category, top: q.top }));
+    return {
+      grain: (r.grain as Grain) ?? q.grain,
+      group: (r.group as SpendingInsight["group"]) ?? "category",
+      category: str(r.category),
+      periods: list(r.periods, (p) => ({ period: String(p.period), label: String(p.label) })),
+      series: list(r.series, (x) => ({ key: String(x.key), total: n0(x.total), values: Array.isArray(x.values) ? (x.values as unknown[]).map(n0) : [] })),
+      total: n0(r.total),
+    };
+  },
+  insightCompare: async (s: InsightSlice, category?: string | null): Promise<CompareInsight> => {
+    const r = await request("GET", "/insights/compare", undefined, sliceQuery(s, { category }));
+    const prev = (r.previous ?? {}) as Raw;
+    return {
+      previous: { from: String(prev.from ?? ""), to: String(prev.to ?? "") },
+      category: str(r.category),
+      rows: list(r.rows, (x) => ({ key: String(x.key), current: n0(x.current), previous: n0(x.previous), change: n0(x.change), pct: rateOf(x.pct) })),
+    };
+  },
+  insightMerchants: async (s: InsightSlice, q: { category?: string | null; top?: number } = {}): Promise<MerchantInsight[]> =>
+    list((await request("GET", "/insights/merchants", undefined, sliceQuery(s, q))).merchants, (m) => ({
+      label: String(m.label), total: n0(m.total), count: n0(m.count), average: n0(m.average), category: String(m.category),
+      first_seen: str(m.first_seen), last_seen: String(m.last_seen), is_new: bool(m.is_new),
+      trend: Array.isArray(m.trend) ? (m.trend as unknown[]).map(n0) : [],
+    })),
+  insightPatterns: async (s: InsightSlice, category?: string | null): Promise<PatternsInsight> => {
+    const r = await request("GET", "/insights/patterns", undefined, sliceQuery(s, { category }));
+    return {
+      weekdays: list(r.weekdays, (w) => ({ weekday: n0(w.weekday), total: n0(w.total), per_day: n0(w.per_day) })),
+      month_days: list(r.month_days, (d) => ({ day: n0(d.day), total: n0(d.total), per_day: n0(d.per_day) })),
+    };
+  },
   syncSnapshot: () => request("POST", "/sync/snapshot"),
 
   apiTokens: async (): Promise<ApiToken[]> =>

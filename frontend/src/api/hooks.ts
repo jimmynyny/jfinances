@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Account, Range, Summary, TransactionQuery } from "./types";
+import type { Account, Grain, InsightSlice, Range, Summary, TransactionQuery } from "./types";
 
 /** Query keys in one place so invalidation is grep-able. */
 export const qk = {
@@ -29,6 +29,18 @@ export const useSummary = (q: { from?: string; to?: string; account_id?: string;
   useQuery({ queryKey: qk.summary(q), queryFn: () => api.transactionSummary(q), placeholderData: (prev) => prev });
 export const useCategories = () => useQuery({ queryKey: qk.categories, queryFn: api.transactionCategories, staleTime: 10 * 60_000 });
 export const useHoldings = () => useQuery({ queryKey: qk.holdings, queryFn: api.holdings });
+
+// Insights: keyed by the whole slice, kept on screen while a new slice loads.
+export const useCashflow = (s: InsightSlice, grain: Grain) =>
+  useQuery({ queryKey: ["insights", "cashflow", s, grain], queryFn: () => api.insightCashflow(s, grain), placeholderData: (prev) => prev });
+export const useSpending = (s: InsightSlice, q: { grain: Grain; group?: "category" | "merchant"; category?: string | null; top?: number }) =>
+  useQuery({ queryKey: ["insights", "spending", s, q], queryFn: () => api.insightSpending(s, q), placeholderData: (prev) => prev });
+export const useCompare = (s: InsightSlice, category?: string | null) =>
+  useQuery({ queryKey: ["insights", "compare", s, category ?? null], queryFn: () => api.insightCompare(s, category), placeholderData: (prev) => prev });
+export const useMerchants = (s: InsightSlice, category?: string | null) =>
+  useQuery({ queryKey: ["insights", "merchants", s, category ?? null], queryFn: () => api.insightMerchants(s, { category }), placeholderData: (prev) => prev });
+export const usePatterns = (s: InsightSlice, category?: string | null) =>
+  useQuery({ queryKey: ["insights", "patterns", s, category ?? null], queryFn: () => api.insightPatterns(s, category), placeholderData: (prev) => prev });
 export const useInvestmentActivity = () => useQuery({ queryKey: [...qk.holdings, "activity"], queryFn: () => api.holdingsTransactions({ limit: 200 }) });
 export const useAccountHistory = (id: string | null, range: Range) =>
   useQuery({ queryKey: ["accounts", id, "history", range], queryFn: () => api.accountHistory(id!, range), enabled: !!id, placeholderData: (prev) => prev });

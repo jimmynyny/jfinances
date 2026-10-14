@@ -134,6 +134,7 @@ import { Button, Panel, Money } from "@mooney/ui";
 | `EmptyState` | `title`, `description`, `action`, `glyph` | Dashed border, left-aligned, says what to do next. |
 | `Skeleton` | `width`, `height`, `lines` | Shimmer respects reduced motion. |
 | `KeyValue` | `items[{key,value}]`, `align` | Mono keys, tabular values. |
+| `.mu-linkbtn` (class) | on a `<button>` | Reads as inline underlined text: a drill-down inside a list row (Insights' category names). Focus ring like every control. |
 | `PageHeader` / `Page` | `title`, `subtitle`, `actions` | Page container is max 1480px with 16px gutters. |
 | `AppShell` | `brand`, `brandAside`, `groups[{label, items[{to,label,icon}]}]`, `renderLink`, `title`, `topbar`, `footer` | Router-agnostic: `renderLink(item, className)` returns your `<NavLink>`. Collapses to a slide-in drawer under 900px. |
 
@@ -163,6 +164,7 @@ All charts are plain SVG, sized by `ResizeObserver`, themed by tokens.
 | `AreaChart<T extends {date}>` | `data: T[]`, `series[{key,label,color?}]`, `fill: dots\|wash\|none`, `endLabels`, `stale`, `zeroBaseline`, `formatValue`, `formatTooltipValue` | Change over time. One series = accent line with the dotted pixel fill (the house signature). ≥2 series = categorical colours, wash fill, legend auto-added. Crosshair snaps to nearest date; tooltip lists every series. |
 | `BarChart` | `data[{label,…}]`, `series`, `mode: grouped\|stacked` | Magnitude per period. Columns ≤24px, 2px surface gap, hover lifts the mark, per-bar tooltip. |
 | `DonutChart` | `slices[{key,label,value,color?}]`, `centerLabel`, `maxSlices=6` | Part-to-whole at a glance. Slices past 6 fold into "Other". The rows beside it carry exact values, so colour never gates a number. Don't render it for one slice — that's a stat tile. |
+| `FlowChart` | `sources[{key,label,value,color?}]`, `uses[…]`, `centerLabel`, `height` | Money flow, a two-stage Sankey: sources join into one middle node that splits into uses; ribbon width is the amount. Both sides share one scale, so balance them ("saved" on the right, "from savings" on the left). Labels carry the numbers; hover lights a path. Insights' money flow. |
 | `Sparkline` | `values[]`, `width`, `height`, `semantic` | 12-point trend; last segment and dot in the accent. Decorative, `aria-hidden`. |
 | `Legend` | `items[{label,color,value?,shape}]` | Always present for ≥2 series. |
 | `chartTheme`, `seriesColor(i)` | | Token references; slot 7+ returns the `other` colour. |

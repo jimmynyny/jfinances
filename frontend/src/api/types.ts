@@ -348,3 +348,68 @@ export interface ApiErrorBody {
 
 /** The answer to the duplicate guard's 409 on /link/exchange (docs/30-plaid.md). */
 export type LinkConfirm = "new_login" | "overlap";
+
+// --- Insights (GET /insights/*, docs/80 "Insights") ----------------------------------------
+
+export type InsightScope = "personal" | "business" | "all";
+export type Grain = "month" | "quarter" | "year";
+
+/** The slice every Insights view takes. */
+export interface InsightSlice {
+  from: string;
+  to: string;
+  scope: InsightScope;
+  account_ids?: string[];
+}
+
+export interface CashflowPeriod {
+  period: string;
+  label: string;
+  income: number;
+  spending: number;
+  net: number;
+  savings_rate: number | null;
+}
+
+export interface CashflowInsight {
+  grain: Grain;
+  periods: CashflowPeriod[];
+  totals: { income: number; spending: number; net: number; savings_rate: number | null };
+  /** Whole periods only; `periods` is how many. */
+  averages: { income: number; spending: number; net: number; periods: number };
+  income_sources: Array<{ kind: string; label: string; amount: number; count: number }>;
+  spending_categories: Array<{ key: string; amount: number }>;
+}
+
+export interface SpendingInsight {
+  grain: Grain;
+  group: "category" | "merchant";
+  category: string | null;
+  periods: Array<{ period: string; label: string }>;
+  series: Array<{ key: string; total: number; values: number[] }>;
+  total: number;
+}
+
+export interface CompareInsight {
+  previous: { from: string; to: string };
+  category: string | null;
+  rows: Array<{ key: string; current: number; previous: number; change: number; pct: number | null }>;
+}
+
+export interface MerchantInsight {
+  label: string;
+  total: number;
+  count: number;
+  average: number;
+  category: string;
+  first_seen: string | null;
+  last_seen: string;
+  is_new: boolean;
+  /** One value per month of the range. */
+  trend: number[];
+}
+
+export interface PatternsInsight {
+  weekdays: Array<{ weekday: number; total: number; per_day: number }>;
+  month_days: Array<{ day: number; total: number; per_day: number }>;
+}

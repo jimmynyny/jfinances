@@ -288,3 +288,11 @@
 
 /* ---------- ViewToggle ---------- */
 .mu-viewtoggle__opt { display: inline-flex; align-items: center; gap: 6px; }
+
+/* A button that reads as inline text: a drill-down inside a list row. */
+.mu-linkbtn {
+  all: unset; cursor: pointer; color: inherit;
+  text-decoration: underline; text-decoration-color: var(--mu-line-strong); text-underline-offset: 3px;
+}
+.mu-linkbtn:hover { color: var(--mu-accent); text-decoration-color: currentColor; }
+.mu-linkbtn:focus-visible { box-shadow: var(--mu-focus); }

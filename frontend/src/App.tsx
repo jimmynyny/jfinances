@@ -8,6 +8,7 @@ import { OverviewPage } from "./pages/Overview";
 import { AccountsPage } from "./pages/Accounts";
 import { TransactionsPage } from "./pages/Transactions";
 import { InvestmentsPage } from "./pages/Investments";
+import { InsightsPage } from "./pages/Insights";
 import { LiabilitiesPage } from "./pages/Liabilities";
 import { SettingsPage } from "./pages/Settings";
 import { LinkOAuthPage } from "./pages/LinkOAuth";
@@ -18,6 +19,7 @@ const TITLES: Record<string, string> = {
   "/": "Overview",
   "/accounts": "Accounts",
   "/transactions": "Transactions",
+  "/insights": "Insights",
   "/investments": "Investments",
   "/liabilities": "Liabilities",
   "/settings": "Settings",
@@ -30,6 +32,7 @@ const NAV = [
       { to: "/", label: "Overview", icon: <Glyph d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" /> },
       { to: "/accounts", label: "Accounts", icon: <Glyph d="M2 5h12M2 8h12M2 11h12" /> },
       { to: "/transactions", label: "Transactions", icon: <Glyph d="M3 5h10l-2-2M13 11H3l2 2" /> },
+      { to: "/insights", label: "Insights", icon: <Glyph d="M2 14h12M4 14V9M7 14V4M10 14V7M13 14V2" /> },
       { to: "/investments", label: "Investments", icon: <Glyph d="M2 12l4-5 3 3 5-6" /> },
       { to: "/liabilities", label: "Liabilities", icon: <Glyph d="M3 13V6l5-3 5 3v7M6 13V9h4v4" /> },
     ],
@@ -97,6 +100,7 @@ export function App() {
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/investments" element={<InvestmentsPage />} />
+        <Route path="/insights" element={<InsightsPage />} />
         <Route path="/liabilities" element={<LiabilitiesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/link/oauth" element={<LinkOAuthPage />} />

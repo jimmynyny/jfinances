@@ -246,7 +246,9 @@ Hooks service: `POST /plaid/webhook` (verified), `GET /healthz`.
 
 Vite + React 19 + TypeScript. Lives in `frontend/`. Consumes the design
 system in `packages/ui` (workspace package `@mooney/ui`). Routes:
-`/` overview, `/accounts`, `/transactions`, `/investments`, `/liabilities`,
+`/` overview, `/accounts`, `/transactions`, `/insights` (cash flow, money flow,
+income sources, spending by category with drill-down, merchants, patterns,
+a year-earlier comparison; views in `frontend/src/insights/`), `/investments`, `/liabilities`,
 `/settings` (items, manual assets, sync status), `/link/oauth` (Plaid OAuth
 return). Data via `fetch` to `/api/v1` with `credentials: "include"`; the
 browser already carries the Access cookie.

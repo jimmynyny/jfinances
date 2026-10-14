@@ -44,3 +44,13 @@
 
 .mu-chart--stale { opacity: 0.55; transition: opacity var(--mu-dur); }
 @media (max-width: 720px) { .mu-donut { grid-template-columns: 1fr; justify-items: center; } }
+
+/* FlowChart (money flow): ribbons are a quiet wash; hovering a node or ribbon lights its path. */
+.mu-flow__ribbon { opacity: 0.28; transition: opacity var(--mu-dur); }
+.mu-flow__ribbon:hover { opacity: 0.5; }
+.mu-flow__ribbon--dim { opacity: 0.08; }
+.mu-flow__node { shape-rendering: crispEdges; }
+.mu-flow__node--center { fill: var(--mu-ink-2); }
+.mu-flow__label { fill: var(--mu-ink); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
+.mu-flow__value { fill: var(--mu-ink-3); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
+.mu-flow__text--dim { opacity: 0.35; }
