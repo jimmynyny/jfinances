@@ -281,7 +281,8 @@
 .mu-side__toggle { display: none; }
 @media (max-width: 900px) {
   .mu-shell { grid-template-columns: 1fr; }
-  .mu-side { position: fixed; inset: 0 auto 0 0; width: min(280px, 85vw); z-index: 50; transform: translateX(-100%); transition: transform var(--mu-dur) var(--mu-ease); box-shadow: var(--mu-shadow); }
+  /* Closed, it slides out by its width plus its hard shadow, or the shadow shows as a line down the left edge. */
+  .mu-side { position: fixed; inset: 0 auto 0 0; width: min(280px, 85vw); z-index: 50; transform: translateX(calc(-100% - var(--mu-shadow-offset))); transition: transform var(--mu-dur) var(--mu-ease); box-shadow: var(--mu-shadow); }
   .mu-side[data-open="true"] { transform: none; }
   .mu-side__toggle { display: inline-flex; }
 }
