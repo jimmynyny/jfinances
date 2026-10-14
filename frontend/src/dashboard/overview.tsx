@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   AreaChart, Badge, Delta, EmptyState, Money, Num, Panel, PixelCalendar, PixelMeter, Readout, Segmented, Skeleton,
-  formatDate, formatMoney, seriesColor, type CalendarDay,
+  formatMoney, seriesColor, type CalendarDay,
 } from "@mooney/ui";
 import { useHistory, useOverview } from "../api/hooks";
 import type { Account, NetWorthPoint, OverviewGroup, Range } from "../api/types";
@@ -46,7 +46,6 @@ export function NetWorthWidget({ range: initial = "3m", actions }: { range?: Ran
   const ov = useOverview();
   const hist = useHistory(range);
   const d = ov.data;
-  const est = hist.data?.estimated_before;
   return (
     <Panel marks className="jf-hero" caption="net worth"
       actions={<>{actions}<Segmented size="sm" options={NET_WORTH_RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>
@@ -66,12 +65,6 @@ export function NetWorthWidget({ range: initial = "3m", actions }: { range?: Ran
           <EmptyState glyph="~" title="Not enough history yet" description="Bank and card balances are rebuilt from transactions after the first sync, and a snapshot is taken every morning." />
         )}
       </div>
-      {est && (
-        <p className="mu-caption">
-          Before {formatDate(est, { year: true })} the line is estimated: bank and card balances are rebuilt from transactions;
-          investments, loans and property are held at their first recorded value.
-        </p>
-      )}
     </Panel>
   );
 }

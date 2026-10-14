@@ -40,8 +40,7 @@ struct OverviewScreen: View {
                 Loader(id: range, height: 180) {
                     try await APIClient.shared.netWorthHistory(range: range)
                 } content: { h in
-                    TrendChart(points: h.points.compactMap { p in Fmt.day(p.date).map { DatedValue(date: $0, value: p.net) } },
-                               estimatedBefore: Fmt.day(h.estimated_before))
+                    TrendChart(points: h.points.compactMap { p in Fmt.day(p.date).map { DatedValue(date: $0, value: p.net) } })
                 }
                 HStack(spacing: 12) {
                     StatTile("owned") { MoneyText(g.net_worth.assets, cents: false, size: 16, weight: .medium) }
