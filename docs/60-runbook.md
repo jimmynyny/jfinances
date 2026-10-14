@@ -16,10 +16,13 @@ railway up --service hooks --ci
 railway up --service worker --ci
 ```
 
-All three build the same Dockerfile; deploy `web` first because it runs the
-migration. Watch a deploy with `railway logs --service web`. The newest
-deployment must reach **SUCCESS** before you call it done; `--ci` streams
-and exits non-zero on failure.
+All three build the same Dockerfile, and each brings the schema to head
+before it starts (`server.tools.release`, under an advisory lock), so any
+order works: whichever starts first migrates, the others find nothing to do.
+`web` also runs it as its pre-deploy command, where a failed migration keeps
+the previous web deployment serving. Watch a deploy with
+`railway logs --service web`. The newest deployment must reach **SUCCESS**
+before you call it done; `--ci` streams and exits non-zero on failure.
 
 Verify:
 
@@ -27,6 +30,8 @@ Verify:
 curl -sI https://jfinances.sellingtcg.com/              # 302 to daedalustcg.cloudflareaccess.com: Access is on
 curl -s https://jfinances-hooks.sellingtcg.com/healthz  # 200 JSON (hooks is outside Access)
 railway logs --service worker | grep "worker started"
+for s in web hooks worker; do railway logs --service $s | grep -e "Running upgrade" -e "release ok"; done
+# each logs "release ok"; whichever started first also "Running upgrade" (when the deploy has a migration)
 ```
 
 Rollback: Railway → service → Deployments → previous → Redeploy. Migrations
