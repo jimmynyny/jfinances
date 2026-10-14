@@ -107,10 +107,10 @@ def message(check: LinkCheck) -> str:
     are, they, them = ("is", "it", "it") if one else ("are", "they", "them")
     if check.verdict == "duplicate" and check.pending:
         return (f"Your {inst} connection is still loading its accounts. Give it a minute and check "
-                "Settings before connecting again. Nothing was added, and Plaid won't bill for this attempt.")
+                "Settings before connecting again. Nothing was added, and this attempt isn't billed.")
     if check.verdict == "duplicate":
         return (f"{names} {are} already connected through your {inst} connection. Nothing was added, and "
-                "Plaid won't bill for this attempt. To bring in another account from that login, use "
+                "this attempt isn't billed. To bring in another account from that login, use "
                 "Add accounts on it in Settings.")
     if check.verdict == "overlap":
         return (f"{names} {are} already connected through your {inst} connection. Connecting this login "

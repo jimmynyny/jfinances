@@ -99,10 +99,10 @@ TRANSFER_PRIMARY = ("TRANSFER_IN", "TRANSFER_OUT")
 CARD_PAYMENT_DETAILED = "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
 
 #: Money into a card or loan is a payment from another account, whatever the
-#: issuer called it (some report a card payment as INCOME). It is the second
+#: issuer called it (card payments arrive as INCOME or LOAN_DISBURSEMENTS too). It is the second
 #: half of a transfer: left out of household In/Out like card payments, and
 #: shown as PAYMENT on the card or loan itself.
-PAYMENT_PRIMARY = ("INCOME", "TRANSFER_IN", "LOAN_PAYMENTS")
+PAYMENT_PRIMARY = ("INCOME", "TRANSFER_IN", "LOAN_PAYMENTS", "LOAN_DISBURSEMENTS")
 PAYMENT = "PAYMENT"
 
 

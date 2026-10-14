@@ -61,7 +61,7 @@ export function AccountsPage() {
         actions={<><Checkbox label="Show hidden" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /><ConnectButton size="sm" /></>}
       />
       {q.data && q.data.length === 0 && (
-        <EmptyState glyph="+" title="No accounts yet" description="Connect a bank through Plaid, or add an offline asset in Settings." action={<ConnectButton />} />
+        <EmptyState glyph="+" title="No accounts yet" description="Connect a bank, or add an offline asset in Settings." action={<ConnectButton />} />
       )}
       {groups.map((g) => (
         <Panel key={g.key} flush caption={g.label} actions={<Money value={g.total} cents={false} mono={false} style={{ fontWeight: 600 }} />}>
@@ -156,7 +156,7 @@ function EditForm({ account, onSave }: { account: Account; onSave: (patch: { nam
       {manual && <Input label="Current value" mono inputMode="decimal" value={value} onChange={(e) => setValueStr(e.target.value)} help="Saving a new value records today's snapshot." />}
       <Checkbox label="Hide from overview and totals" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
       <div className="mu-caption">
-        {account.kind === "plaid" ? `${account.institution_name ?? "Plaid"} · ${account.type}${account.subtype ? ` / ${account.subtype}` : ""}` : `offline · ${account.manual_category}`}
+        {account.kind === "plaid" ? `${account.institution_name ?? "connected"} · ${account.type}${account.subtype ? ` / ${account.subtype}` : ""}` : `offline · ${account.manual_category}`}
       </div>
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>

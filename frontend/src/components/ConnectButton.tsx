@@ -70,7 +70,7 @@ export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Prop
     (err) => {
       setLink(null);
       clearStashedLink();
-      if (err) error(err.display_message ?? err.error_message ?? "Plaid closed with an error");
+      if (err) error(err.display_message ?? err.error_message ?? "The connection closed with an error");
     },
     [error],
   );
@@ -84,7 +84,7 @@ export function ConnectButton({ itemId, kind, children, onLinked, ...btn }: Prop
       stashLink(s);
       setLink(s);
     } catch (e) {
-      error(e instanceof ApiError ? e.message : "Could not start Plaid Link");
+      error(e instanceof ApiError ? e.message : "Could not start connecting. Try again.");
     } finally {
       setBusy(false);
     }

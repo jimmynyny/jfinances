@@ -7,7 +7,7 @@ import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTrans
 import type { Account, Transaction } from "../api/types";
 import { ApiError } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
-import { groupAccounts, monthLabel } from "../lib/groups";
+import { GROUP_LABEL, groupAccounts, groupOf, monthLabel } from "../lib/groups";
 
 type Preset = "30d" | "90d" | "mtd" | "ytd" | "custom";
 
@@ -215,6 +215,8 @@ export function TransactionsPage() {
           <TxnForm
             key={editing.id}
             t={editing}
+            account={(accounts.data ?? []).find((a) => a.id === editing.account_id)}
+            onShowAccount={() => { setAccountId(editing.account_id); setPage(1); setEditing(null); }}
             onSave={async (patch) => {
               try {
                 const saved = await update.mutateAsync({ id: editing.id, patch });
@@ -231,7 +233,13 @@ export function TransactionsPage() {
   );
 }
 
-function TxnForm({ t, onSave }: { t: Transaction; onSave: (patch: { user_category?: string | null; notes?: string | null }) => Promise<void> }) {
+function TxnForm({ t, account, onShowAccount, onSave }: {
+  t: Transaction;
+  /** The account it belongs to, when the accounts list has loaded. */
+  account?: Account;
+  onShowAccount?: () => void;
+  onSave: (patch: { user_category?: string | null; notes?: string | null }) => Promise<void>;
+}) {
   const [cat, setCat] = useState(t.user_category ?? "");
   const [notes, setNotes] = useState(t.notes ?? "");
   return (
@@ -242,11 +250,23 @@ function TxnForm({ t, onSave }: { t: Transaction; onSave: (patch: { user_categor
       </div>
       <Money value={-t.amount} currency={t.iso_currency} signed plus style={{ fontSize: "var(--mu-fs-xl)" }} />
       <dl className="mu-kv">
-        <dt>plaid category</dt><dd>{(t.category_detailed ?? t.category_primary ?? "—").toLowerCase().replace(/_/g, " ")}</dd>
+        <dt>bank category</dt><dd>{(t.category_detailed ?? t.category_primary ?? "—").toLowerCase().replace(/_/g, " ")}</dd>
         <dt>channel</dt><dd>{t.payment_channel ?? "—"}</dd>
         <dt>original name</dt><dd>{t.name}</dd>
       </dl>
-      <Input label="Your category" value={cat} onChange={(e) => setCat(e.target.value)} placeholder={t.category_primary?.toLowerCase().replace(/_/g, " ") ?? ""} help="Overrides Plaid's category for this transaction. Leave blank to use Plaid's." />
+      {account && (
+        <div className="mu-stack">
+          <span className="mu-caption">account</span>
+          <dl className="mu-kv">
+            <dt>name</dt><dd>{account.name}{account.mask ? ` ··${account.mask}` : ""}</dd>
+            <dt>institution</dt><dd>{account.institution_name ?? "—"}</dd>
+            <dt>type</dt><dd>{account.subtype ?? GROUP_LABEL[groupOf(account)]}</dd>
+            <dt>{account.is_liability ? "owed now" : "balance now"}</dt><dd><Money value={account.current_balance ?? 0} currency={account.iso_currency} /></dd>
+          </dl>
+          {onShowAccount && <div><Button type="button" size="sm" variant="quiet" onClick={onShowAccount}>Show only this account</Button></div>}
+        </div>
+      )}
+      <Input label="Your category" value={cat} onChange={(e) => setCat(e.target.value)} placeholder={(t.category ?? "").toLowerCase().replace(/_/g, " ")} help="Overrides the bank's category for this transaction. Leave blank to use the bank's." />
       <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>

@@ -157,7 +157,7 @@ def delete_manual(account_id: str, _: Principal = Depends(dashboard_only),
                   sess: Session = Depends(get_session)):
     a = _get(sess, account_id)
     if a.kind != "manual":
-        raise ApiError(400, "bad_request", "Plaid accounts are removed by unlinking their item")
+        raise ApiError(400, "bad_request", "connected accounts are removed by unlinking their connection in Settings")
     sess.delete(a)
     sess.flush()
     return None

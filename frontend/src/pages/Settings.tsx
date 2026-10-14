@@ -111,7 +111,7 @@ export function SettingsPage() {
 
       <Panel flush caption="connections" actions={<span className="mu-caption">{items.data ? `${items.data.filter((i) => i.status !== "removed").length} linked` : ""}</span>}>
         {items.error ? <div style={{ padding: 16 }}><ErrorNote error={items.error} retry={() => items.refetch()} /></div> : (
-          <DataTable className="jf-stack-sm" columns={itemCols} rows={(items.data ?? []).filter((i) => i.status !== "removed")} rowKey={(i) => i.id} empty={items.isLoading ? <Skeleton lines={3} /> : <EmptyState title="No connections" description="Connect a bank, card, loan or brokerage through Plaid." action={<ConnectButton />} />} />
+          <DataTable className="jf-stack-sm" columns={itemCols} rows={(items.data ?? []).filter((i) => i.status !== "removed")} rowKey={(i) => i.id} empty={items.isLoading ? <Skeleton lines={3} /> : <EmptyState title="No connections" description="Connect a bank, card, loan or brokerage." action={<ConnectButton />} />} />
         )}
       </Panel>
 
@@ -125,7 +125,7 @@ export function SettingsPage() {
           ]}
           rows={manualAccounts}
           rowKey={(a) => a.id}
-          empty={<span>Houses, cars, and anything Plaid can't see. Values are tracked daily once entered.</span>}
+          empty={<span>Houses, cars, and anything your banks don't report. Values are tracked daily once entered.</span>}
         />
       </Panel>
 
@@ -190,7 +190,7 @@ export function SettingsPage() {
       >
         {confirmRemove && (
           <p>
-            This removes the Plaid connection to <strong>{confirmRemove.institution_name ?? "this institution"}</strong> and ends its Plaid billing. Its {confirmRemove.account_count} accounts and their history stay in jfinances but stop updating. Connecting it again later starts a new connection, billed again; to change which accounts it covers, use Add accounts instead.
+            This disconnects <strong>{confirmRemove.institution_name ?? "this institution"}</strong> and ends its monthly connection fee. Its {confirmRemove.account_count} accounts and their history stay in jfinances but stop updating. Connecting it again later starts a new connection, billed again; to change which accounts it covers, use Add accounts instead.
           </p>
         )}
       </Drawer>

@@ -29,6 +29,7 @@ Every service runs migrations before it starts (`start.sh` → `server.tools.rel
 - Frontend: `npm run typecheck && npm run lint && npm run build`.
 - Design system lives in `packages/ui` (`@mooney/ui`). New UI goes through it; do not hand-roll styles in `frontend/`.
 - Money is `numeric`, never float. Plaid's sign convention (positive = outflow) is preserved in `transactions.amount`.
+- UI copy never names Plaid (or other plumbing): say bank, connection, institution. The public privacy page is the exception (Plaid's terms require the disclosure).
 
 ## Docs
 If you change behaviour, update the matching `docs/*.md` in the same commit. New env var → `docs/10-architecture.md` §3 and the Railway service.

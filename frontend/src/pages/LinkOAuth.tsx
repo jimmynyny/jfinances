@@ -63,7 +63,7 @@ export function LinkOAuthPage() {
 
   const onExit = useCallback<PlaidLinkOnExit>(
     (err) => {
-      if (err) error(err.display_message ?? err.error_message ?? "Plaid closed with an error");
+      if (err) error(err.display_message ?? err.error_message ?? "The connection closed with an error");
       finish();
     },
     [error, finish],
@@ -83,7 +83,7 @@ export function LinkOAuthPage() {
   }
   return (
     <Page>
-      <Panel caption="plaid">
+      <Panel caption="connecting">
         <div className="mu-stack">
           <p>Finishing the connection with your bank…</p>
           <Skeleton lines={2} />

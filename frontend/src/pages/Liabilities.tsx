@@ -25,7 +25,7 @@ const PLAID_LIABILITY_KINDS = new Set(["credit", "mortgage", "student"]);
 function noDetailNote(kind: string): string {
   return PLAID_LIABILITY_KINDS.has(kind)
     ? "Rate and due dates arrive after the first liabilities refresh."
-    : "Plaid doesn't report rates or due dates for this kind of loan.";
+    : "Your lender doesn't report rates or due dates for this kind of loan.";
 }
 
 function toRow(a: Account, l: LiabilityDetail | null): Row {

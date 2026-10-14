@@ -514,6 +514,7 @@ def test_money_into_a_card_or_loan_is_a_payment(client):
             (chk, "-1000.00", "INCOME", "INCOME_WAGES"),
             (chk, "500.00", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"),  # the bank side of a card payment
             (card, "-500.00", "INCOME", "INCOME_OTHER_INCOME"),  # the card side, as some issuers report it
+            (card, "-45.00", "LOAN_DISBURSEMENTS", "LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT"),  # "PAYMENT-THANK YOU"
             (card, "-20.00", "GENERAL_MERCHANDISE", "GENERAL_MERCHANDISE_OTHER"),  # a refund
             (card, "100.00", "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT"),
         ]
@@ -532,7 +533,7 @@ def test_money_into_a_card_or_loan_is_a_payment(client):
     # Household: a card payment is a transfer on both sides, so income is the paycheck alone.
     assert cats() == {"INCOME": (1000, 0), "GENERAL_MERCHANDISE": (20, 0), "FOOD_AND_DRINK": (0, 100)}
     # On the card itself, its money in is its payments (and the refund).
-    assert cats(account_id=card_id) == {"PAYMENTS": (500, 0), "GENERAL_MERCHANDISE": (20, 0),
+    assert cats(account_id=card_id) == {"PAYMENTS": (545, 0), "GENERAL_MERCHANDISE": (20, 0),
                                         "FOOD_AND_DRINK": (0, 100)}
     # The bank account's own view still leaves the card payment out.
     assert cats(account_id=chk_id) == {"INCOME": (1000, 0)}

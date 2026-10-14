@@ -50,7 +50,7 @@ export function OverviewPage() {
         <EmptyState
           glyph="+"
           title="Connect your first account"
-          description="Banks, cards, loans and brokerages come in through Plaid. Houses and cars go in as offline assets from Settings."
+          description="Connect your banks, cards, loans and brokerages. Houses and cars go in as offline assets from Settings."
           action={<div className="mu-row"><ConnectButton /><Link to="/settings" className="mu-btn mu-btn--quiet" style={{ textDecoration: "none" }}>Add an offline asset</Link></div>}
         />
       </Page>
