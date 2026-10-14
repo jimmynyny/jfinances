@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import {
   Badge, Button, Checkbox, DataTable, Drawer, Input, Money, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
-  Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
+  Textarea, formatDate, formatMoney, toISODate, useToast, type Column, type SelectGroup,
 } from "@mooney/ui";
 import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
 import type { Account, Transaction } from "../api/types";
 import { ApiError } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
-import { monthLabel } from "../lib/groups";
+import { groupAccounts, monthLabel } from "../lib/groups";
 
 type Preset = "30d" | "90d" | "mtd" | "ytd" | "custom";
 
@@ -249,13 +249,17 @@ function TxnForm({ t, onSave }: { t: Transaction; onSave: (patch: { user_categor
   );
 }
 
-/** The Account filter: "Chase: Sapphire ··1234", sorted so each institution's
- * accounts sit together. Manual accounts (homes, cars) never have transactions. */
-function accountFilterOptions(accounts: Account[] | undefined) {
-  return (accounts ?? [])
-    .filter((a) => a.kind !== "manual")
-    .map((a) => ({ value: a.id, label: accountFilterLabel(a) }))
-    .sort((x, y) => x.label.localeCompare(y.label, undefined, { sensitivity: "base", numeric: true }));
+/** The Account filter: a labelled section per type, in the Accounts page's
+ * order (Cash, Investments, Credit cards, Loans), each entry "Chase: Sapphire
+ * ··1234" and sorted so an institution's accounts sit together. Manual
+ * accounts (homes, cars) never have transactions, so they are left out. */
+function accountFilterOptions(accounts: Account[] | undefined): SelectGroup[] {
+  return groupAccounts((accounts ?? []).filter((a) => a.kind !== "manual")).map((g) => ({
+    group: g.label,
+    options: g.accounts
+      .map((a) => ({ value: a.id, label: accountFilterLabel(a) }))
+      .sort((x, y) => x.label.localeCompare(y.label, undefined, { sensitivity: "base", numeric: true })),
+  }));
 }
 
 function accountFilterLabel(a: Account): string {

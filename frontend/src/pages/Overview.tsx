@@ -37,7 +37,8 @@ export function OverviewPage() {
   const year = useHistory("1y");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [detail, setDetail] = useState<{ account: Account; good: boolean } | null>(null);
-  const days = useMemo(() => dailyChange(year.data), [year.data]);
+  const days = useMemo(() => dailyChange(year.data?.points), [year.data]);
+  const est = hist.data?.estimated_before;
 
   if (ov.error) return <Page><ErrorNote error={ov.error} retry={() => ov.refetch()} /></Page>;
 
@@ -92,14 +93,20 @@ export function OverviewPage() {
           />
         ) : <Skeleton width={320} height={56} />}
         <div className="jf-hero__chart">
-          {hist.data && hist.data.length > 1 ? (
-            <AreaChart data={hist.data} series={[{ key: "net", label: "Net worth" }]} height={240} stale={hist.isFetching} formatTooltipValue={(v) => formatMoney(v)} ariaLabel="Net worth over time" />
+          {hist.data && hist.data.points.length > 1 ? (
+            <AreaChart data={hist.data.points} series={[{ key: "net", label: "Net worth" }]} height={240} stale={hist.isFetching} formatTooltipValue={(v) => formatMoney(v)} ariaLabel="Net worth over time" />
           ) : hist.isLoading ? (
             <Skeleton height={240} />
           ) : (
-            <EmptyState glyph="~" title="Not enough history yet" description="A balance snapshot is taken every morning. The chart fills in after the second one." />
+            <EmptyState glyph="~" title="Not enough history yet" description="Bank and card balances are rebuilt from transactions after the first sync, and a snapshot is taken every morning." />
           )}
         </div>
+        {est && (
+          <p className="mu-caption">
+            Before {formatDate(est, { year: true })} the line is estimated: bank and card balances are rebuilt from transactions;
+            investments, loans and property are held at their first recorded value.
+          </p>
+        )}
       </Panel>
 
       <div className="mu-grid mu-grid--3">

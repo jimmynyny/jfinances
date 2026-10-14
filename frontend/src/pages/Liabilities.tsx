@@ -1,12 +1,13 @@
 import {
-  Badge, DataTable, EmptyState, KeyValue, Money, Page, PageHeader, Panel, PixelMeter, Skeleton, ViewToggle,
-  formatDate, formatPct, type Column,
+  Badge, DataTable, EmptyState, KeyValue, Money, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select, Skeleton,
+  ViewToggle, formatDate, formatPct, useToast, type Column,
 } from "@mooney/ui";
-import { useLiabilities } from "../api/hooks";
+import { useAccounts, useLiabilities, useUpdateAccount } from "../api/hooks";
+import { ApiError } from "../api/client";
 import type { Account, LiabilityDetail } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
 import { ConnectButton } from "../components/ConnectButton";
-import { useStoredView } from "../lib/storedView";
+import { useStoredChoice, useStoredView } from "../lib/storedView";
 
 interface Row {
   a: Account;
@@ -56,15 +57,111 @@ function Progress({ r, size = "lg", cells = 30 }: { r: Row; size?: "sm" | "lg"; 
 /** The no-break space keeps the mask with the institution's last word when the line wraps. */
 const where = (a: Account) => `${a.institution_name ?? ""}${a.mask ? `\u00a0··${a.mask}` : ""}`;
 
+type SortMode = "amount" | "name";
+const SORT_MODES: readonly SortMode[] = ["amount", "name"];
+const SORTS: Array<{ value: SortMode; label: string }> = [{ value: "amount", label: "largest" }, { value: "name", label: "a–z" }];
+
+/** Page sections, in order. A loan that isn't a mortgage is an "other loan". */
+const GROUPS = [
+  { key: "mortgage", label: "mortgages" },
+  { key: "loan", label: "other loans" },
+  { key: "credit", label: "credit cards" },
+] as const;
+type GroupKey = (typeof GROUPS)[number]["key"];
+
+const groupOf = (r: Row): GroupKey => (r.isCard ? "credit" : r.kind === "mortgage" ? "mortgage" : "loan");
+const byName = (x: Row, y: Row) => x.a.name.localeCompare(y.a.name, undefined, { sensitivity: "base", numeric: true });
+const SORTERS: Record<SortMode, (x: Row, y: Row) => number> = {
+  amount: (x, y) => y.bal - x.bal || byName(x, y),
+  name: (x, y) => byName(x, y) || y.bal - x.bal,
+};
+
+function sections(rows: Row[], sort: SortMode) {
+  return GROUPS.map((g) => {
+    const items = rows.filter((r) => groupOf(r) === g.key).sort(SORTERS[sort]);
+    // Hidden accounts are listed but left out of totals, like the page's "owed".
+    return { ...g, rows: items, total: items.reduce((sum, r) => sum + (r.a.is_hidden ? 0 : r.bal), 0) };
+  }).filter((g) => g.rows.length > 0);
+}
+
+/** Manual categories a loan can be secured by (server: models.SECURABLE_CATEGORIES). */
+const SECURABLE = new Set(["real_estate", "vehicle", "other_asset"]);
+
+/** The offline asset (home, car) a loan is secured by: kept for equity and later sums. */
+function SecuredBy({ loan, assets }: { loan: Account; assets: Account[] }) {
+  const update = useUpdateAccount();
+  const { error } = useToast();
+  if (assets.length === 0) return <span className="mu-caption">add the home or car as an offline asset to link it</span>;
+  return (
+    <Select
+      aria-label={`${loan.name}: secured by`}
+      placeholder="not linked"
+      value={loan.secured_by_id ?? ""}
+      options={assets.map((x) => ({ value: x.id, label: x.name }))}
+      disabled={update.isPending}
+      style={{ minWidth: 180 }}
+      onChange={(e) => update.mutate(
+        { id: loan.id, patch: { secured_by_id: e.target.value || null } },
+        { onError: (err) => error(err instanceof ApiError ? err.message : "Could not save the link. Try again.") },
+      )}
+    />
+  );
+}
+
+function LiabilityCard({ r, assets }: { r: Row; assets: Account[] }) {
+  const { a, l } = r;
+  const secured = r.isCard ? [] : [{ key: "secured by", value: <SecuredBy loan={a} assets={assets} /> }];
+  return (
+    <Panel
+      stacked
+      title={a.name}
+      caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <span>{where(a)}</span> : null}</>}
+      actions={l?.is_overdue ? <Badge tone="critical">overdue</Badge> : undefined}
+    >
+      <div className="mu-stack">
+        <Money value={r.bal} currency={a.iso_currency} mono={false} style={{ fontSize: "var(--mu-fs-2xl)", fontWeight: 600 }} />
+        {r.ratio != null && <Progress r={r} />}
+        {l ? (
+          <KeyValue
+            items={[
+              { key: "rate", value: l.interest_rate_pct != null ? <>{formatPct(l.interest_rate_pct, 3, false)}{l.interest_rate_type ? <span className="mu-caption"> {l.interest_rate_type}</span> : null}</> : "—" },
+              { key: "next due", value: l.next_payment_due_date ? <>{formatDate(l.next_payment_due_date, { year: true })}{l.next_payment_amount != null ? <span className="mu-caption"> · <Money value={l.next_payment_amount} /></span> : null}</> : "—" },
+              { key: "minimum", value: l.minimum_payment != null ? <Money value={l.minimum_payment} /> : "—" },
+              { key: "last payment", value: l.last_payment_amount != null ? <><Money value={l.last_payment_amount} /> {l.last_payment_date ? <span className="mu-caption">on {formatDate(l.last_payment_date)}</span> : null}</> : "—" },
+              ...(l.last_statement_balance != null ? [{ key: "last statement", value: <><Money value={l.last_statement_balance} /> {l.last_statement_date ? <span className="mu-caption">{formatDate(l.last_statement_date)}</span> : null}</> }] : []),
+              ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} /> {l.origination_date ? <span className="mu-caption">{formatDate(l.origination_date, { year: true })}</span> : null}</> }] : []),
+              ...(l.loan_term ? [{ key: "term", value: <>{l.loan_term}{l.maturity_date ? <span className="mu-caption"> · matures {formatDate(l.maturity_date, { year: true })}</span> : null}</> }] : []),
+              ...(a.credit_limit != null ? [{ key: "limit", value: <Money value={a.credit_limit} cents={false} /> }] : []),
+              ...secured,
+            ]}
+          />
+        ) : (
+          <>
+            <span className="mu-caption">{noDetailNote(r.kind)}</span>
+            {secured.length > 0 && <KeyValue items={secured} />}
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export function LiabilitiesPage() {
   const q = useLiabilities();
+  const accts = useAccounts();
   const [view, setView] = useStoredView("jf.view.liabilities", "cards");
+  const [sort, setSort] = useStoredChoice("jf.sort.liabilities", SORT_MODES, "amount");
   if (q.error) return <Page><ErrorNote error={q.error} retry={() => q.refetch()} /></Page>;
   const rows = (q.data?.accounts ?? []).map(({ account, detail }) => toRow(account, detail));
+  const groups = sections(rows, sort);
+  const assets = (accts.data ?? [])
+    .filter((x) => x.kind === "manual" && !x.is_liability && !x.closed_at && SECURABLE.has(x.manual_category ?? ""))
+    .sort((x, y) => x.name.localeCompare(y.name));
+  const assetName = (id: string | null) => assets.find((x) => x.id === id)?.name ?? null;
 
-  const columns: Column<Row>[] = [
+  const columnsFor = (group: GroupKey): Column<Row>[] => [
     { key: "account", header: "Account", wrap: true, cell: (r) => <div className="jf-cell-account"><div>{r.a.name}</div><div className="mu-caption">{where(r.a)}</div></div>, sortValue: (r) => r.a.name },
-    { key: "kind", header: "Kind", cell: (r) => <span className="mu-mono">{r.kind}</span> },
+    ...(group === "loan" ? [{ key: "kind", header: "Kind", cell: (r: Row) => <span className="mu-mono">{r.kind}</span> }] : []),
     { key: "balance", header: "Balance", numeric: true, cell: (r) => <Money value={r.bal} currency={r.a.iso_currency} />, sortValue: (r) => r.bal },
     { key: "rate", header: "Rate", numeric: true, cell: (r) => (r.l?.interest_rate_pct != null ? formatPct(r.l.interest_rate_pct, 3, false) : "—"), sortValue: (r) => r.l?.interest_rate_pct ?? null },
     {
@@ -75,63 +172,44 @@ export function LiabilitiesPage() {
       sortValue: (r) => r.l?.next_payment_due_date ?? null,
     },
     { key: "min", header: "Minimum", numeric: true, cell: (r) => (r.l?.minimum_payment != null ? <Money value={r.l.minimum_payment} /> : "—"), sortValue: (r) => r.l?.minimum_payment ?? null },
-    { key: "progress", header: "Utilization / paid", width: 200, cell: (r) => <Progress r={r} size="sm" cells={14} /> },
+    { key: "progress", header: group === "credit" ? "Utilization" : "Paid off", width: 200, cell: (r) => <Progress r={r} size="sm" cells={14} /> },
+    ...(group === "credit" ? [] : [{ key: "secured", header: "Secured by", cell: (r: Row) => <SecuredBy loan={r.a} assets={assets} />, sortValue: (r: Row) => assetName(r.a.secured_by_id) }]),
     { key: "flag", header: "", width: 80, cell: (r) => (r.l?.is_overdue ? <Badge tone="critical">overdue</Badge> : null) },
   ];
+  const total = (g: { total: number }) => <Money value={g.total} cents={false} mono={false} style={{ fontWeight: 600 }} />;
 
   return (
     <Page>
       <PageHeader
         title="Liabilities"
         subtitle={q.data ? <>{rows.length} accounts · <Money value={q.data.total_owed} cents={false} /> owed</> : <Skeleton width={160} />}
-        actions={rows.length > 0 ? <ViewToggle value={view} onChange={setView} aria-label="Liabilities view" /> : undefined}
+        actions={rows.length > 0 ? (
+          <>
+            <Segmented options={SORTS} value={sort} onChange={setSort} aria-label="Sort liabilities" />
+            <ViewToggle value={view} onChange={setView} aria-label="Liabilities view" />
+          </>
+        ) : undefined}
       />
       {q.data && rows.length === 0 && (
         <EmptyState glyph="–" title="No loans or cards yet" description="Mortgages, auto loans, student loans and credit cards appear here with rates and due dates." action={<ConnectButton />} />
       )}
       {q.isLoading && <Skeleton height={220} />}
 
-      {view === "list" && rows.length > 0 ? (
-        <Panel flush caption="all liabilities">
-          <DataTable columns={columns} rows={rows} rowKey={(r) => r.a.id} defaultSort={{ key: "balance", dir: "desc" }} />
-        </Panel>
-      ) : (
-        <div className="jf-liab">
-          {rows.map((r) => {
-            const { a, l } = r;
-            return (
-              <Panel
-                key={a.id}
-                stacked
-                title={a.name}
-                caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <span>{where(a)}</span> : null}</>}
-                actions={l?.is_overdue ? <Badge tone="critical">overdue</Badge> : undefined}
-              >
-                <div className="mu-stack">
-                  <Money value={r.bal} currency={a.iso_currency} mono={false} style={{ fontSize: "var(--mu-fs-2xl)", fontWeight: 600 }} />
-                  {r.ratio != null && <Progress r={r} />}
-                  {l ? (
-                    <KeyValue
-                      items={[
-                        { key: "rate", value: l.interest_rate_pct != null ? <>{formatPct(l.interest_rate_pct, 3, false)}{l.interest_rate_type ? <span className="mu-caption"> {l.interest_rate_type}</span> : null}</> : "—" },
-                        { key: "next due", value: l.next_payment_due_date ? <>{formatDate(l.next_payment_due_date, { year: true })}{l.next_payment_amount != null ? <span className="mu-caption"> · <Money value={l.next_payment_amount} /></span> : null}</> : "—" },
-                        { key: "minimum", value: l.minimum_payment != null ? <Money value={l.minimum_payment} /> : "—" },
-                        { key: "last payment", value: l.last_payment_amount != null ? <><Money value={l.last_payment_amount} /> {l.last_payment_date ? <span className="mu-caption">on {formatDate(l.last_payment_date)}</span> : null}</> : "—" },
-                        ...(l.last_statement_balance != null ? [{ key: "last statement", value: <><Money value={l.last_statement_balance} /> {l.last_statement_date ? <span className="mu-caption">{formatDate(l.last_statement_date)}</span> : null}</> }] : []),
-                        ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} /> {l.origination_date ? <span className="mu-caption">{formatDate(l.origination_date, { year: true })}</span> : null}</> }] : []),
-                        ...(l.loan_term ? [{ key: "term", value: <>{l.loan_term}{l.maturity_date ? <span className="mu-caption"> · matures {formatDate(l.maturity_date, { year: true })}</span> : null}</> }] : []),
-                        ...(a.credit_limit != null ? [{ key: "limit", value: <Money value={a.credit_limit} cents={false} /> }] : []),
-                      ]}
-                    />
-                  ) : (
-                    <span className="mu-caption">{noDetailNote(r.kind)}</span>
-                  )}
-                </div>
-              </Panel>
-            );
-          })}
-        </div>
-      )}
+      {view === "list"
+        ? groups.map((g) => (
+          <Panel key={g.key} flush caption={g.label} actions={total(g)}>
+            {/* keyed by sort: the header switch resets each table's own column sort */}
+            <DataTable key={sort} columns={columnsFor(g.key)} rows={g.rows} rowKey={(r) => r.a.id}
+              defaultSort={sort === "amount" ? { key: "balance", dir: "desc" } : { key: "account", dir: "asc" }} />
+          </Panel>
+        ))
+        : groups.map((g) => (
+          <Section key={g.key} caption={g.label} note={g.rows.length} actions={total(g)}>
+            <div className="jf-liab">
+              {g.rows.map((r) => <LiabilityCard key={r.a.id} r={r} assets={assets} />)}
+            </div>
+          </Section>
+        ))}
     </Page>
   );
 }

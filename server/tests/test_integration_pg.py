@@ -369,3 +369,92 @@ def test_refresh_button_uses_free_accounts_get(client, monkeypatch):
     r = client.post(f"/api/v1/accounts/{acct['id']}/refresh")
     assert r.status_code == 200, r.text
     assert len(seen) == 1
+
+
+def test_loan_can_be_secured_by_an_offline_asset(client):
+    from server.app.models import Account
+
+    def manual(name, category, value="1000"):
+        r = client.post("/api/v1/accounts/manual", json={"name": name, "manual_category": category, "value": value})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    house, cash = manual("Lien house", "real_estate", "500000"), manual("Lien cash", "cash")
+    with db.session() as sess:
+        mortgage = Account(kind="plaid", name="Lien mortgage", type="loan", subtype="mortgage",
+                           is_liability=True, current_balance=300000)
+        card = Account(kind="plaid", name="Lien card", type="credit", subtype="credit card", is_liability=True)
+        sess.add_all([mortgage, card])
+        sess.flush()
+        mortgage_id, card_id = str(mortgage.id), str(card.id)
+
+    def link(loan, asset):
+        return client.patch(f"/api/v1/accounts/{loan}", json={"secured_by_id": asset})
+
+    r = link(mortgage_id, house)
+    assert r.status_code == 200 and r.json()["secured_by_id"] == house
+    renamed = client.patch(f"/api/v1/accounts/{mortgage_id}", json={"name": "Lien mortgage 2"}).json()
+    assert renamed["secured_by_id"] == house  # a patch without the field keeps the link
+    assert link(card_id, house).status_code == 400  # cards aren't secured by anything
+    assert link(mortgage_id, cash).status_code == 400  # cash isn't collateral
+    assert link(mortgage_id, card_id).status_code == 400  # only offline assets
+    assert link(mortgage_id, None).json()["secured_by_id"] is None  # explicit null unlinks
+    assert link(mortgage_id, house).status_code == 200
+    assert client.delete(f"/api/v1/accounts/{house}").status_code == 204
+    rows = {a["id"]: a for a in client.get("/api/v1/accounts").json()["accounts"]}
+    assert rows[mortgage_id]["secured_by_id"] is None  # deleting the asset clears the link
+
+
+def test_cash_and_card_history_is_rebuilt_from_transactions(client):
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from server.app.models import Account, BalanceSnapshot, Transaction
+    from server.app.services import history
+
+    today = datetime.now(UTC).date()
+
+    def day(n):
+        return today - timedelta(days=n)
+
+    with db.session() as sess:
+        chk = Account(kind="plaid", name="Hist checking", type="depository", subtype="checking", current_balance=1000)
+        card = Account(kind="plaid", name="Hist card", type="credit", subtype="credit card", is_liability=True,
+                       current_balance=300)
+        brokerage = Account(kind="plaid", name="Hist brokerage", type="investment", subtype="brokerage",
+                            current_balance=5000)
+        sess.add_all([chk, card, brokerage])
+        sess.flush()
+        for a in (chk, card, brokerage):  # linked today: the first real snapshot
+            sess.add(BalanceSnapshot(account_id=a.id, as_of=today, current_balance=a.current_balance, source="plaid"))
+        for acct, n, amt, tid, pending in (  # Plaid sign: + = money out
+            (chk, 0, "50", "h1", False),        # spent today
+            (chk, 2, "-200", "h2", False),      # paid two days ago
+            (chk, 1, "999", "h3", True),        # pending: in no balance yet
+            (card, 1, "100", "h4", False),      # a purchase
+            (card, 3, "-80", "h5", False),      # a payment
+            (brokerage, 2, "10", "h6", False),  # investments are never rebuilt
+        ):
+            sess.add(Transaction(account_id=acct.id, plaid_transaction_id=tid, date=day(n), amount=Decimal(amt),
+                                 name=tid, pending=pending))
+        sess.flush()
+        assert history.derive_account(sess, chk) == 3
+        assert history.derive_account(sess, chk) == 3  # replaces its rows, never duplicates
+        assert history.derive_account(sess, card) == 4
+        assert history.derive_account(sess, brokerage) == 0
+        derived = {(r.account_id, r.as_of): r.current_balance for r in sess.execute(
+            select(BalanceSnapshot).where(BalanceSnapshot.source == "derived")).scalars()}
+        chk_id, card_id = chk.id, card.id
+    # checking: 1000 today; +50 back before today's spend; -200 back before the pay
+    assert [derived[(chk_id, day(n))] for n in (1, 2, 3)] == [Decimal("1050"), Decimal("1050"), Decimal("850")]
+    # card owed: 300 today; 200 before the purchase; 280 before the payment
+    assert [derived[(card_id, day(n))] for n in (1, 2, 3, 4)] == [Decimal(v) for v in ("300", "200", "200", "280")]
+
+    nw = client.get("/api/v1/networth/history", params={"range": "1m"}).json()
+    assert nw["points"][0]["date"] == day(4).isoformat() and nw["estimated_before"] == today.isoformat()
+    # day 4: checking held at its first rebuilt value (850), card 280, brokerage held at 5000
+    assert nw["points"][0]["net"] == "5570.00" and nw["points"][-1]["net"] == "5700.00"
+    hist = client.get(f"/api/v1/accounts/{chk_id}/history", params={"range": "1m"}).json()["points"]
+    assert [p["source"] for p in hist] == ["derived"] * 3 + ["plaid"]

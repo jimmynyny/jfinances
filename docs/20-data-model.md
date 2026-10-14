@@ -84,13 +84,26 @@ query.
 | `display_order` | user sort |
 | `closed_at` | Plaid stopped returning it, or the item was unlinked |
 | `last_refresh_requested_at` | rate limit for the Refresh button |
+| `secured_by_id` | a loan's collateral: the offline asset (`real_estate`, `vehicle`, `other_asset`) a mortgage, HELOC or car loan is secured by. Set by hand on the Liabilities page via `PATCH /accounts/{id}`; several loans can share one asset; deleting the asset clears it (`ON DELETE SET NULL`). The account drawer shows an asset's loans and its equity (value − what they owe) |
 
 ## balance_snapshots
 One row per account per day, the source of every history chart.
 `source` is `plaid` (balance refreshed that day), `manual` (user entered a
-value for that date) or `carry` (worker copied the last known value). A
-manual value on a date is never overwritten by a carry. Unique on
-`(account_id, as_of)`.
+value for that date), `carry` (worker copied the last known value) or
+`derived` (rebuilt from transactions, below). A manual value on a date is
+never overwritten by a carry. Unique on `(account_id, as_of)`.
+
+**Derived history.** Snapshots start the day an account is linked, but Plaid
+hands over up to two years of transactions. For cash (`depository`) and card
+(`credit`) accounts, `services/history.py` walks back from the account's
+first real snapshot, undoing each day's posted transactions, and writes one
+`derived` row per day back to the day before its earliest transaction. It
+runs after every transactions sync (`sync_item`) and replaces only `derived`
+rows, which all fall before the first real one. Investments, loans and
+offline assets are never derived: their value moves with prices and
+interest, which transactions don't record. The net worth chart holds those
+at their first recorded value on earlier days and says the stretch is
+estimated (`estimated_before` on `GET /networth/history`).
 
 ## transactions
 From `/transactions/sync`. `amount` keeps Plaid's sign (positive = money

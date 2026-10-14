@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
@@ -13,7 +14,7 @@ from ..auth.deps import current_user, dashboard_only
 from ..auth.human import Principal
 from ..config import settings
 from ..db import get_session
-from ..models import MANUAL_CATEGORIES, Account, BalanceSnapshot, PlaidItem, is_liability_for
+from ..models import MANUAL_CATEGORIES, SECURABLE_CATEGORIES, Account, BalanceSnapshot, PlaidItem, is_liability_for
 from ..plaid_client import PlaidError
 from ..services import plaid_sync
 from ..services.trends import balance_trends
@@ -42,6 +43,21 @@ class AccountPatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     is_hidden: bool | None = None
     display_order: int | None = None
+    #: The offline asset (home, car) this loan is secured by; null unlinks.
+    secured_by_id: str | None = None
+
+
+def _collateral(sess: Session, loan: Account, asset_id: str | None) -> uuid.UUID | None:
+    """Validate a loan -> offline asset link (Account.secured_by_id)."""
+    if asset_id is None:
+        return None
+    if not loan.is_liability or loan.type == "credit":
+        raise ApiError(400, "bad_request", "only a loan can be secured by an asset")
+    asset = sess.get(Account, parse_uuid(asset_id))
+    if (asset is None or asset.kind != "manual" or asset.manual_category not in SECURABLE_CATEGORIES
+            or asset.closed_at is not None):
+        raise ApiError(400, "bad_request", "a loan can be secured only by an offline home, vehicle or other asset")
+    return asset.id
 
 
 @router.patch("/accounts/{account_id}")
@@ -54,6 +70,8 @@ def patch_account(account_id: str, body: AccountPatch, _: Principal = Depends(cu
         a.is_hidden = body.is_hidden
     if body.display_order is not None:
         a.display_order = body.display_order
+    if "secured_by_id" in body.model_fields_set:  # an explicit null unlinks
+        a.secured_by_id = _collateral(sess, a, body.secured_by_id)
     sess.flush()
     return account_json(a)
 

@@ -74,9 +74,24 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "className">, FieldChrome {
+/** A labelled run of options: a native <optgroup>, for long lists that sort into kinds. */
+export interface SelectGroup {
+  group: string;
   options: SelectOption[];
+}
+
+export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "className">, FieldChrome {
+  /** Options, or labelled groups of them. */
+  options: Array<SelectOption | SelectGroup>;
   placeholder?: string;
+}
+
+function renderOption(o: SelectOption) {
+  return (
+    <option key={o.value} value={o.value} disabled={o.disabled}>
+      {o.label}
+    </option>
+  );
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
@@ -89,11 +104,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     <Chrome id={id} label={label} help={help} error={error} className={className}>
       <select ref={ref} id={id} className="mu-select" aria-invalid={error ? true : undefined} {...rest}>
         {placeholder !== undefined && <option value="">{placeholder}</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>
-            {o.label}
-          </option>
-        ))}
+        {options.map((o) =>
+          "group" in o ? (
+            <optgroup key={`group:${o.group}`} label={o.group}>
+              {o.options.map(renderOption)}
+            </optgroup>
+          ) : (
+            renderOption(o)
+          ),
+        )}
       </select>
     </Chrome>
   );

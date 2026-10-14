@@ -50,9 +50,14 @@ Group keys are fixed and always present (possibly empty).
 
 ### GET /networth/history?range=1m|3m|6m|1y|all
 ```json
-{"range":"6m","points":[{"date":"2026-04-13","assets":"…","liabilities":"…","net":"…"}, "…"]}
+{"range":"6m","points":[{"date":"2026-04-13","assets":"…","liabilities":"…","net":"…"}, "…"],
+ "estimated_before":"2026-10-13|null"}
 ```
-One point per day; each account contributes its latest snapshot on or before that day.
+One point per day; each account contributes its latest snapshot on or before that day, and its
+first snapshot's value on days before it (held flat, so linking an account doesn't make the line
+jump). Cash and card accounts reach back past linking through `derived` snapshots
+(docs/20 "Derived history"). `estimated_before` is the first day with a real snapshot when the
+range starts earlier: the line before it is an estimate.
 
 ## Accounts
 
@@ -65,7 +70,7 @@ Account object:
  "type":"depository|credit|loan|investment|other|manual","subtype":"checking","manual_category":null,
  "iso_currency":"USD","current_balance":"…","available_balance":"…","credit_limit":"…",
  "balance_updated_at":"…","is_liability":false,"is_hidden":false,"display_order":0,"closed_at":null,
- "institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
+ "secured_by_id":"…|null","institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
 ```
 
 
@@ -82,7 +87,10 @@ top to bottom, hidden ones included; each gets `display_order` = its index.
 Groups sort independently, so sending one group never disturbs another.
 
 ### PATCH /accounts/{id}
-Body: `{"name"?: str, "is_hidden"?: bool, "display_order"?: int}` → account.
+Body: `{"name"?: str, "is_hidden"?: bool, "display_order"?: int, "secured_by_id"?: uuid|null}` → account.
+`secured_by_id` links a loan (any liability but a credit card) to the offline asset it is secured
+by: a manual `real_estate`, `vehicle` or `other_asset` account. `null` unlinks; leaving the field
+out keeps the link. 400 for a card, or a target that isn't such an asset.
 
 ### POST /accounts/manual → 201
 Body: `{"name":"2019 4Runner","manual_category":"vehicle","value":"28500","iso_currency":"USD"}`.
@@ -98,7 +106,8 @@ Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts onl
 The latest balances Plaid has for the whole item (`/accounts/get`, free). 429 if the item was refreshed within 10 minutes. → account.
 
 ### GET /accounts/{id}/history?range=1y
-`{"account_id":"…","points":[{"date":"…","balance":"…","source":"plaid|manual|carry"}]}`
+`{"account_id":"…","points":[{"date":"…","balance":"…","source":"plaid|manual|carry|derived"}]}`
+(`derived`: rebuilt from transactions for the days before the account was linked)
 
 ## Items (Plaid connections)
 

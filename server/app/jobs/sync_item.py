@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..models import PlaidItem
 from ..plaid_client import PlaidError
-from ..services import plaid_sync
+from ..services import history, plaid_sync
 from .queue import handler
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ def sync_item(sess: Session, payload: dict) -> None:
             enqueue_product_refreshes(sess, item)
         if item.has_product("transactions"):
             plaid_sync.sync_transactions(sess, item)
+            history.derive_item(sess, item)  # cash and card balances before linking
         else:
             log.info("item %s has no transactions product; balances only", item.id)
     except PlaidError as e:

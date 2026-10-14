@@ -47,6 +47,8 @@ export interface Account {
   is_hidden: boolean;
   display_order: number;
   closed_at: string | null;
+  /** The offline asset (home, car) this loan is secured by. */
+  secured_by_id: string | null;
   institution_name: string | null;
   institution_id: string | null;
   item_status: ItemStatus | null;
@@ -89,12 +91,20 @@ export interface NetWorthPoint {
   net: number;
 }
 
+export interface NetWorthHistory {
+  points: NetWorthPoint[];
+  /** First day with a real snapshot, when the range starts earlier: the line
+   *  before it is estimated (cash and cards rebuilt, the rest held flat). */
+  estimated_before: string | null;
+}
+
 export type Range = "1m" | "3m" | "6m" | "1y" | "all";
 
 export interface AccountHistoryPoint {
   date: string;
   balance: number;
-  source: "plaid" | "manual" | "carry";
+  /** derived: rebuilt from transactions, before the account was linked. */
+  source: "plaid" | "manual" | "carry" | "derived";
 }
 
 export interface Item {

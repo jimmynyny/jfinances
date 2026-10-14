@@ -1,6 +1,6 @@
 import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, Change, Holding, Holdings, InvestmentTransaction, Item, Job,
-  Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthPoint, NewApiToken,
+  Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
 
@@ -56,6 +56,7 @@ function account(r: Raw): Account {
     is_hidden: bool(r.is_hidden),
     display_order: n0(r.display_order),
     closed_at: str(r.closed_at),
+    secured_by_id: str(r.secured_by_id),
     institution_name: str(r.institution_name),
     institution_id: str(r.institution_id),
     item_status: (r.item_status as Account["item_status"]) ?? null,
@@ -283,9 +284,12 @@ export const api = {
     };
   },
 
-  netWorthHistory: async (range: Range): Promise<NetWorthPoint[]> => {
+  netWorthHistory: async (range: Range): Promise<NetWorthHistory> => {
     const r = await request("GET", "/networth/history", undefined, { range });
-    return list(r.points, (p) => ({ date: String(p.date), assets: n0(p.assets), liabilities: n0(p.liabilities), net: n0(p.net) }));
+    return {
+      points: list(r.points, (p) => ({ date: String(p.date), assets: n0(p.assets), liabilities: n0(p.liabilities), net: n0(p.net) })),
+      estimated_before: str(r.estimated_before),
+    };
   },
 
   accounts: async (): Promise<Account[]> => list((await request("GET", "/accounts")).accounts, account),
@@ -293,7 +297,7 @@ export const api = {
     const r = await request("GET", `/accounts/${id}/history`, undefined, { range });
     return list(r.points, (p) => ({ date: String(p.date), balance: n0(p.balance), source: (p.source as AccountHistoryPoint["source"]) ?? "plaid" }));
   },
-  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; display_order?: number }): Promise<Account> =>
+  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; display_order?: number; secured_by_id?: string | null }): Promise<Account> =>
     account(await request("PATCH", `/accounts/${id}`, patch)),
   createManualAccount: async (body: { name: string; manual_category: ManualCategory; value: number; iso_currency?: string }): Promise<Account> =>
     account(await request("POST", "/accounts/manual", { ...body, value: dec(body.value) })),

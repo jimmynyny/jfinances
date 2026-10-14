@@ -5,6 +5,7 @@ export * from "./components/Button";
 export * from "./components/Field";
 export * from "./components/Badge";
 export * from "./components/Panel";
+export * from "./components/Section";
 export * from "./components/Money";
 export * from "./components/StatTile";
 export * from "./components/Tabs";

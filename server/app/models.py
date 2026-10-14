@@ -122,6 +122,8 @@ class PlaidItem(TimestampMixin, Base):
 
 ACCOUNT_KINDS = ("plaid", "manual")
 MANUAL_CATEGORIES = ("real_estate", "vehicle", "cash", "other_asset", "other_liability")
+#: Manual categories a loan can be secured by (Account.secured_by_id).
+SECURABLE_CATEGORIES = ("real_estate", "vehicle", "other_asset")
 LIABILITY_TYPES = {"credit", "loan"}
 
 
@@ -133,7 +135,7 @@ def is_liability_for(kind: str, type_: str | None, manual_category: str | None) 
 
 class Account(TimestampMixin, Base):
     __tablename__ = "accounts"
-    __table_args__ = (Index("ix_accounts_item", "item_id"),)
+    __table_args__ = (Index("ix_accounts_item", "item_id"), Index("ix_accounts_secured_by", "secured_by_id"))
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plaid_items.id", ondelete="CASCADE"))
@@ -156,6 +158,9 @@ class Account(TimestampMixin, Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_refresh_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw: Mapped[dict | None] = mapped_column(JSONB)
+    #: The offline asset a loan is secured by (a mortgage's home, a car loan's
+    #: car), set by hand. Several loans can share one asset (mortgage + HELOC).
+    secured_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
 
     item: Mapped[PlaidItem | None] = relationship(back_populates="accounts")
 

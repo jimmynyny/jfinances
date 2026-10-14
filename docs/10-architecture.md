@@ -167,6 +167,8 @@ Flow:
 5. `sync_item` job: `/transactions/sync` with the stored cursor, paginate
    while `has_more`, apply added/modified/removed, store the new cursor only
    after the whole page set succeeds. Then `/accounts/get` for balances.
+   Last, cash and card balances before the account was linked are rebuilt
+   from its transactions (`services/history.py`, docs/20 "Derived history").
 6. Scheduler (worker): 03:00 UTC nightly `sync_item` for every active item;
    06:00 UTC daily `snapshot_balances` (one `balance_snapshots` row per
    account per day, manual accounts carried forward); daily

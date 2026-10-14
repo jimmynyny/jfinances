@@ -86,8 +86,8 @@
   padding: var(--mu-s2) var(--mu-s4); min-height: 40px;
   border-bottom: var(--mu-border);
 }
-.mu-panel__caption { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); display: inline-flex; align-items: center; gap: var(--mu-s2); }
-.mu-panel__caption::before { content: ""; width: 6px; height: 6px; background: var(--mu-accent); flex: none; }
+.mu-panel__caption, .mu-section__caption { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); display: inline-flex; align-items: center; gap: var(--mu-s2); }
+.mu-panel__caption::before, .mu-section__caption::before { content: ""; width: 6px; height: 6px; background: var(--mu-accent); flex: none; }
 .mu-panel__title { font-size: var(--mu-fs-md); font-weight: 600; }
 .mu-panel__body { padding: var(--mu-s4); min-width: 0; }
 .mu-panel__body--flush { padding: 0; }
@@ -98,6 +98,13 @@
 .mu-panel__head--stacked .mu-panel__caption::before { display: none; }
 /* too narrow for one line: the caption's parts wrap whole ([ kind ], then the institution) instead of shrinking */
 .mu-panel__head--stacked .mu-panel__caption { flex-wrap: wrap; row-gap: 2px; }
+/* Section: a captioned group of panels on the page ground (a grid of cards). The head reads like a Panel head. */
+.mu-section { display: flex; flex-direction: column; gap: var(--mu-s3); min-width: 0; }
+.mu-section__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s3); flex-wrap: wrap;
+  min-height: 32px; padding-bottom: var(--mu-s2); border-bottom: var(--mu-border);
+}
+.mu-section__note { color: var(--mu-ink-3); }
 .mu-panel__foot { padding: var(--mu-s2) var(--mu-s4); border-top: var(--mu-border); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); font-family: var(--mu-font-mono); }
 
 /* ---------- StatTile ---------- */
