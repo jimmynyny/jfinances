@@ -35,7 +35,7 @@ ZERO = Decimal(0)
 def _row(a: Account) -> AccountRow:
     return AccountRow(id=str(a.id), name=a.name, kind=a.kind, type=a.type, subtype=a.subtype,
                       manual_category=a.manual_category, is_liability=a.is_liability, is_hidden=a.is_hidden,
-                      current_balance=a.current_balance)
+                      current_balance=a.current_balance, group_override=a.group_override)
 
 
 def month_ends(start: date, end: date) -> list[date]:

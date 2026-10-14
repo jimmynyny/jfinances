@@ -805,6 +805,56 @@ def test_a_401k_statement_fills_in_contributions_prices_and_value_history(client
                                                               BalanceSnapshot.source == "derived")).first()
 
 
+def test_an_account_counts_where_the_person_puts_it(client):
+    """An account the bank calls "other" lands in Other assets until the person puts
+    it elsewhere: cash, investments, or a liability group (then it is owed, not
+    owned). A sync keeps the choice; null goes back; an offline account takes the
+    group's own category when there is one."""
+    from decimal import Decimal
+
+    from server.app.models import Account, PlaidItem
+    from server.app.services import plaid_sync
+
+    with db.session() as sess:
+        item = PlaidItem(item_id="item-groups", institution_name="Odd Bank", access_token_enc=b"x", products=[])
+        sess.add(item)
+        sess.flush()
+        raw = {"account_id": "odd-1", "name": "Cash Reserve", "type": "other", "subtype": None,
+               "balances": {"current": 5000, "iso_currency_code": "USD"}}
+        (odd,) = plaid_sync.upsert_accounts(sess, item, [raw])
+        house = Account(kind="manual", name="Lake lot", manual_category="other_asset", type="manual",
+                        subtype="other_asset", current_balance=Decimal("80000"))
+        sess.add(house)
+        sess.flush()
+        odd_id, house_id = str(odd.id), str(house.id)
+
+    def group_of(account_id):
+        ov = client.get("/api/v1/overview").json()
+        return next(g["key"] for g in ov["groups"] for a in g["accounts"] if a["id"] == account_id)
+
+    assert group_of(odd_id) == "other_assets"
+    r = client.patch(f"/api/v1/accounts/{odd_id}", json={"group": "cash"}).json()
+    assert (r["group"], r["group_override"], r["is_liability"]) == ("cash", "cash", False)
+    assert group_of(odd_id) == "cash"
+    before = Decimal(client.get("/api/v1/overview").json()["liabilities"])
+    r = client.patch(f"/api/v1/accounts/{odd_id}", json={"group": "loans"}).json()
+    assert (r["group"], r["is_liability"]) == ("loans", True)
+    assert Decimal(client.get("/api/v1/overview").json()["liabilities"]) == before + Decimal("5000")
+    assert any(x["account"]["id"] == odd_id for x in client.get("/api/v1/liabilities").json()["accounts"])
+    with db.session() as sess:  # the next sync keeps it a loan
+        item = sess.query(PlaidItem).filter_by(item_id="item-groups").one()
+        (odd,) = plaid_sync.upsert_accounts(sess, item, [raw])
+        assert odd.is_liability and odd.group_override == "loans"
+    r = client.patch(f"/api/v1/accounts/{odd_id}", json={"group": None}).json()
+    assert (r["group"], r["group_override"], r["is_liability"]) == ("other_assets", None, False)
+
+    r = client.patch(f"/api/v1/accounts/{house_id}", json={"group": "real_estate"}).json()
+    assert (r["group"], r["manual_category"], r["group_override"]) == ("real_estate", "real_estate", None)
+    r = client.patch(f"/api/v1/accounts/{house_id}", json={"group": "investments"}).json()
+    assert (r["group"], r["group_override"], r["is_liability"]) == ("investments", "investments", False)
+    assert client.patch(f"/api/v1/accounts/{house_id}", json={"group": "attic"}).status_code == 422
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal
@@ -1068,17 +1118,37 @@ def test_insight_numbers_open_the_transactions_behind_them(client):
     ids = client.get("/api/v1/transactions/ids", params={"flow": "spending", **sep}).json()
     assert ids["total"] == 3
     picked = [t["id"] for t in client.get("/api/v1/transactions", params={"q": "SBUX", **both}).json()["transactions"]]
-    r = client.post("/api/v1/transactions/recategorize", json={"ids": picked, "user_category": " COFFEE_BEANS "})
+    r = client.patch("/api/v1/transactions", json={"ids": picked, "user_category": " COFFEE_BEANS "})
     assert r.status_code == 200 and r.json() == {"updated": 2, "user_category": "COFFEE_BEANS"}, r.text
     assert txs(category="COFFEE_BEANS")[0] == 2
     assert "COFFEE_BEANS" in client.get("/api/v1/transactions/categories").json()["categories"]
-    assert client.post("/api/v1/transactions/recategorize", json={"ids": picked, "user_category": None}).json()[
+    assert client.patch("/api/v1/transactions", json={"ids": picked, "user_category": None}).json()[
         "user_category"] is None
     assert txs(category="COFFEE_BEANS")[0] == 0
-    gone = client.post("/api/v1/transactions/recategorize",
-                       json={"ids": [*picked, "00000000-0000-0000-0000-000000000000"], "user_category": "X"})
+    gone = client.patch("/api/v1/transactions",
+                        json={"ids": [*picked, "00000000-0000-0000-0000-000000000000"], "user_category": "X"})
     assert gone.status_code == 404
-    assert client.post("/api/v1/transactions/recategorize", json={"ids": []}).status_code == 422
+    assert client.patch("/api/v1/transactions", json={"ids": []}).status_code == 422
+    assert client.patch("/api/v1/transactions", json={"ids": picked}).status_code == 400  # nothing to change
+
+    # Business or personal, one transaction at a time or many: Insights follow the flag, not just the account.
+    shopify = [t["id"] for t in client.get("/api/v1/transactions", params={"q": "SHOPIFY"}).json()["transactions"]]
+    starbucks = picked[:1]
+    r = client.patch("/api/v1/transactions", json={"ids": starbucks, "business": True})
+    assert r.status_code == 200 and r.json()["business"] is True
+    one = client.patch(f"/api/v1/transactions/{shopify[0]}", json={"business": False}).json()
+    assert one["is_business"] is False and one["business"] is False
+    biz = client.get("/api/v1/insights/cashflow", params={**both, "scope": "business"}).json()
+    personal = client.get("/api/v1/insights/cashflow", params=both).json()
+    # The business account's $300 Shopify charge is personal now; a $50 Starbucks (SBUX 2) is business.
+    assert biz["totals"]["spending"] == "50.00" and personal["totals"]["spending"] == "560.00"  # 310 - 50 + 300
+    flagged = client.get("/api/v1/transactions", params={"q": "SBUX", "from": "2026-08-01"}).json()["transactions"]
+    assert sorted((t["name"], t["is_business"], t["business"]) for t in flagged) == [
+        ("SBUX 1", False, None), ("SBUX 2", True, True)]
+    back = client.patch("/api/v1/transactions", json={"ids": [*starbucks, *shopify], "business": None}).json()
+    assert back["business"] is None
+    assert client.get("/api/v1/insights/cashflow", params={**both, "scope": "business"}).json()["totals"][
+        "spending"] == "300.00"
 
 
 def test_release_boots_older_code_on_a_newer_schema(client):

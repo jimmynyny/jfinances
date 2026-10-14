@@ -42,7 +42,12 @@ def derive_account(sess: Session, acct: Account) -> int:
     """Replace `acct`'s derived snapshots. Returns how many days were written."""
     if acct.kind == "plaid" and acct.type == "investment":
         return derive_investment(sess, acct)
-    if acct.kind != "plaid" or acct.type not in DERIVABLE_TYPES:
+    # Balances follow transactions for cash and card accounts, and for an account the
+    # bank calls something else that the person counts as cash or a card.
+    derivable = acct.type in DERIVABLE_TYPES or acct.group_override in ("cash", "credit_cards")
+    if acct.kind != "plaid" or not derivable:
+        sess.execute(delete(BalanceSnapshot).where(BalanceSnapshot.account_id == acct.id,
+                                                   BalanceSnapshot.source == DERIVED))
         return 0
     sess.execute(delete(BalanceSnapshot).where(BalanceSnapshot.account_id == acct.id,
                                                BalanceSnapshot.source == DERIVED))

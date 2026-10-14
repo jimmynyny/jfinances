@@ -193,10 +193,10 @@ export function useUpdateTransaction() {
   });
 }
 
-export function useRecategorize() {
+export function useEditTransactions() {
   const changed = useCategoryChanged();
   return useMutation({
-    mutationFn: (v: { ids: string[]; category: string | null }) => api.recategorize(v.ids, v.category),
+    mutationFn: (v: { ids: string[]; patch: Parameters<typeof api.editTransactions>[1] }) => api.editTransactions(v.ids, v.patch),
     onSuccess: changed,
   });
 }

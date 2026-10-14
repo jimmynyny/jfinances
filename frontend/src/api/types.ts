@@ -47,6 +47,10 @@ export interface Account {
   is_hidden: boolean;
   /** Business (Daedalus TCG): Insights keep it out of personal numbers. */
   is_business: boolean;
+  /** Where the account counts (Accounts, Overview, net worth by kind); the server decides. */
+  group?: GroupKey;
+  /** Set when the person chose the group (it differs from what the bank's type says). */
+  group_override?: GroupKey | null;
   display_order: number;
   closed_at: string | null;
   /** The offline asset (home, car) this loan is secured by. */
@@ -138,7 +142,10 @@ export interface Transaction {
   account_mask: string | null;
   institution_name: string | null;
   /** On an account marked business (Daedalus TCG). */
+  /** Business by its own flag, else its account's. */
   is_business: boolean;
+  /** The person's say on this one: true business, false personal, null as its account. */
+  business?: boolean | null;
   date: string;
   authorized_date: string | null;
   /** Plaid sign: positive = money out. */

@@ -1,4 +1,4 @@
-import { Input, Select } from "@mooney/ui";
+import { Input, Segmented, Select } from "@mooney/ui";
 
 /** The bank's own category: no override. */
 export const BANK = "__bank__";
@@ -29,12 +29,14 @@ export function resolveCategory(v: CategoryChoice, categories: string[]): { cate
 }
 
 /** Pick a category already in use (or the bank's own), or type a new one. */
-export function CategoryPicker({ categories, value, onChange, bankLabel }: {
+export function CategoryPicker({ categories, value, onChange, bankLabel, placeholder = "Choose a category" }: {
   categories: string[];
   value: CategoryChoice;
   onChange: (v: CategoryChoice) => void;
   /** How the bank's own category reads here, e.g. "food and drink"; omitted for several transactions. */
   bankLabel?: string;
+  /** The empty choice: "Choose a category", or "Keep each one's" when a category is optional. */
+  placeholder?: string;
 }) {
   // One option per name as it reads ("Dining out" and "DINING_OUT" are one), sorted the way they read.
   const seen = new Set<string>();
@@ -46,12 +48,42 @@ export function CategoryPicker({ categories, value, onChange, bankLabel }: {
   const r = resolveCategory(value, categories);
   return (
     <div className="mu-stack">
-      <Select label="Category" placeholder="Choose a category" value={typing ? "" : value.pick} disabled={typing}
+      <Select label="Category" placeholder={placeholder} value={typing ? "" : value.pick} disabled={typing}
         onChange={(e) => onChange({ pick: e.target.value, typed: "" })}
         options={[{ value: BANK, label: bankLabel ? `the bank's (${bankLabel})` : "each one's bank category" }, ...options]} />
       <Input label="Or a new category" placeholder="e.g. home repairs" value={value.typed}
         onChange={(e) => onChange({ pick: value.pick, typed: e.target.value })}
         help={!typing ? undefined : r.isNew ? `Adds “${categoryWords(r.category!)}” as a new category.` : `“${categoryWords(r.category!)}” is already a category; it will be used.`} />
+    </div>
+  );
+}
+
+/** Business or personal: as the account is, or the person's say for these transactions. "keep" leaves each as it is. */
+export type BusinessChoice = "keep" | "account" | "business" | "personal";
+
+export function businessChoice(business: boolean | null | undefined): BusinessChoice {
+  return business === true ? "business" : business === false ? "personal" : "account";
+}
+
+/** The `business` a choice sends: true, false, null (as the account), or nothing for "keep". */
+export function businessValue(c: BusinessChoice): { business?: boolean | null } {
+  return c === "keep" ? {} : { business: c === "account" ? null : c === "business" };
+}
+
+export function BusinessPicker({ value, onChange, accountLabel, keep }: {
+  value: BusinessChoice;
+  onChange: (v: BusinessChoice) => void;
+  /** How "as the account" reads: "account's (personal)". */
+  accountLabel: string;
+  /** Offer "as is" (several transactions, some of each). */
+  keep?: boolean;
+}) {
+  return (
+    <div className="mu-field">
+      <span className="mu-label">Business or personal</span>
+      <Segmented<BusinessChoice> aria-label="Business or personal" value={value} onChange={onChange}
+        options={[...(keep ? [{ value: "keep" as const, label: "as is" }] : []), { value: "account", label: accountLabel },
+          { value: "business", label: "business" }, { value: "personal", label: "personal" }]} />
     </div>
   );
 }

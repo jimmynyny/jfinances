@@ -32,7 +32,8 @@ def _rows(sess: Session) -> list[tuple[Account, networth.AccountRow]]:
             manual_category=a.manual_category, is_liability=a.is_liability, is_hidden=a.is_hidden,
             current_balance=a.current_balance, institution_name=a.item.institution_name if a.item else None,
             mask=a.mask, balance_updated_at=a.balance_updated_at,
-            item_status=a.item.status if a.item else None, display_order=a.display_order)))
+            item_status=a.item.status if a.item else None, display_order=a.display_order,
+            group_override=a.group_override)))
     return out
 
 

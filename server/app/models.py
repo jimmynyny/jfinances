@@ -175,6 +175,9 @@ class Account(TimestampMixin, Base):
     is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: A business account (Daedalus TCG): Insights keep it out of personal numbers.
     is_business: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: Where the account counts when its type alone would put it elsewhere (a
+    #: networth.GROUPS key, set by the person); it also decides is_liability.
+    group_override: Mapped[str | None] = mapped_column(String(24))
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_refresh_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -235,6 +238,8 @@ class Transaction(TimestampMixin, Base):
     payment_channel: Mapped[str | None] = mapped_column(String(40))
     user_category: Mapped[str | None] = mapped_column(String(80))
     notes: Mapped[str | None] = mapped_column(Text)
+    #: The person's say: True business, False personal, None as its account (accounts.is_business).
+    business: Mapped[bool | None] = mapped_column(Boolean)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw: Mapped[dict | None] = mapped_column(JSONB)
 

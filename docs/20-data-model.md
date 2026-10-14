@@ -88,9 +88,10 @@ query.
 | `iso_currency` | default USD |
 | `current_balance`, `available_balance`, `credit_limit` | as Plaid gives them: liabilities are positive amounts owed |
 | `balance_updated_at` | when we last wrote the balance (used by the snapshot job to decide `plaid` vs `carry`) |
-| `is_liability` | derived at write time from `type` / `manual_category` so the overview never recomputes it |
+| `is_liability` | derived at write time from `type` / `manual_category` (or `group_override`) so the overview never recomputes it |
 | `is_hidden` | excluded from totals and charts, still listed |
-| `is_business` | a business account (Daedalus TCG), set in the account's Edit form; Insights keep business and personal apart |
+| `is_business` | a business account (Daedalus TCG), set in the account's Edit form; Insights keep business and personal apart (a transaction's own `business` flag wins) |
+| `group_override` | where the account counts when its type alone would put it elsewhere ("Counts as" in the Edit form): a `networth.GROUPS` key (`cash`, `investments`, `real_estate`, `vehicles`, `other_assets`, `credit_cards`, `loans`, `other_liabilities`). It also decides `is_liability`, which a sync keeps; an account counted as cash or a card rebuilds its history from transactions. An offline account moved to a group with a category of its own takes the category instead (null override) |
 | `display_order` | user sort |
 | `closed_at` | Plaid stopped returning it, or the item was unlinked |
 | `last_refresh_requested_at` | rate limit for the Refresh button |
@@ -129,7 +130,10 @@ From `/transactions/sync` (`source = 'plaid'`), or from a bank export (`source =
 `import_id` set, `plaid_transaction_id` null; see imports below). `amount` keeps Plaid's sign (positive = money
 leaving the account). `category_primary` / `category_detailed` are Plaid's
 personal finance categories; `user_category` overrides the primary for
-display and summaries. `notes` is free text. `removed_at` is set when Plaid
+display and summaries. `notes` is free text. `business` is the person's say on
+one transaction (true business, false personal, null as its account's
+`is_business`): a personal buy on the business card counts as personal in
+Insights, and the other way round. `removed_at` is set when Plaid
 reports a removal (a pending transaction that posted under a new id) instead
 of deleting, so audit is possible. When a pending transaction posts, user
 edits are carried to the new row via `pending_transaction_id`.

@@ -50,6 +50,15 @@ def parse_uuid(value: str, what: str = "id") -> uuid.UUID:
         raise ApiError(400, "bad_request", f"invalid {what}") from e
 
 
+def account_group(a: Account, *, natural: bool = False) -> str:
+    """The networth group an account counts in; `natural`: by its type alone."""
+    from ..services.networth import AccountRow, group_key, natural_group
+    row = AccountRow(id=str(a.id), name=a.name, kind=a.kind, type=a.type, subtype=a.subtype,
+                     manual_category=a.manual_category, is_liability=a.is_liability, is_hidden=a.is_hidden,
+                     current_balance=a.current_balance, group_override=None if natural else a.group_override)
+    return natural_group(row) if natural else group_key(row)
+
+
 def account_json(a: Account, item: PlaidItem | None = None) -> dict[str, Any]:
     item = item or a.item
     return {
@@ -70,6 +79,9 @@ def account_json(a: Account, item: PlaidItem | None = None) -> dict[str, Any]:
         "is_liability": a.is_liability,
         "is_hidden": a.is_hidden,
         "is_business": a.is_business,
+        # Where it counts (networth.GROUPS key), and whether the person chose that.
+        "group": account_group(a),
+        "group_override": a.group_override,
         "display_order": a.display_order,
         "closed_at": ts(a.closed_at),
         "secured_by_id": str(a.secured_by_id) if a.secured_by_id else None,

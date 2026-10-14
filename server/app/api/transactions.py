@@ -29,7 +29,9 @@ INCOME_KINDS = {*insights.INCOME_KINDS.values(), insights.OTHER_INCOME}
 def _tx_json(t: Transaction, a: Account | None, inst: str | None) -> dict:
     return {
         "id": str(t.id), "account_id": str(t.account_id), "account_name": a.name if a else None,
-        "account_mask": a.mask if a else None, "institution_name": inst, "is_business": bool(a and a.is_business),
+        "account_mask": a.mask if a else None, "institution_name": inst,
+        # Business by its own flag (`business`: the person's say, null to follow the account), else its account's.
+        "is_business": t.business if t.business is not None else bool(a and a.is_business), "business": t.business,
         "date": t.date.isoformat(), "authorized_date": ts(t.authorized_date),
         "amount": money(t.amount), "iso_currency": t.iso_currency, "name": t.name,
         "merchant_name": t.merchant_name, "logo_url": t.logo_url, "pending": t.pending,
@@ -187,6 +189,8 @@ def transaction_ids(tq: TxQuery = Depends(), _: Principal = Depends(current_user
 class TxPatch(BaseModel):
     user_category: str | None = Field(default=None, max_length=80)
     notes: str | None = Field(default=None, max_length=2000)
+    #: True business, False personal, null: as its account.
+    business: bool | None = None
 
 
 @router.patch("/transactions/{tx_id}")
@@ -203,31 +207,42 @@ def patch_transaction(tx_id: str, body: TxPatch, _: Principal = Depends(current_
         t.user_category = (body.user_category or "").strip() or None
     if "notes" in body.model_fields_set:
         t.notes = (body.notes or "").strip() or None
+    if "business" in body.model_fields_set:
+        t.business = body.business
     sess.flush()
     return _tx_json(t, a, inst)
 
 
-class Recategorize(BaseModel):
+class BulkEdit(BaseModel):
     model_config = {"extra": "forbid"}
     ids: list[str] = Field(min_length=1, max_length=MAX_IDS)
-    #: The category to file them under; null or blank goes back to the bank's.
+    #: The category to file them under; null or blank goes back to the bank's. Omitted: unchanged.
     user_category: str | None = Field(default=None, max_length=80)
+    #: True business, False personal, null as each one's account. Omitted: unchanged.
+    business: bool | None = None
 
 
-@router.post("/transactions/recategorize")
-def recategorize(body: Recategorize, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
-    """File several transactions under one category at once (or back under the bank's)."""
+@router.patch("/transactions")
+def edit_many(body: BulkEdit, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Several transactions at once: one category (or back to the bank's) and/or
+    business or personal (or back to each one's account)."""
     ids = list({parse_uuid(i, "ids") for i in body.ids})
-    category = (body.user_category or "").strip() or None
+    changes: dict = {}
+    if "user_category" in body.model_fields_set:
+        changes["user_category"] = (body.user_category or "").strip() or None
+    if "business" in body.model_fields_set:
+        changes["business"] = body.business
+    if not changes:
+        raise ApiError(400, "bad_request", "nothing to change: send user_category and/or business")
     found = sess.execute(select(func.count()).select_from(Transaction)
                          .where(Transaction.id.in_(ids), Transaction.removed_at.is_(None))).scalar() or 0
     if found != len(ids):
         raise ApiError(404, "not_found",
                        f"{len(ids) - found} of these transactions no longer exist; reload and try again")
-    sess.execute(update(Transaction).where(Transaction.id.in_(ids)).values(user_category=category)
+    sess.execute(update(Transaction).where(Transaction.id.in_(ids)).values(**changes)
                  .execution_options(synchronize_session=False))
     sess.flush()
-    return {"updated": len(ids), "user_category": category}
+    return {"updated": len(ids), **changes}
 
 
 def _summary_key(group_by: str, t: Transaction, a: Account) -> str:

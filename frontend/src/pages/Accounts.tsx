@@ -6,16 +6,16 @@ import {
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button, Checkbox, Drawer, EmptyState, IconButton, Input, Money, Page, PageHeader, Panel, Skeleton, useToast } from "@mooney/ui";
+import { Button, Checkbox, Drawer, EmptyState, IconButton, Input, Money, Page, PageHeader, Panel, Select, Skeleton, useToast } from "@mooney/ui";
 import { useAccounts, useRefreshAccount, useReorderAccounts, useSetManualValue, useUpdateAccount } from "../api/hooks";
-import type { Account } from "../api/types";
+import type { Account, GroupKey } from "../api/types";
 import { ApiError } from "../api/client";
 import { AccountRow, GripIcon } from "../components/AccountRow";
 import { AccountDetail } from "../components/AccountDetail";
 import { RefreshIcon } from "../components/Icons";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
-import { groupAccounts, upIsGood } from "../lib/groups";
+import { ASSET_GROUPS, GROUP_LABEL, LIABILITY_GROUPS, groupAccounts, groupOf, naturalGroup, upIsGood } from "../lib/groups";
 
 export function AccountsPage() {
   const q = useAccounts();
@@ -137,10 +137,12 @@ export function AccountsPage() {
   );
 }
 
-function EditForm({ account, onSave }: { account: Account; onSave: (patch: { name?: string; is_hidden?: boolean; is_business?: boolean }, value?: number) => Promise<void> }) {
+function EditForm({ account, onSave }: { account: Account; onSave: (patch: { name?: string; is_hidden?: boolean; is_business?: boolean; group?: GroupKey | null }, value?: number) => Promise<void> }) {
   const [name, setName] = useState(account.name);
   const [hidden, setHidden] = useState(account.is_hidden);
   const [business, setBusiness] = useState(account.is_business);
+  const [group, setGroup] = useState<GroupKey>(groupOf(account));
+  const natural = naturalGroup(account);
   const [value, setValueStr] = useState(account.current_balance?.toString() ?? "");
   const manual = account.kind === "manual";
   const dirtyValue = manual && value !== (account.current_balance?.toString() ?? "");
@@ -150,11 +152,20 @@ function EditForm({ account, onSave }: { account: Account; onSave: (patch: { nam
       onSubmit={(e) => {
         e.preventDefault();
         const v = dirtyValue ? Number(value) : undefined;
-        void onSave({ name: name.trim() || account.name, is_hidden: hidden, is_business: business }, Number.isFinite(v as number) ? v : undefined);
+        const regroup = group !== groupOf(account) ? { group: group === natural ? null : group } : {};
+        void onSave({ name: name.trim() || account.name, is_hidden: hidden, is_business: business, ...regroup }, Number.isFinite(v as number) ? v : undefined);
       }}
     >
       <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} help={account.official_name ?? undefined} />
       {manual && <Input label="Current value" mono inputMode="decimal" value={value} onChange={(e) => setValueStr(e.target.value)} help="Saving a new value records today's snapshot." />}
+      <Select label="Counts as" value={group} onChange={(e) => setGroup(e.target.value as GroupKey)}
+        options={[
+          { group: "Owned", options: ASSET_GROUPS.map((k) => ({ value: k, label: `${GROUP_LABEL[k]}${k === natural ? " (its type)" : ""}` })) },
+          { group: "Owed", options: LIABILITY_GROUPS.map((k) => ({ value: k, label: `${GROUP_LABEL[k]}${k === natural ? " (its type)" : ""}` })) },
+        ]}
+        help={group === natural
+          ? "Where it shows on Accounts and Overview and in net worth by kind."
+          : `Shows under ${GROUP_LABEL[group].toLowerCase()} instead of ${GROUP_LABEL[natural].toLowerCase()}${LIABILITY_GROUPS.includes(group) !== LIABILITY_GROUPS.includes(natural) ? `, counted as ${LIABILITY_GROUPS.includes(group) ? "owed" : "owned"}` : ""}.`} />
       <Checkbox label="Hide from overview and totals" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
       <Checkbox label="Business account (kept out of personal insights)" checked={business} onChange={(e) => setBusiness(e.target.checked)} />
       <div className="mu-caption">

@@ -75,8 +75,11 @@ Account object:
  "type":"depository|credit|loan|investment|other|manual","subtype":"checking","manual_category":null,
  "iso_currency":"USD","current_balance":"…","available_balance":"…","credit_limit":"…",
  "balance_updated_at":"…","is_liability":false,"is_hidden":false,"is_business":false,"display_order":0,"closed_at":null,
+ "group":"cash","group_override":null,
  "secured_by_id":"…|null","institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
 ```
+`group` is where the account counts (Accounts, Overview, net worth by kind): the person's
+`group_override` when set, else what its type (or offline category) says.
 
 
 Every account row here and in `GET /overview` carries `trend`: up to 90 daily
@@ -92,7 +95,12 @@ top to bottom, hidden ones included; each gets `display_order` = its index.
 Groups sort independently, so sending one group never disturbs another.
 
 ### PATCH /accounts/{id}
-Body: `{"name"?: str, "is_hidden"?: bool, "is_business"?: bool, "display_order"?: int, "secured_by_id"?: uuid|null}` → account.
+Body: `{"name"?: str, "is_hidden"?: bool, "is_business"?: bool, "display_order"?: int, "secured_by_id"?: uuid|null,
+"group"?: cash|investments|real_estate|vehicles|other_assets|credit_cards|loans|other_liabilities|null}` → account.
+`group` puts the account where it counts when its type says otherwise (an account the bank calls
+"other" that is really cash, or a loan); a liability group counts it as owed. `null`, or the group
+its type gives, goes back to that. An offline account moved to `cash`, `real_estate`, `vehicles`,
+`other_assets` or `other_liabilities` takes that category instead. Its history is rebuilt.
 `secured_by_id` links a loan (any liability but a credit card) to the offline asset it is secured
 by: a manual `real_estate`, `vehicle` or `other_asset` account. `null` unlinks; leaving the field
 out keeps the link. 400 for a card, or a target that isn't such an asset.
@@ -214,7 +222,7 @@ Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount conta
 The rows behind an Insights number (every number on Insights links here, `frontend/src/lib/drill.ts`):
 `flow` = `income` | `spending` | `all` applies Insights' rules (posted, not removed, no transfers
 between your accounts or payments into cards and loans, no hidden accounts) and picks the side;
-`scope` (`personal` | `business` | `all`, by `accounts.is_business`); `detailed` (a detailed
+`scope` (`personal` | `business` | `all`: a transaction's own `business` flag, else its account's); `detailed` (a detailed
 category, or the category itself when the bank gave none); `merchant` (Insights' merchant name,
 `services/insights.merchant_key`); `income_kind` (paychecks, dividends, interest, retirement, tax
 refunds, unemployment, other income); `direction` (`out`: purchases only, as the merchants list
@@ -227,23 +235,28 @@ the number: `sum` is every matching row's amount added up (Plaid's sign).
   "date":"2026-10-12","authorized_date":"2026-10-11","amount":"64.00","iso_currency":"USD",
   "name":"THE GOOD TABLE","merchant_name":"The Good Table","logo_url":"…","pending":false,
   "category_primary":"FOOD_AND_DRINK","category_detailed":"FOOD_AND_DRINK_RESTAURANT",
-  "category":"FOOD_AND_DRINK","user_category":null,"payment_channel":"in store","notes":null,"removed_at":null}]}
+  "category":"FOOD_AND_DRINK","user_category":null,"payment_channel":"in store","notes":null,"removed_at":null,
+  "is_business":false,"business":null}]}
 ```
 `amount` keeps Plaid's sign: positive is money out, negative is money in. `category` is `user_category` if set, else Plaid's primary.
+`is_business` is the transaction's own `business` flag (the person's: true, false) when set, else its account's.
 
 ### PATCH /transactions/{id}
-Body: `{"user_category"?: str|null, "notes"?: str|null}` → transaction.
+Body: `{"user_category"?: str|null, "notes"?: str|null, "business"?: bool|null}` → transaction.
+`business`: true business, false personal, null as its account.
 
 ### GET /transactions/ids
 The list's filters → `{"ids":["…"],"total":340}`, newest first: every match, to select them all.
 More than 5,000 is a 400 (`too_many`): narrow the filters.
 
-### POST /transactions/recategorize
-Body `{"ids":["…", …] (1–5,000), "user_category": str|null}` → `{"updated":12,"user_category":"HOME_REPAIRS"}`.
-Files every one under that category; `null` (or blank) puts each back under the bank's. A 404 if
-any id is gone (removed since the list loaded): nothing changes. The web app keeps a new name in the
-bank's style (`HOME_REPAIRS`, shown "home repairs") and reuses an existing category that reads the
-same, so names never split.
+### PATCH /transactions
+Several at once. Body `{"ids":["…", …] (1–5,000), "user_category"?: str|null, "business"?: bool|null}` →
+`{"updated":12,"user_category":"HOME_REPAIRS","business":true}` (the fields sent). `user_category` files
+every one under that category (`null` or blank: back to the bank's); `business` marks them business
+or personal (`null`: as their accounts). A field left out stays as it is; neither is a 400. A 404 if
+any id is gone (removed since the list loaded): nothing changes. The web app keeps a new category
+name in the bank's style (`HOME_REPAIRS`, shown "home repairs") and reuses an existing category that
+reads the same, so names never split.
 
 ### GET /transactions/summary
 Query: `group_by=category|month|account`, `include_transfers` (default `false`), and the list's
@@ -406,7 +419,7 @@ lender didn't report.
 ## Insights
 Read-only slices of transactions (`services/insights.py`). Every endpoint takes
 `from`, `to` (default: the current month and the eleven before it), `scope`
-(`personal` default, `business`, `all`, by `accounts.is_business`) and
+(`personal` default, `business`, `all`: a transaction's own `business` flag, else its account's `is_business`) and
 repeatable `account_id`, and echoes `from`/`to`/`scope`. Same rules as the
 Transactions summary: no pending or removed rows, no transfers between your
 own accounts, no payments into cards and loans, no hidden accounts. Income is

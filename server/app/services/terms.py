@@ -36,6 +36,9 @@ def kind_of(a: Account, L: Liability | None) -> str:
     """mortgage | student | loan | credit | depository | investment | asset | other."""
     if a.kind == "manual":
         return "loan" if a.is_liability else "asset"
+    by_group = {"cash": "depository", "investments": "investment", "credit_cards": "credit", "loans": "loan"}
+    if a.group_override in by_group:  # the person's group: "other" at the bank, a loan to them
+        return by_group[a.group_override]
     sub = (a.subtype or "").lower()
     if (L is not None and L.kind == "mortgage") or sub == "mortgage":
         return "mortgage"

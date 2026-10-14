@@ -5,7 +5,7 @@ import type {
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SummaryQuery, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
-  WebhookEvent, ImportFile, ImportPreview, ImportRecord,
+  WebhookEvent, ImportFile, ImportPreview, ImportRecord, GroupKey,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -105,6 +105,8 @@ function account(r: Raw): Account {
     is_liability: bool(r.is_liability),
     is_hidden: bool(r.is_hidden),
     is_business: bool(r.is_business),
+    group: (r.group as GroupKey | undefined) ?? undefined,
+    group_override: (r.group_override as GroupKey | null | undefined) ?? null,
     display_order: n0(r.display_order),
     closed_at: str(r.closed_at),
     secured_by_id: str(r.secured_by_id),
@@ -147,6 +149,7 @@ function transaction(r: Raw): Transaction {
     account_mask: str(r.account_mask),
     institution_name: str(r.institution_name),
     is_business: bool(r.is_business),
+    business: r.business === true ? true : r.business === false ? false : null,
     date: String(r.date),
     authorized_date: str(r.authorized_date),
     amount: n0(r.amount),
@@ -354,7 +357,7 @@ export const api = {
     const r = await request("GET", `/accounts/${id}/history`, undefined, { range });
     return list(r.points, (p) => ({ date: String(p.date), balance: n0(p.balance), source: (p.source as AccountHistoryPoint["source"]) ?? "plaid" }));
   },
-  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; is_business?: boolean; display_order?: number; secured_by_id?: string | null }): Promise<Account> =>
+  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; is_business?: boolean; display_order?: number; secured_by_id?: string | null; group?: GroupKey | null }): Promise<Account> =>
     account(await request("PATCH", `/accounts/${id}`, patch)),
   createManualAccount: async (body: { name: string; manual_category: ManualCategory; value: number; iso_currency?: string }): Promise<Account> =>
     account(await request("POST", "/accounts/manual", { ...body, value: dec(body.value) })),
@@ -397,11 +400,12 @@ export const api = {
     return Array.isArray(r.ids) ? r.ids.map(String) : [];
   },
   /** File several transactions under one category; null puts them back under the bank's. */
-  recategorize: async (ids: string[], user_category: string | null): Promise<{ updated: number }> => {
-    const r = await request("POST", "/transactions/recategorize", { ids, user_category });
+  /** Several transactions at once: a category (null: the bank's) and/or business (null: as the account). */
+  editTransactions: async (ids: string[], patch: { user_category?: string | null; business?: boolean | null }): Promise<{ updated: number }> => {
+    const r = await request("PATCH", "/transactions", { ids, ...patch });
     return { updated: n0(r.updated) };
   },
-  updateTransaction: async (id: string, patch: { user_category?: string | null; notes?: string | null }): Promise<Transaction> =>
+  updateTransaction: async (id: string, patch: { user_category?: string | null; notes?: string | null; business?: boolean | null }): Promise<Transaction> =>
     transaction(await request("PATCH", `/transactions/${id}`, patch)),
   transactionSummary: async (q: SummaryQuery): Promise<Summary> => {
     const r = await request("GET", "/transactions/summary", undefined, { ...q });

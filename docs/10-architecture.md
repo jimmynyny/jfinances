@@ -237,8 +237,8 @@ All routes require a principal except `/healthz`. Errors are
 | `POST /link/token` | `{kind?: banking|investments, item_id?}` → `{link_token, expiration, link_session_id, mode, kind}` |
 | `POST /link/exchange` | `{public_token, metadata?}` → item summary |
 | `GET /transactions?from&to&account_id&q&category&pending&page&page_size` | paged list, newest first, with `sum`; `flow` and Insights' groupings list the rows behind an Insights number (docs/80) |
-| `PATCH /transactions/{id}` | `{user_category?, notes?}` |
-| `GET /transactions/ids`, `POST /transactions/recategorize` | every id a filter matches; several transactions under one category |
+| `PATCH /transactions/{id}` | `{user_category?, notes?, business?}` |
+| `GET /transactions/ids`, `PATCH /transactions` | every id a filter matches; several transactions at once (category, business or personal) |
 | `GET /transactions/summary?from&to&group_by=category|month|account` | `[{key,label,total,count}]` |
 | `GET /holdings` | accounts → holdings with security and value |
 | `GET /liabilities` | liability details per account |

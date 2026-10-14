@@ -230,13 +230,18 @@
 .mu-tab:focus-visible { box-shadow: var(--mu-focus); }
 
 /* ---------- Segmented ---------- */
-.mu-seg { display: inline-flex; border: 1px solid var(--mu-line-strong); background: var(--mu-panel); box-shadow: var(--mu-shadow-soft); }
+/* The 1px gap shows the line colour between options; when the options outgrow
+   the row they wrap whole onto another one (never a label broken mid-word), and
+   the last row's options stretch to fill it. */
+.mu-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 1px; max-width: 100%;
+  border: 1px solid var(--mu-line-strong); background: var(--mu-line); box-shadow: var(--mu-shadow-soft);
+}
 .mu-seg__opt {
   all: unset; cursor: pointer; padding: 0 var(--mu-s3); height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; flex: 1 0 auto; white-space: nowrap; background: var(--mu-panel);
   font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2);
-  border-right: 1px solid var(--mu-line);
 }
-.mu-seg__opt:last-child { border-right: 0; }
 .mu-seg__opt:hover { background: var(--mu-panel-2); }
 .mu-seg__opt[aria-pressed="true"] { background: var(--mu-ink); color: var(--mu-panel); }
 .mu-seg__opt:focus-visible { box-shadow: var(--mu-focus); position: relative; z-index: 1; }

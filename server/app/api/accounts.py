@@ -27,7 +27,7 @@ from ..models import (
 from ..plaid_client import PlaidError
 from ..services import plaid_sync, terms
 from ..services.trends import balance_trends
-from ._common import ApiError, account_json, money, parse_uuid
+from ._common import ApiError, account_group, account_json, money, parse_uuid
 
 router = APIRouter()
 
@@ -48,11 +48,17 @@ def list_accounts(_: Principal = Depends(current_user), sess: Session = Depends(
     return {"accounts": [{**account_json(a), "trend": [money(v) for v in trends.get(a.id, [])]} for a in rows]}
 
 
+GroupKey = Literal["cash", "investments", "real_estate", "vehicles", "other_assets", "credit_cards", "loans",
+                   "other_liabilities"]
+
+
 class AccountPatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     is_hidden: bool | None = None
     is_business: bool | None = None
     display_order: int | None = None
+    #: Where the account counts (networth.GROUPS); null goes back to what its type says.
+    group: GroupKey | None = None
     #: The offline asset (home, car) this loan is secured by; null unlinks.
     secured_by_id: str | None = None
 
@@ -82,10 +88,35 @@ def patch_account(account_id: str, body: AccountPatch, _: Principal = Depends(cu
         a.is_business = body.is_business
     if body.display_order is not None:
         a.display_order = body.display_order
+    if "group" in body.model_fields_set:
+        _set_group(sess, a, body.group)
     if "secured_by_id" in body.model_fields_set:  # an explicit null unlinks
         a.secured_by_id = _collateral(sess, a, body.secured_by_id)
     sess.flush()
     return account_json(a)
+
+
+def _set_group(sess: Session, a: Account, group: str | None) -> None:
+    """Count the account in `group`. An offline account whose group has a category of
+    its own takes that category (so a home is a home everywhere); otherwise the group
+    is kept as an override. Liability or asset follows the group, and history is
+    rebuilt (cash and card groups rebuild from transactions)."""
+    from ..services import history
+    from ..services.networth import LIABILITY_GROUPS, MANUAL_CATEGORY_FOR
+    a.group_override = None
+    a.is_liability = is_liability_for(a.kind, a.type, a.manual_category)  # what its kind alone says
+    if group is not None and group != account_group(a, natural=True):
+        if a.kind == "manual" and group in MANUAL_CATEGORY_FOR:
+            a.manual_category = a.subtype = MANUAL_CATEGORY_FOR[group]
+        else:
+            a.group_override = group
+    effective = account_group(a)
+    a.is_liability = effective in LIABILITY_GROUPS
+    if not a.is_liability:
+        a.secured_by_id = None  # only a debt is secured by something
+    sess.flush()
+    with sess.begin_nested():
+        history.derive_account(sess, a)
 
 
 class OrderIn(BaseModel):

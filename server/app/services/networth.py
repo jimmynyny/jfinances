@@ -26,6 +26,10 @@ GROUPS: list[tuple[str, str]] = [
 ]
 GROUP_LABEL = dict(GROUPS)
 ASSET_GROUPS = {"cash", "investments", "real_estate", "vehicles", "other_assets"}
+LIABILITY_GROUPS = {k for k, _ in GROUPS} - ASSET_GROUPS
+#: Manual categories a group has; moving an offline account there changes its category.
+MANUAL_CATEGORY_FOR = {"cash": "cash", "real_estate": "real_estate", "vehicles": "vehicle",
+                       "other_assets": "other_asset", "other_liabilities": "other_liability"}
 
 
 @dataclass(frozen=True)
@@ -44,9 +48,18 @@ class AccountRow:
     balance_updated_at: object = None
     item_status: str | None = None
     display_order: int = 0
+    group_override: str | None = None
 
 
 def group_key(row: AccountRow) -> str:
+    """Where an account counts: the person's choice (group_override), else its kind."""
+    if row.group_override in GROUP_LABEL:
+        return row.group_override
+    return natural_group(row)
+
+
+def natural_group(row: AccountRow) -> str:
+    """Where an account counts by its type (or offline category) alone."""
     if row.kind == "manual":
         return {
             "real_estate": "real_estate",

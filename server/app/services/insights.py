@@ -4,8 +4,10 @@ Every number follows the Transactions summary's rules (services/flows.py):
 pending and removed transactions never count, transfers between the
 household's own accounts and payments into cards and loans are left out
 (they would double count), and hidden accounts are left out as they are
-everywhere else. `scope` keeps business accounts (accounts.is_business) and
-personal ones apart.
+everywhere else. `scope` keeps business and personal apart: a transaction is
+business when its account is (accounts.is_business), unless the person said
+otherwise for that one transaction (transactions.business: a personal buy on
+the business card, or the other way round).
 
 Income is the INCOME category (paychecks, interest, dividends, refunds of
 tax...); spending is every other category, net of refunds (a refund is money
@@ -109,8 +111,13 @@ def counted_clauses() -> list:
             ~is_transfer_clause(), ~is_liability_payment_clause()]
 
 
+def is_business_clause():
+    """A transaction is business by its own flag, else by its account's."""
+    return func.coalesce(Transaction.business, Account.is_business)
+
+
 def scope_clause(scope: Scope):
-    return None if scope == "all" else Account.is_business.is_(scope == "business")
+    return None if scope == "all" else is_business_clause().is_(scope == "business")
 
 
 def income_kind(detailed: str | None) -> str:

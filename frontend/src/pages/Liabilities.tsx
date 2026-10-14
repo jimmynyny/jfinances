@@ -35,7 +35,8 @@ function noDetailNote(kind: string): string {
 
 function toRow(a: Account, l: LiabilityDetail | null): Row {
   const bal = a.current_balance ?? 0;
-  const kind = (l?.kind ?? (a.type === "credit" ? "credit" : a.subtype ?? a.type)).replace(/_/g, " ");
+  // A card by the lender's record, its type, or the group the person put it in.
+  const kind = (l?.kind ?? (a.type === "credit" || a.group === "credit_cards" ? "credit" : a.subtype ?? a.type)).replace(/_/g, " ");
   const isCard = kind === "credit";
   const limit = l?.credit_limit ?? a.credit_limit; // the bank's, else the one entered
   const ratio = isCard

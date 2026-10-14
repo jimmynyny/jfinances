@@ -20,7 +20,13 @@ export const GROUP_ORDER: GroupKey[] = ["cash", "investments", "real_estate", "v
 export const ASSET_GROUPS: GroupKey[] = ["cash", "investments", "real_estate", "vehicles", "other_assets"];
 export const LIABILITY_GROUPS: GroupKey[] = ["credit_cards", "loans", "other_liabilities"];
 
+/** Where an account counts by its type (or offline category) alone, before anyone chose. */
+export function naturalGroup(a: Account): GroupKey {
+  return groupOf({ ...a, group: undefined, group_override: null, is_liability: a.kind === "manual" ? a.manual_category === "other_liability" : a.type === "credit" || a.type === "loan" });
+}
+
 export function groupOf(a: Account): GroupKey {
+  if (a.group) return a.group; // the server's say, the person's choice included
   if (a.kind === "manual") {
     switch (a.manual_category) {
       case "real_estate": return "real_estate";

@@ -28,6 +28,7 @@ from ..models import (
     is_liability_for,
 )
 from ..plaid_client import PlaidClient, PlaidError, plaid
+from .networth import LIABILITY_GROUPS
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +110,9 @@ def upsert_accounts(sess: Session, item: PlaidItem, accounts: list[dict[str, Any
         acct.available_balance = _d(bal.get("available"))
         acct.credit_limit = _d(bal.get("limit"))
         acct.balance_updated_at = now
-        acct.is_liability = is_liability_for("plaid", acct.type, None)
+        # The person's group decides when they set one (a loan Plaid calls "other").
+        acct.is_liability = (acct.group_override in LIABILITY_GROUPS if acct.group_override
+                             else is_liability_for("plaid", acct.type, None))
         acct.raw = raw
         if acct.closed_at is not None:
             acct.closed_at = None

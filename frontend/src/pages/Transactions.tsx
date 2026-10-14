@@ -4,13 +4,16 @@ import {
   ActionBar, Badge, Button, Checkbox, DataTable, Drawer, Filters, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
-import { useAccounts, useCategories, useRecategorize, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
+import { useAccounts, useCategories, useEditTransactions, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
 import type { Account, Transaction, TransactionDrill } from "../api/types";
 import { ApiError, api } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
 import { accountFilterOptions } from "../lib/accountOptions";
 import { BusinessMark } from "../components/BusinessMark";
-import { BANK, CategoryPicker, categoryWords, resolveCategory, type CategoryChoice } from "../components/CategoryPicker";
+import {
+  BANK, BusinessPicker, CategoryPicker, businessChoice, businessValue, categoryWords, resolveCategory,
+  type BusinessChoice, type CategoryChoice,
+} from "../components/CategoryPicker";
 import { describeDrill, readDrill } from "../lib/drill";
 import { GROUP_LABEL, groupOf, monthLabel } from "../lib/groups";
 
@@ -52,10 +55,10 @@ export function TransactionsPage() {
   }, [linked]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [summaryBy, setSummaryBy] = useState<"category" | "month">("category");
-  // Ticking rows to recategorize them together.
+  // Ticking rows to edit them together.
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [recategorizing, setRecategorizing] = useState(false);
+  const [editingMany, setEditingMany] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
   const { toast, error } = useToast();
 
@@ -73,7 +76,7 @@ export function TransactionsPage() {
   const summary = useSummary({ from: range.from, to: range.to, account_id: accountId || undefined, group_by: summaryBy, ...(drill ? { ...drill, category: category || undefined } : {}) });
   const cats = useCategories();
   const update = useUpdateTransaction();
-  const recategorize = useRecategorize();
+  const editMany = useEditTransactions();
 
   /** Leave the Insights grouping: the whole list again, with the page's own filters. */
   function showAll() {
@@ -227,14 +230,14 @@ export function TransactionsPage() {
                 </span>
               </div>
               {selecting && (
-                <ActionBar label="Selected transactions" count={selected.size === 0 ? "Tick transactions to recategorize them" : `${selected.size.toLocaleString()} selected`}>
+                <ActionBar label="Selected transactions" count={selected.size === 0 ? "Tick transactions to edit them" : `${selected.size.toLocaleString()} selected`}>
                   {selected.size < total && (
                     <Button size="sm" variant="quiet" loading={selectingAll} onClick={() => void selectAllMatching()}>
                       Select all {total.toLocaleString()}
                     </Button>
                   )}
                   {selected.size > 0 && <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())}>Clear</Button>}
-                  <Button size="sm" variant="primary" disabled={selected.size === 0} onClick={() => setRecategorizing(true)}>Recategorize</Button>
+                  <Button size="sm" variant="primary" disabled={selected.size === 0} onClick={() => setEditingMany(true)}>Edit</Button>
                 </ActionBar>
               )}
             </>
@@ -288,24 +291,24 @@ export function TransactionsPage() {
       </div>
 
       <Drawer
-        open={recategorizing}
-        onClose={() => setRecategorizing(false)}
-        title={`Recategorize ${selected.size.toLocaleString()} transaction${selected.size === 1 ? "" : "s"}`}
+        open={editingMany}
+        onClose={() => setEditingMany(false)}
+        title={`Edit ${selected.size.toLocaleString()} transaction${selected.size === 1 ? "" : "s"}`}
       >
-        {recategorizing && (
-          <RecategorizeForm
+        {editingMany && (
+          <EditManyForm
             categories={categories}
             count={selected.size}
-            saving={recategorize.isPending}
-            onCancel={() => setRecategorizing(false)}
-            onSave={async (to) => {
+            saving={editMany.isPending}
+            onCancel={() => setEditingMany(false)}
+            onSave={async (patch, said) => {
               try {
-                const r = await recategorize.mutateAsync({ ids: [...selected], category: to });
-                toast(`${r.updated.toLocaleString()} moved to ${to ? categoryWords(to) : "their bank categories"}`);
+                const r = await editMany.mutateAsync({ ids: [...selected], patch });
+                toast(`${r.updated.toLocaleString()} updated: ${said}`);
                 setSelected(new Set());
-                setRecategorizing(false);
+                setEditingMany(false);
               } catch (e) {
-                error(e instanceof ApiError ? e.message : "Could not recategorize");
+                error(e instanceof ApiError ? e.message : "Could not save the changes");
               }
             }}
           />
@@ -341,23 +344,37 @@ export function TransactionsPage() {
   );
 }
 
-/** One category for every ticked transaction: one already in use, a new one, or back to each one's bank category. */
-function RecategorizeForm({ categories, count, saving, onCancel, onSave }: {
+/**
+ * Every ticked transaction at once: a category (one in use, a new one, or back to
+ * each one's bank category) and/or business or personal. What is left alone stays.
+ */
+function EditManyForm({ categories, count, saving, onCancel, onSave }: {
   categories: string[];
   count: number;
   saving: boolean;
   onCancel: () => void;
-  onSave: (category: string | null) => Promise<void>;
+  onSave: (patch: { user_category?: string | null; business?: boolean | null }, said: string) => Promise<void>;
 }) {
   const [choice, setChoice] = useState<CategoryChoice>({ pick: "", typed: "" });
+  const [biz, setBiz] = useState<BusinessChoice>("keep");
   const to = resolveCategory(choice, categories).category;
+  const patch = { ...(to !== undefined ? { user_category: to } : {}), ...businessValue(biz) };
+  const said = [
+    to !== undefined ? (to ? categoryWords(to) : "bank categories") : null,
+    biz === "keep" ? null : biz === "account" ? "business as their accounts" : biz,
+  ].filter(Boolean).join(" · ");
   return (
-    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); if (to !== undefined) void onSave(to); }}>
-      <CategoryPicker categories={categories} value={choice} onChange={setChoice} />
-      <p className="mu-caption">Insights and summaries count them under the new category from now on. Choosing each one&apos;s bank category undoes a change.</p>
+    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); if (said) void onSave(patch, said); }}>
+      <CategoryPicker categories={categories} value={choice} onChange={setChoice} placeholder="Keep each one's category" />
+      <BusinessPicker value={biz} onChange={setBiz} keep accountLabel="as accounts" />
+      <p className="mu-caption">
+        Insights and summaries count them this way from now on. A business transaction on a personal account
+        (or the other way round) moves to that side of Insights. Each one&apos;s bank category, or &ldquo;as
+        accounts&rdquo;, undoes a change.
+      </p>
       <div className="mu-row">
-        <Button type="submit" variant="primary" disabled={to === undefined} loading={saving}>
-          {to === undefined ? "Choose a category" : `Move ${count.toLocaleString()} to ${to ? categoryWords(to) : "their bank categories"}`}
+        <Button type="submit" variant="primary" disabled={!said} loading={saving}>
+          {said ? `Save ${count.toLocaleString()}` : "Choose a change"}
         </Button>
         <Button type="button" variant="quiet" onClick={onCancel}>Cancel</Button>
       </div>
@@ -371,13 +388,16 @@ function TxnForm({ t, categories, account, onShowAccount, onSave }: {
   /** The account it belongs to, when the accounts list has loaded. */
   account?: Account;
   onShowAccount?: () => void;
-  onSave: (patch: { user_category?: string | null; notes?: string | null }) => Promise<void>;
+  onSave: (patch: { user_category?: string | null; notes?: string | null; business?: boolean | null }) => Promise<void>;
 }) {
   const [cat, setCat] = useState<CategoryChoice>({ pick: t.user_category ?? BANK, typed: "" });
   const [notes, setNotes] = useState(t.notes ?? "");
+  const [biz, setBiz] = useState<BusinessChoice>(businessChoice(t.business));
   const chosen = resolveCategory(cat, categories).category;
+  // "as the account" says which that is; before the accounts load, what this transaction shows.
+  const accountIsBusiness = account ? account.is_business : (t.business == null && t.is_business);
   return (
-    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); void onSave({ user_category: chosen ?? null, notes: notes.trim() || null }); }}>
+    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); void onSave({ user_category: chosen ?? null, notes: notes.trim() || null, ...businessValue(biz) }); }}>
       <div>
         <div style={{ fontWeight: 600 }}>{t.merchant_name ?? t.name}{t.is_business && <BusinessMark />}</div>
         <div className="mu-caption">{formatDate(t.date, { year: true })} · {t.account_name ?? ""}{t.pending ? " · pending" : ""}</div>
@@ -401,6 +421,7 @@ function TxnForm({ t, categories, account, onShowAccount, onSave }: {
         </div>
       )}
       <CategoryPicker categories={categories} value={cat} onChange={setCat} bankLabel={categoryWords(t.category_primary ?? "uncategorized")} />
+      <BusinessPicker value={biz} onChange={setBiz} accountLabel={`as account (${accountIsBusiness ? "business" : "personal"})`} />
       <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>
