@@ -111,11 +111,11 @@ export function LoansView({ actions }: { actions?: ReactNode }) {
                     <>
                       <KeyValue items={[
                         { key: "rate", value: l.rate != null ? <Num>{l.rate.toFixed(3)}%</Num> : "—" },
-                        { key: "payment", value: <><Money value={s.payment} /> <span className="mu-caption">principal + interest</span></> },
-                        { key: "paid off", value: s.payoff ? <>{formatDate(s.payoff, { year: true })} <span className="mu-caption">(<Num>{s.months}</Num> months)</span></> : "—" },
+                        { key: "payment", value: <><Money value={s.payment} /><span className="mu-caption"> principal + interest</span></> },
+                        { key: "paid off", value: s.payoff ? <>{formatDate(s.payoff, { year: true })}<span className="mu-caption"> (<Num>{s.months}</Num> months)</span></> : "—" },
                         { key: "interest left", value: s.interest != null ? <Money value={s.interest} cents={false} /> : "—" },
                         ...(l.ytd_interest != null ? [{ key: "interest paid this year", value: <Money value={l.ytd_interest} cents={false} /> }]
-                          : thisYear ? [{ key: "interest this year", value: <><Money value={thisYear.interest} cents={false} /> <span className="mu-caption">projected, rest of year</span></> }] : []),
+                          : thisYear ? [{ key: "interest this year", value: <><Money value={thisYear.interest} cents={false} /><span className="mu-caption"> projected, rest of year</span></> }] : []),
                       ]} />
                       {s.per_year.length > 1 && (
                         <BarChart mode="stacked" height={140}

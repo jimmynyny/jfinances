@@ -15,6 +15,31 @@ export interface Column<Row> {
   width?: number | string;
   /** Class on this column's th and td cells, e.g. to hide it at narrow widths from app CSS. */
   className?: string;
+  /**
+   * Where the cell goes when the table is narrow (under 560px wide, a phone or a
+   * slim panel) and each row stacks into a card: `primary` on the left (the first
+   * column by default), `end` right-aligned beside it (the last numeric column by
+   * default), `sub` right-aligned under `end`, `meta` as a labelled line under the
+   * primary (every other column by default), `full` across the card, `hide` gone.
+   */
+  mobile?: MobileRole;
+  /** The label a `meta` or `sub` cell shows before its value when stacked: a string header by default, false for none. */
+  mobileLabel?: string | false;
+}
+
+export type MobileRole = "primary" | "end" | "sub" | "meta" | "full" | "hide";
+
+function mobileRoles<Row>(columns: Column<Row>[]): MobileRole[] {
+  if (columns.some((c) => c.mobile)) return columns.map((c) => c.mobile ?? "meta");
+  let end = -1;
+  columns.forEach((c, i) => { if (c.numeric) end = i; });
+  return columns.map((_, i) => (i === 0 ? "primary" : i === end ? "end" : "meta"));
+}
+
+function mobileLabel<Row>(c: Column<Row>, role: MobileRole): string | undefined {
+  if (role !== "meta" && role !== "sub") return undefined;
+  if (c.mobileLabel === false) return undefined;
+  return c.mobileLabel ?? (typeof c.header === "string" && c.header ? c.header : undefined);
 }
 
 export interface DataTableProps<Row> {
@@ -53,6 +78,7 @@ export function DataTable<Row>({
 }: DataTableProps<Row>) {
   const [sortState, setSortState] = useState(defaultSort ?? null);
   const sort = sortProp ?? sortState;
+  const roles = useMemo(() => mobileRoles(columns), [columns]);
 
   const sorted = useMemo(() => {
     if (!sort || onSortChange) return rows; // server-sorted or unsorted
@@ -109,7 +135,7 @@ export function DataTable<Row>({
         <tbody>
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="mu-table__empty">{empty}</td>
+              <td colSpan={columns.length} className="mu-table__empty" data-m="full">{empty}</td>
             </tr>
           ) : (
             sorted.map((row) => {
@@ -123,8 +149,9 @@ export function DataTable<Row>({
                   tabIndex={onRowClick ? 0 : undefined}
                   onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
                 >
-                  {columns.map((c) => (
-                    <td key={c.key} className={cx(c.numeric && "mu-td--num", c.wrap && "mu-td--wrap", c.className)}>
+                  {columns.map((c, i) => (
+                    <td key={c.key} className={cx(c.numeric && "mu-td--num", c.wrap && "mu-td--wrap", c.className)}
+                      data-m={roles[i]} data-label={mobileLabel(c, roles[i]!)}>
                       {c.cell(row)}
                     </td>
                   ))}

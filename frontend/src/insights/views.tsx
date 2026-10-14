@@ -39,11 +39,12 @@ export function CashflowView({ slice, grain, actions }: ViewProps & { grain: Gra
   const q = useCashflow(slice, grain);
   const [table, setTable] = useState(false);
   const cols: Column<CashflowPeriod>[] = [
-    { key: "period", header: "Period", cell: (p) => <span className="mu-mono">{p.label}</span>, sortValue: (p) => p.period },
-    { key: "income", header: "Income", numeric: true, cell: (p) => <Money value={p.income} cents={false} />, sortValue: (p) => p.income },
-    { key: "spending", header: "Spending", numeric: true, cell: (p) => <Money value={p.spending} cents={false} />, sortValue: (p) => p.spending },
-    { key: "net", header: "Net", numeric: true, cell: (p) => <Money value={p.net} cents={false} signed />, sortValue: (p) => p.net },
-    { key: "rate", header: "Saved", numeric: true, cell: (p) => pct(p.savings_rate), sortValue: (p) => p.savings_rate },
+    { key: "period", header: "Period", mobile: "primary", sortValue: (p) => p.period,
+      cell: (p) => <><span className="mu-mono">{p.label}</span><span className="mu-caption mu-stacked-only"> · in <Money value={p.income} cents={false} /> · out <Money value={p.spending} cents={false} /></span></> },
+    { key: "income", header: "Income", numeric: true, mobile: "hide", cell: (p) => <Money value={p.income} cents={false} />, sortValue: (p) => p.income },
+    { key: "spending", header: "Spending", numeric: true, mobile: "hide", cell: (p) => <Money value={p.spending} cents={false} />, sortValue: (p) => p.spending },
+    { key: "net", header: "Net", numeric: true, mobile: "end", cell: (p) => <Money value={p.net} cents={false} signed />, sortValue: (p) => p.net },
+    { key: "rate", header: "Saved", numeric: true, mobile: "sub", mobileLabel: "saved", cell: (p) => pct(p.savings_rate), sortValue: (p) => p.savings_rate },
   ];
   return (
     <Panel caption="cash flow" actions={<>{actions}<Button size="sm" variant="quiet" onClick={() => setTable((t) => !t)}>{table ? "chart" : "table"}</Button></>}>
@@ -189,15 +190,20 @@ export function MerchantsView({ slice, category, actions }: ViewProps & { catego
   const q = useMerchants(slice, category);
   const cols: Column<MerchantInsight>[] = [
     {
-      key: "merchant", header: "Merchant", wrap: true,
-      cell: (m) => <div className="jf-cell-account"><div>{m.label} {m.is_new && <Badge tone="accent" dot={false}>new</Badge>}</div><div className="mu-caption">{categoryLabel(m.category)}</div></div>,
+      key: "merchant", header: "Merchant", wrap: true, mobile: "primary",
+      cell: (m) => (
+        <div className="jf-cell-account">
+          <div>{m.label} {m.is_new && <Badge tone="accent" dot={false}>new</Badge>}</div>
+          <div className="mu-caption">{categoryLabel(m.category)}<span className="mu-stacked-only"> · <span className="jf-nowrap">{m.count} visit{m.count === 1 ? "" : "s"}</span> · <span className="jf-nowrap">avg <Money value={m.average} /></span></span></div>
+        </div>
+      ),
       sortValue: (m) => m.label,
     },
-    { key: "count", header: "Visits", numeric: true, cell: (m) => m.count, sortValue: (m) => m.count },
-    { key: "average", header: "Avg ticket", numeric: true, cell: (m) => <Money value={m.average} />, sortValue: (m) => m.average },
-    { key: "total", header: "Total", numeric: true, cell: (m) => <Money value={m.total} cents={false} />, sortValue: (m) => m.total },
-    { key: "trend", header: "By month", width: 110, cell: (m) => <PixelSparkline values={m.trend} width={96} height={18} /> },
-    { key: "last", header: "Last", cell: (m) => <span className="mu-mono">{formatDate(m.last_seen)}</span>, sortValue: (m) => m.last_seen },
+    { key: "count", header: "Visits", numeric: true, mobile: "hide", cell: (m) => m.count, sortValue: (m) => m.count },
+    { key: "average", header: "Avg ticket", numeric: true, mobile: "hide", cell: (m) => <Money value={m.average} />, sortValue: (m) => m.average },
+    { key: "total", header: "Total", numeric: true, mobile: "end", cell: (m) => <Money value={m.total} cents={false} />, sortValue: (m) => m.total },
+    { key: "trend", header: "By month", width: 110, mobile: "hide", cell: (m) => <PixelSparkline values={m.trend} width={96} height={18} /> },
+    { key: "last", header: "Last", mobile: "sub", mobileLabel: "last", cell: (m) => <span className="mu-mono">{formatDate(m.last_seen)}</span>, sortValue: (m) => m.last_seen },
   ];
   return (
     <Panel flush caption={category ? <>merchants · {categoryLabel(category)}</> : "top merchants"} actions={actions}>
@@ -219,16 +225,21 @@ export function CompareView({ slice, category, actions }: ViewProps & { category
         {() => {
           const d = q.data!;
           if (d.rows.length === 0) return <span className="mu-caption">nothing to compare</span>;
+          const none = d.rows.every((r) => r.previous === 0); // no history that far back: say it once, not per row
           return (
             <div className="mu-stack">
-              <span className="mu-caption">against {formatDate(d.previous.from, { year: true })} – {formatDate(d.previous.to, { year: true })}</span>
+              <span className="mu-caption">
+                {none ? "nothing recorded" : "against"} {formatDate(d.previous.from, { year: true })} – {formatDate(d.previous.to, { year: true })}{none ? ", so these are this year's totals" : ""}
+              </span>
               <dl className="mu-kv">
                 {d.rows.slice(0, 10).map((r) => (
                   <Fragment key={r.key}>
                     <dt>{categoryLabel(r.key, category)}</dt>
-                    <dd>
-                      <Money value={r.current} cents={false} />{" "}
-                      <Delta amount={r.change} pct={r.pct === null ? undefined : r.pct * 100} upIsGood={false} />
+                    <dd className="jf-compare">
+                      <Money value={r.current} cents={false} />
+                      {none ? null : r.previous === 0
+                        ? <span className="mu-caption">none a year earlier</span>
+                        : <Delta amount={r.change} pct={r.pct === null ? undefined : r.pct * 100} upIsGood={false} cents={false} />}
                     </dd>
                   </Fragment>
                 ))}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Page, PageHeader, Segmented, Select, Tabs, formatDate } from "@mooney/ui";
+import { Filters, Page, PageHeader, Segmented, Select, Tabs, formatDate } from "@mooney/ui";
 import { useAccounts } from "../api/hooks";
 import { accountFilterOptions } from "../lib/accountOptions";
 import { useStoredChoice } from "../lib/storedView";
@@ -49,7 +49,7 @@ export function InsightsPage() {
       />
       <Tabs items={TABS} value={tab} onChange={setTab} aria-label="Insights" />
       {sliced && (
-        <div className="mu-filters">
+        <Filters summary={`${RANGES.find((r) => r.value === range)?.label ?? range} · by ${grain} · ${accountId ? (accounts.data?.find((a) => a.id === accountId)?.name ?? "one account") : scope}`}>
           <div className="mu-field">
             <span className="mu-label">Range</span>
             <Segmented options={RANGES} value={range} onChange={setRange} aria-label="Range" />
@@ -64,7 +64,7 @@ export function InsightsPage() {
           </div>
           <Select label="Account" placeholder="All in scope" value={accountId} onChange={(e) => setAccountId(e.target.value)}
             options={accountFilterOptions(accounts.data)} style={{ minWidth: 180 }} />
-        </div>
+        </Filters>
       )}
 
       {tab === "cashflow" && (

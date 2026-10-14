@@ -124,22 +124,23 @@ import { Button, Panel, Money } from "@mooney/ui";
 | `StatTile` | `label`, `value`, `delta`, `note`, `trend[]`, `tone: plain\|wash\|pos\|neg`, `hero` | One `hero` per view. `trend` draws a 12-point sparkline bottom-right. |
 | `Money` | `value`, `currency`, `cents`, `compact`, `signed`, `mono`, `plus` | Tabular numerals. `signed` colours by direction — only for changes, not balances. |
 | `Delta` | `amount`, `pct`, `label`, `upIsGood` | `▲ $23,542.96 (3.5%) 1 month`. Pass `upIsGood={false}` for liabilities. |
-| `DataTable<Row>` | `columns[{key, header, cell, numeric, wrap, sortValue, width, className}]`, `rows`, `rowKey`, `defaultSort`/`sort`+`onSortChange`, `onRowClick`, `selectedKey`, `compact`, `stale`, `empty`, `className` | Sticky mono header, right-aligned numeric columns, client sort when `sortValue` given, server sort when `onSortChange` given. `stale` holds rows at reduced opacity during refetch. A column's `className` lands on its `th` and `td`, so app CSS can hide secondary columns on phones; the table itself scrolls inside its panel, never the page. |
+| `DataTable<Row>` | `columns[{key, header, cell, numeric, wrap, sortValue, width, className, mobile, mobileLabel}]`, `rows`, `rowKey`, `defaultSort`/`sort`+`onSortChange`, `onRowClick`, `selectedKey`, `compact`, `stale`, `empty`, `className` | Sticky mono header, right-aligned numeric columns, client sort when `sortValue` given, server sort when `onSortChange` given. `stale` holds rows at reduced opacity during refetch. When the table is under 560px wide (its container, not the screen: a phone or a slim panel), each row stacks into a card instead of scrolling sideways. A column's `mobile` role places it: `primary` on the left (default: the first column), `end` right-aligned beside it (default: the last numeric column), `sub` right-aligned under that, `meta` as a labelled line below (default for the rest; `mobileLabel` overrides the header as the label, `false` drops it), `full` across the card (actions, controls), `hide` gone. Text in a `.mu-stacked-only` element shows only in the stacked card (fold a hidden column into a caption: "6 visits · avg $134.52"). |
 | `Meter` | `ratio 0..1`, `label`, `tone: accent\|pos\|neg\|series`, `color` | Smooth inline bar. Superseded in jfinances by `PixelMeter`; kept for other dashboards. |
-| `Tabs` | `items[{value,label}]`, `value`, `onChange` | Underline tabs, ARIA roles. |
+| `Tabs` | `items[{value,label}]`, `value`, `onChange` | Underline tabs, ARIA roles. A label never wraps: tabs that outgrow the row scroll sideways, a fade marks the side with more, and the chosen tab scrolls into view. |
+| `Filters` | `summary`, children (fields) | The `.mu-filters` row, folding on a phone (≤640px) to its one-line `summary` ("12m · by month · personal") with a "change" toggle, so the content starts on the first screen. Always open on wider screens. |
 | `Segmented` | `options`, `value`, `onChange`, `size` | Mono pressable switch — the time-range control. |
 | `ViewToggle` | `value: "cards"\|"list"`, `onChange`, `labels?`, `size` | Cards vs list, built on `Segmented` (buttons with `aria-pressed`, Tab + Enter/Space) with pixel-drawn grid/list glyphs and visible labels. Persist the choice per page per viewer in the app (`frontend/src/lib/storedView.ts`, localStorage wrapped in try/catch, default cards). |
 | `Drawer` | `open`, `onClose`, `title`, `footer` | In-page side sheet, no backdrop, Escape closes. Focuses the first form field, or the sheet itself when there is none (a read-only sheet must not paint a focus ring on a control nobody chose). |
 | `ToastProvider` + `useToast()` | `toast(msg)`, `error(msg)` | Bottom-right, ink on panel with an accent (or red) offset. |
 | `EmptyState` | `title`, `description`, `action`, `glyph` | Dashed border, left-aligned, says what to do next. |
 | `Skeleton` | `width`, `height`, `lines` | Shimmer respects reduced motion. |
-| `KeyValue` | `items[{key,value}]`, `align` | Mono keys, tabular values. |
+| `KeyValue` | `items[{key,value}]`, `align` | Mono keys, tabular values. A `.mu-caption` note after a value (" principal + interest", starting with its space) moves to the next line whole rather than breaking mid-phrase. |
 | `.mu-linkbtn` (class) | on a `<button>` | Reads as inline underlined text: a drill-down inside a list row (Insights' category names). Focus ring like every control. |
 | `Num` | `children` | Marks a number that **Blur numbers** must hide (a rate, a count, an account's last 4). Money, Delta, stat/readout values, meters, numeric table cells, legends and chart numbers (y-axis ticks, tooltips, end labels, flow values) are covered already. While `<html data-blur="on">` (the top bar's **blur** switch, per viewer, off by default) they all blur, by 0.45em (7px at least) so even the 64px readout is unreadable; words, dates and shapes stay readable. |
-| `.mu-listrow` (class) | `__lead`, `__main`, `__title`, `__value`, `__actions` | One item in a stacked list: an optional lead (a date), title + caption, a right-aligned tabular value, actions; hairline between rows. The row never wraps; the main text wraps in its own column so dates and amounts keep their places. Subscriptions, alerts, upcoming charges. |
+| `.mu-listrow` (class) | `__lead`, `__main`, `__title`, `__value`, `__actions` | One item in a stacked list: an optional lead (a date), title + caption, a right-aligned tabular value, actions; hairline between rows. The main text wraps in its own column so dates and amounts keep their places; under 480px (the row's own width) the actions move to a line of their own beneath the text. Subscriptions, alerts, upcoming charges. |
 | `.mu-dash` (class) | `--cols-1/2/3`; items `.mu-dash__item--narrow/wide/full`; `--editing`, `__tools`, `__handle` | Overview's widget grid: one to three columns, a widget spans one, two or all of them; stacks below 900px. Edit mode outlines each widget and shows its tools (drag handle, size, remove). |
 | `PageHeader` / `Page` | `title`, `subtitle`, `actions` | Page container is max 1480px with 16px gutters. |
-| `AppShell` | `brand`, `brandAside`, `groups[{label, items[{to,label,icon}]}]`, `renderLink`, `title`, `topbar`, `footer` | Router-agnostic: `renderLink(item, className)` returns your `<NavLink>`. Collapses to a slide-in drawer under 900px. |
+| `AppShell` | `brand`, `brandAside`, `groups[{label, items[{to,label,icon}]}]`, `renderLink`, `title`, `topbar`, `footer` | Router-agnostic: `renderLink(item, className)` returns your `<NavLink>`. Collapses to a slide-in drawer under 900px (offset by its shadow, so nothing shows at the edge when closed). On touch screens the menu and the drawer's close are 44px targets. Under 600px the top bar's title stays hidden while the page's own heading is on screen and slides in once it scrolls under the bar (scroll timeline; elsewhere it simply shows). |
 
 Layout helpers: `.mu-grid --2/--3/--4/--main`, `.mu-row`, `.mu-stack`,
 `.mu-filters` (the single filter row above charts), `.mu-caption`,
@@ -165,9 +166,9 @@ All charts are plain SVG, sized by `ResizeObserver`, themed by tokens.
 | Component | Data | Use |
 |---|---|---|
 | `AreaChart<T extends {date}>` | `data: T[]`, `series[{key,label,color?}]`, `fill: dots\|wash\|none`, `endLabels`, `stale`, `zeroBaseline`, `formatValue`, `formatTooltipValue` | Change over time. One series = accent line with the dotted pixel fill (the house signature). ≥2 series = categorical colours, wash fill, legend auto-added. Crosshair snaps to nearest date; tooltip lists every series. |
-| `BarChart` | `data[{label,…}]`, `series`, `mode: grouped\|stacked` | Magnitude per period. Columns ≤24px, 2px surface gap, hover lifts the mark, per-bar tooltip. |
+| `BarChart` | `data[{label,…}]`, `series`, `mode: grouped\|stacked` | Magnitude per period. Columns ≤24px, 2px surface gap, hover lifts the mark, per-bar tooltip. When x labels would touch (a year of months on a phone) it shows every nth, counted back from the latest. |
 | `DonutChart` | `slices[{key,label,value,color?}]`, `centerLabel`, `maxSlices=6` | Part-to-whole at a glance. Slices past 6 fold into "Other". The rows beside it carry exact values, so colour never gates a number. Don't render it for one slice — that's a stat tile. |
-| `FlowChart` | `sources[{key,label,value,color?}]`, `uses[…]`, `centerLabel`, `height` | Money flow, a two-stage Sankey: sources join into one middle node that splits into uses; ribbon width is the amount. Both sides share one scale, so balance them ("saved" on the right, "from savings" on the left). Labels carry the numbers; hover lights a path. Insights' money flow. |
+| `FlowChart` | `sources[{key,label,value,color?}]`, `uses[…]`, `centerLabel`, `height` | Money flow, a two-stage Sankey: sources join into one middle node that splits into uses; ribbon width is the amount. Both sides share one scale, so balance them ("saved" on the right, "from savings" on the left). Labels carry the numbers; hover lights a path. Each label column is as wide as its longest name needs (up to 38% of the width); a longer name wraps onto two lines, and the ribbons narrow before a single word would be cut. Insights' money flow. |
 | `Sparkline` | `values[]`, `width`, `height`, `semantic` | 12-point trend; last segment and dot in the accent. Decorative, `aria-hidden`. |
 | `Legend` | `items[{label,color,value?,shape}]` | Always present for ≥2 series. |
 | `chartTheme`, `seriesColor(i)` | | Token references; slot 7+ returns the `other` colour. |
@@ -220,7 +221,7 @@ shares:
 | `PixelSparkline` | `values[]`, `width=96`, `height=24`, `cell=2`, `gap=1`, `color`, `fill`, `label?` | Per-account trend. 90 daily points bucket (mean, true last value kept) into ~32 columns; one lit trace cell per column, dimmer cells beneath, newest column in the accent, right-aligned so rows line up. Decorative (`aria-hidden`) unless `label` is given. |
 | `PixelMeter` | `ratio` **or** `segments[{value,color,label}]` (+`total`), `cells=24`, `tone: accent\|pos\|neg\|warn\|ink\|series`, `label`, `size: sm\|md\|lg` | A meter of cells. Single = `role="meter"`; segments = part-to-whole in given order (`role="img"` with a text summary). Severity rides the fill: utilization uses accent < 30% ≤ warn < 50% ≤ neg. |
 | `PixelBars` | `data[{label, short?, …}]`, `series[{key,label,color?}]`, `rows=14`, `formatValue`, `formatTooltipValue`, `stale` | Grouped columns of cells (values ≥ 0). One cell is a clean unit (1/2/2.5/5 × 10ⁿ) printed under the chart ("■ = $1K"), so a column can be counted. Labels never collide: full label, else `short`, else every nth. Group slots are focusable and announce their values; legend carries the latest group's values. |
-| `Waffle` | `slices[{key,label,value,color?}]` in a **stable** order, `size=10`, `maxSlices=6` | Part-to-whole as 100 cells (1 cell = 1%), filled column by column so each slice is a band. Colour follows the slice's position in `slices`, never its rank; the tail folds into "Other". The legend rows are the table (label, value, share); hovering or focusing a row isolates the slice. Replaces the donut. |
+| `Waffle` | `slices[{key,label,value,color?}]` in a **stable** order, `size=10`, `maxSlices=6` | Part-to-whole as 100 cells (1 cell = 1%), filled column by column so each slice is a band. Colour follows the slice's position in `slices`, never its rank; the tail folds into "Other". The legend rows are the table (label, value, share); hovering or focusing a row isolates the slice. The legend sits beside the grid when it has 260px for its names, else below it. Replaces the donut. |
 | `PixelCalendar` | `days[{date, value\|null}]`, `end?`, `weeks=53`, `maxCell=10`, `formatValue`, `arms`, `summary?` | A year of daily values, Monday-first weeks. Diverging: blue arm up, red arm down, four equal-count magnitude steps per arm, zero/no-data unlit. Every month that starts in range is labelled (alternates drop consistently if they would touch). Best day, worst day and share of up days are printed beside it, so nothing depends on hover. |
 | `AreaChart fill="dots"` | `cell=3`, `cellGap=2`, `ruler=true` | The dot-matrix fill under the first series: a staircase clip on the cell grid, five stepped fade bands toward the baseline, a tick ruler under the axis. `wash`/`none` unchanged. |
 
@@ -253,11 +254,22 @@ legend or group marker), tiny mono units after big numbers
 
 ## Phone widths
 
-Every page is checked at 390px: the page never scrolls sideways. Tables
-scroll inside their panel; jfinances hides secondary columns under 640px
-(`jf-col-wide`, `jf-col-cat`), turns Settings tables into stacked rows
-(`jf-stack-sm`) so actions stay reachable, and moves account-row actions into
-the detail drawer a tap opens.
+No text is cut off, overlaps other text, or runs past the screen, and the page
+never scrolls sideways. Layouts adapt to the space they get (container queries:
+a table, list row or meter list in a slim desktop panel behaves as on a phone),
+and a narrow layout shows less rather than less of each thing:
+
+- Tables stack into cards (`DataTable` `mobile` roles), never a hidden column.
+- Rows move their buttons under the text; panel heads move theirs under the title.
+- Labels wrap at spaces or thin out (chart axes); a cut with "…" is the last resort.
+- Repetition goes first: jfinances drops an institution the account's name already
+  says and a "14 hours ago" that isn't stale; the top bar says "1 to fix", "6h ago".
+- Controls that do nothing on one column (dashboard card sizes, column count) hide.
+
+Check it with `ops/phone_audit/audit.py` against the local stack: every page and
+open state at 360, 402, 768 and 1280px in headless Chrome, flagging text that is
+clipped, overlapping, touching (under 3px apart), cut by its container or
+off-screen, with scroll-by-scroll screenshots to look at (`sheets.py` tiles them).
 
 ## Working on the package
 

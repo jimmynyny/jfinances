@@ -105,16 +105,42 @@
 }
 /* Row actions sit at the right edge on wide screens. */
 .jf-actions { justify-content: flex-end; flex-wrap: wrap; } /* wraps before the table outgrows its panel */
-/* Settings tables on a phone: each row becomes a stacked card, so the actions
- * (Sync now, Re-link, Unlink, Update value, Revoke) are never off-screen. */
-@media (max-width: 640px) {
-  .jf-stack-sm.mu-table-wrap { overflow: visible; }
-  .jf-stack-sm table, .jf-stack-sm tbody, .jf-stack-sm tr, .jf-stack-sm td { display: block; width: 100%; }
-  .jf-stack-sm thead { display: none; }
-  .jf-stack-sm tbody tr { padding: var(--mu-s2) 0; border-bottom: var(--mu-border); }
-  .jf-stack-sm tbody tr:last-child { border-bottom: 0; }
-  .jf-stack-sm td, .jf-stack-sm td.mu-td--num { border-bottom: 0; padding: 3px var(--mu-s3); white-space: normal; text-align: left; }
-  .jf-stack-sm tr:hover td { background: transparent; }
-  .jf-stack-sm .jf-actions { justify-content: flex-start; flex-wrap: wrap; }
-  .jf-stack-sm .jf-inst, .jf-stack-sm .jf-inst__status { min-width: 0; max-width: none; }
+/* Stacked table rows (a phone): row actions start under the name. */
+@container mu-table (max-width: 560px) { .jf-actions { justify-content: flex-start; } }
+
+/* Long and short forms of one label: the short one on a phone (the top bar's sync badge). */
+.jf-short { display: none; }
+@media (max-width: 600px) {
+  .jf-long { display: none; }
+  .jf-short { display: inline; }
 }
+
+/* Phone account rows: the meta line drops the institution when the account's name
+ * already says it ("Chase Savings · Chase"), and the balance drops "14 hours ago"
+ * unless it is stale, so name, mask and kind fit on one line. */
+@media (max-width: 640px) {
+  .jf-acct__inst--named { display: none; }
+  .jf-acct__when:not(.jf-acct__when--stale) { display: none; }
+}
+
+/* Narrow meter lists (a phone, a side panel): the name gets the full width (never
+ * cut off), the meter and its amount run full width beneath it. */
+.jf-cats { container: jf-cats / inline-size; }
+@container jf-cats (max-width: 440px) {
+  .jf-cats__row { grid-template-columns: minmax(0, 1fr); row-gap: 4px; padding-bottom: var(--mu-s1); }
+  .jf-cats__name { white-space: normal; overflow: visible; }
+}
+
+/* Year-over-year rows: the amount, then the change with clear air, never touching. */
+.jf-compare { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--mu-s3); }
+
+/* Dashboard edit mode on a phone: one column, so card sizes and the column count
+ * change nothing and are hidden; earlier/later read as up/down. */
+.jf-dir-v { display: none; }
+@media (max-width: 900px) {
+  .jf-dash-size, .jf-dash-columns { display: none; }
+  .jf-dir-h { display: none; }
+  .jf-dir-v { display: inline; }
+}
+/* A phrase that must not break inside ("avg $2,950.12"). */
+.jf-nowrap { white-space: nowrap; }

@@ -97,7 +97,7 @@ function Tools({ dash }: { dash: Dashboard }) {
   const fail = (e: unknown) => error(e instanceof ApiError ? e.message : "Could not save. Try again.");
   return (
     <div className="mu-filters">
-      <div className="mu-field">
+      <div className="mu-field jf-dash-columns">
         <span className="mu-label">Columns</span>
         <Segmented options={COLUMNS} value={String(dash.columns) as "1" | "2" | "3"} aria-label="Columns"
           onChange={(v) => {
@@ -191,13 +191,13 @@ function Widget({ w, editing, first, last, onMove }: {
             <GripIcon />
           </button>
           <span className="mu-dash__tools-name">{label}{settings ? ` · ${settings}` : ""}</span>
-          <Segmented size="sm" options={SIZES} value={w.size} aria-label={`${label} size`}
+          <Segmented size="sm" className="jf-dash-size" options={SIZES} value={w.size} aria-label={`${label} size`}
             onChange={(size) => {
               qc.setQueryData<Dashboard>(["dashboard"], (old) => old && { ...old, widgets: old.widgets.map((x) => (x.id === w.id ? { ...x, size } : x)) });
               resize.mutate(size, { onError: fail });
             }} />
-          <Button size="sm" variant="quiet" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${label} earlier`}>←</Button>
-          <Button size="sm" variant="quiet" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${label} later`}>→</Button>
+          <Button size="sm" variant="quiet" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${label} earlier`}><span className="jf-dir-h">←</span><span className="jf-dir-v">↑</span></Button>
+          <Button size="sm" variant="quiet" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${label} later`}><span className="jf-dir-h">→</span><span className="jf-dir-v">↓</span></Button>
           <Button size="sm" variant="quiet" loading={remove.isPending} onClick={() => remove.mutate(undefined, { onError: fail })}>Remove</Button>
         </div>
       )}

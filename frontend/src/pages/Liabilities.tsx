@@ -130,9 +130,9 @@ function LiabilityCard({ r, assets }: { r: Row; assets: Account[] }) {
               { key: "rate", value: l.interest_rate_pct != null ? <>{formatPct(l.interest_rate_pct, 3, false)}{l.interest_rate_type ? <span className="mu-caption"> {l.interest_rate_type}</span> : null}</> : "—" },
               { key: "next due", value: l.next_payment_due_date ? <>{formatDate(l.next_payment_due_date, { year: true })}{l.next_payment_amount != null ? <span className="mu-caption"> · <Money value={l.next_payment_amount} /></span> : null}</> : "—" },
               { key: "minimum", value: l.minimum_payment != null ? <Money value={l.minimum_payment} /> : "—" },
-              { key: "last payment", value: l.last_payment_amount != null ? <><Money value={l.last_payment_amount} /> {l.last_payment_date ? <span className="mu-caption">on {formatDate(l.last_payment_date)}</span> : null}</> : "—" },
-              ...(l.last_statement_balance != null ? [{ key: "last statement", value: <><Money value={l.last_statement_balance} /> {l.last_statement_date ? <span className="mu-caption">{formatDate(l.last_statement_date)}</span> : null}</> }] : []),
-              ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} /> {l.origination_date ? <span className="mu-caption">{formatDate(l.origination_date, { year: true })}</span> : null}</> }] : []),
+              { key: "last payment", value: l.last_payment_amount != null ? <><Money value={l.last_payment_amount} />{l.last_payment_date ? <span className="mu-caption"> on {formatDate(l.last_payment_date)}</span> : null}</> : "—" },
+              ...(l.last_statement_balance != null ? [{ key: "last statement", value: <><Money value={l.last_statement_balance} />{l.last_statement_date ? <span className="mu-caption"> {formatDate(l.last_statement_date)}</span> : null}</> }] : []),
+              ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} />{l.origination_date ? <span className="mu-caption"> {formatDate(l.origination_date, { year: true })}</span> : null}</> }] : []),
               ...(l.loan_term ? [{ key: "term", value: <>{l.loan_term}{l.maturity_date ? <span className="mu-caption"> · matures {formatDate(l.maturity_date, { year: true })}</span> : null}</> }] : []),
               ...(a.credit_limit != null ? [{ key: "limit", value: <Money value={a.credit_limit} cents={false} /> }] : []),
               ...secured,
@@ -163,21 +163,21 @@ export function LiabilitiesPage() {
   const assetName = (id: string | null) => assets.find((x) => x.id === id)?.name ?? null;
 
   const columnsFor = (group: GroupKey): Column<Row>[] => [
-    { key: "account", header: "Account", wrap: true, cell: (r) => <div className="jf-cell-account"><div>{r.a.name}</div><div className="mu-caption">{where(r.a)}</div></div>, sortValue: (r) => r.a.name },
-    ...(group === "loan" ? [{ key: "kind", header: "Kind", cell: (r: Row) => <span className="mu-mono">{r.kind}</span> }] : []),
-    { key: "balance", header: "Balance", numeric: true, cell: (r) => <Money value={r.bal} currency={r.a.iso_currency} />, sortValue: (r) => r.bal },
-    { key: "rate", header: "Rate", numeric: true, cell: (r) => (r.l?.interest_rate_pct != null ? formatPct(r.l.interest_rate_pct, 3, false) : "—"), sortValue: (r) => r.l?.interest_rate_pct ?? null },
+    { key: "account", header: "Account", wrap: true, mobile: "primary", cell: (r) => <div className="jf-cell-account"><div>{r.a.name}</div><div className="mu-caption">{where(r.a)}</div></div>, sortValue: (r) => r.a.name },
+    ...(group === "loan" ? [{ key: "kind", header: "Kind", mobile: "meta" as const, mobileLabel: false as const, cell: (r: Row) => <span className="mu-mono">{r.kind}</span> }] : []),
+    { key: "balance", header: "Balance", numeric: true, mobile: "end", cell: (r) => <Money value={r.bal} currency={r.a.iso_currency} />, sortValue: (r) => r.bal },
+    { key: "rate", header: "Rate", numeric: true, mobile: "sub", mobileLabel: false, cell: (r) => (r.l?.interest_rate_pct != null ? formatPct(r.l.interest_rate_pct, 3, false) : "—"), sortValue: (r) => r.l?.interest_rate_pct ?? null },
     {
-      key: "due", header: "Next due",
+      key: "due", header: "Next due", mobile: "meta", mobileLabel: "next due",
       cell: (r) => (r.l?.next_payment_due_date ? (
         <><div className="mu-mono">{formatDate(r.l.next_payment_due_date, { year: true })}</div>{r.l.next_payment_amount != null && <div className="mu-caption"><Money value={r.l.next_payment_amount} /></div>}</>
       ) : "—"),
       sortValue: (r) => r.l?.next_payment_due_date ?? null,
     },
-    { key: "min", header: "Minimum", numeric: true, cell: (r) => (r.l?.minimum_payment != null ? <Money value={r.l.minimum_payment} /> : "—"), sortValue: (r) => r.l?.minimum_payment ?? null },
-    { key: "progress", header: group === "credit" ? "Utilization" : "Paid off", width: 200, cell: (r) => <Progress r={r} size="sm" cells={14} /> },
-    ...(group === "credit" ? [] : [{ key: "secured", header: "Secured by", cell: (r: Row) => <SecuredBy loan={r.a} assets={assets} />, sortValue: (r: Row) => assetName(r.a.secured_by_id) }]),
-    { key: "flag", header: "", width: 80, cell: (r) => (r.l?.is_overdue ? <Badge tone="critical">overdue</Badge> : null) },
+    { key: "min", header: "Minimum", numeric: true, mobile: "meta", mobileLabel: "minimum", cell: (r) => (r.l?.minimum_payment != null ? <Money value={r.l.minimum_payment} /> : "—"), sortValue: (r) => r.l?.minimum_payment ?? null },
+    { key: "progress", header: group === "credit" ? "Utilization" : "Paid off", width: 200, mobile: "full", cell: (r) => <Progress r={r} size="sm" cells={14} /> },
+    ...(group === "credit" ? [] : [{ key: "secured", header: "Secured by", mobile: "meta" as const, mobileLabel: "secured by", cell: (r: Row) => <SecuredBy loan={r.a} assets={assets} />, sortValue: (r: Row) => assetName(r.a.secured_by_id) }]),
+    { key: "flag", header: "", width: 80, mobile: "meta", mobileLabel: false, cell: (r) => (r.l?.is_overdue ? <Badge tone="critical">overdue</Badge> : null) },
   ];
   const total = (g: { total: number }) => <Money value={g.total} cents={false} mono={false} style={{ fontWeight: 600 }} />;
 

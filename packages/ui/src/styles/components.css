@@ -82,10 +82,13 @@
 .mu-panel--raised { border-color: var(--mu-line-strong); box-shadow: var(--mu-shadow); }
 .mu-panel--inset { background: var(--mu-panel-2); }
 .mu-panel__head {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--mu-s3);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--mu-s2) var(--mu-s3);
   padding: var(--mu-s2) var(--mu-s4); min-height: 40px;
   border-bottom: var(--mu-border);
 }
+/* When caption, title and actions don't fit one line, the actions wrap below
+   (still right-aligned) rather than squeezing the title onto three lines. */
+.mu-panel__head > .mu-row:last-child:not(:first-child) { margin-left: auto; }
 .mu-panel__caption, .mu-section__caption { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); display: inline-flex; align-items: center; gap: var(--mu-s2); }
 .mu-panel__caption::before, .mu-section__caption::before { content: ""; width: 6px; height: 6px; background: var(--mu-accent); flex: none; }
 .mu-panel__title { font-size: var(--mu-fs-md); font-weight: 600; }
@@ -132,7 +135,9 @@
 .mu-money__cents { font-size: 0.85em; }
 
 /* ---------- DataTable ---------- */
-.mu-table-wrap { overflow: auto; max-width: 100%; }
+.mu-table-wrap { overflow: auto; max-width: 100%; container: mu-table / inline-size; }
+/* Text a cell shows only when its row is stacked (say, a hidden column's value folded into the caption). */
+.mu-stacked-only { display: none; }
 .mu-table { width: 100%; font-size: var(--mu-fs-sm); }
 .mu-table th, .mu-table td { padding: var(--mu-s2) var(--mu-s3); text-align: left; vertical-align: middle; border-bottom: var(--mu-border); white-space: nowrap; }
 .mu-table th {
@@ -152,6 +157,40 @@
 .mu-table tbody tr:last-child td { border-bottom: 0; }
 .mu-table--compact th, .mu-table--compact td { padding: 6px var(--mu-s2); }
 .mu-table__empty { padding: var(--mu-s8); text-align: center; color: var(--mu-ink-3); }
+/* A narrow table (a phone, a slim panel) stacks each row into a card instead of
+   scrolling sideways: the primary cell on the left, the figure right-aligned beside
+   it with a secondary figure under it, other columns as labelled lines below
+   (DataTable's Column.mobile). The table's own width decides, not the screen's. */
+@container mu-table (max-width: 560px) {
+  .mu-table, .mu-table tbody { display: block; }
+  .mu-table thead { display: none; }
+  .mu-table tbody tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--mu-s3); row-gap: 3px;
+    align-items: baseline; padding: 10px var(--mu-s3); border-bottom: var(--mu-border);
+  }
+  .mu-table tbody tr:last-child { border-bottom: 0; }
+  .mu-table--compact tbody tr { padding: var(--mu-s2) var(--mu-s3); }
+  .mu-table td, .mu-table td.mu-td--num { display: block; padding: 0; border: 0; min-width: 0; white-space: normal; text-align: left; background: none; }
+  .mu-table td > * { min-width: 0; }
+  .mu-table td[data-m="primary"] { grid-column: 1; grid-row: 1 / span 2; align-self: start; }
+  .mu-table td[data-m="end"] { grid-column: 2; grid-row: 1; text-align: right; white-space: nowrap; }
+  .mu-table td[data-m="sub"], .mu-table td[data-m="meta"] {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px;
+    font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2);
+  }
+  .mu-table td[data-m="sub"] { grid-column: 2; grid-row: 2; justify-content: flex-end; white-space: nowrap; }
+  .mu-table td[data-m="meta"] { grid-column: 1 / -1; }
+  .mu-table td[data-m="meta"][data-label]::before, .mu-table td[data-m="sub"][data-label]::before { content: attr(data-label); color: var(--mu-ink-3); }
+  .mu-table td:empty { display: none; }
+  .mu-table td[data-m="full"] { grid-column: 1 / -1; }
+  .mu-table td[data-m="full"] + td[data-m="full"] { margin-top: 3px; }
+  .mu-table td[data-m="hide"] { display: none; }
+  .mu-table .mu-stacked-only { display: revert; }
+  .mu-table td.mu-table__empty { padding: var(--mu-s6) 0; text-align: center; }
+  .mu-table tbody tr:hover td { background: none; }
+  .mu-table tbody tr[data-clickable="true"]:hover { background: var(--mu-panel-2); }
+  .mu-table tbody tr[data-selected="true"] { background: var(--mu-accent-wash); }
+}
 
 /* inline bar meter inside a cell */
 .mu-meter { display: inline-grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--mu-s2); width: 100%; min-width: 120px; }
@@ -163,9 +202,17 @@
 .mu-meter__val { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); font-variant-numeric: tabular-nums; }
 
 /* ---------- Tabs ---------- */
-.mu-tabs { display: flex; gap: 0; border-bottom: var(--mu-border); }
+.mu-tabs {
+  display: flex; gap: 0; position: relative; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  /* the rule under the tabs, drawn inside the box so a scrolling strip doesn't clip the active marker */
+  background: linear-gradient(var(--mu-line), var(--mu-line)) left bottom / 100% 1px no-repeat;
+}
+.mu-tabs::-webkit-scrollbar { display: none; }
+.mu-tabs[data-more-end] { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.mu-tabs[data-more-start] { mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+.mu-tabs[data-more-start][data-more-end] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
 .mu-tab {
-  all: unset; cursor: pointer; padding: var(--mu-s2) var(--mu-s3); margin-bottom: -1px;
+  all: unset; cursor: pointer; padding: var(--mu-s2) var(--mu-s3); flex: none; white-space: nowrap;
   font-size: var(--mu-fs-sm); color: var(--mu-ink-2); border-bottom: 2px solid transparent;
 }
 .mu-tab:hover { color: var(--mu-ink); }
@@ -228,6 +275,9 @@
 .mu-kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--mu-s1) var(--mu-s4); font-size: var(--mu-fs-sm); }
 .mu-kv dt { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); margin: 0; align-self: baseline; }
 .mu-kv dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+/* A note after a value ("principal + interest") moves to the next line whole instead of breaking
+   mid-phrase; pre-wrap keeps the space a note starts with (" fixed"), which an inline-block would drop. */
+.mu-kv dd .mu-caption { display: inline-block; white-space: pre-wrap; }
 .mu-kv--right dd { text-align: right; }
 
 /* ---------- PageHeader ---------- */
@@ -246,6 +296,20 @@
 .mu-row { display: flex; align-items: center; gap: var(--mu-s2); flex-wrap: wrap; }
 .mu-stack { display: flex; flex-direction: column; gap: var(--mu-s3); }
 .mu-filters { display: flex; gap: var(--mu-s2); align-items: flex-end; flex-wrap: wrap; padding: var(--mu-s3); background: var(--mu-panel); border: var(--mu-border); }
+/* Filters: folds to its summary line on a phone (Filters component). */
+.mu-filterbox__toggle { display: none; }
+@media (max-width: 640px) {
+  .mu-filterbox__toggle {
+    all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: var(--mu-s3);
+    min-height: 44px; padding: var(--mu-s2) var(--mu-s3); background: var(--mu-panel); border: var(--mu-border);
+    font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2);
+  }
+  .mu-filterbox__toggle:focus-visible { box-shadow: var(--mu-focus); }
+  .mu-filterbox__summary { min-width: 0; color: var(--mu-ink); }
+  .mu-filterbox__verb { flex: none; color: var(--mu-accent); text-decoration: underline; text-underline-offset: 3px; }
+  .mu-filterbox:not([data-open]) > .mu-filters { display: none; }
+  .mu-filterbox[data-open] > .mu-filters { border-top: 0; }
+}
 @media (max-width: 1100px) { .mu-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mu-grid--main { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .mu-grid--2, .mu-grid--3, .mu-grid--4 { grid-template-columns: 1fr; } }
 
@@ -279,6 +343,16 @@
 .mu-topbar__spacer { flex: 1; }
 .mu-topbar__status { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); display: inline-flex; align-items: center; gap: var(--mu-s2); white-space: nowrap; flex: none; }
 .mu-side__toggle { display: none; }
+/* A phone's top bar has room for the menu, the status and blur, not also a title
+   that the page's own heading repeats just below it. The title slides in once that
+   heading has scrolled under the bar (where scroll timelines exist; elsewhere it
+   simply stays). */
+@media (max-width: 600px) {
+  @supports (animation-timeline: scroll()) {
+    .mu-topbar__title { animation: mu-topbar-title linear both; animation-timeline: scroll(root block); animation-range: 32px 104px; }
+  }
+}
+@keyframes mu-topbar-title { from { max-width: 0; opacity: 0; } 60% { opacity: 0; } to { max-width: 100%; opacity: 1; } }
 @media (max-width: 900px) {
   .mu-shell { grid-template-columns: 1fr; }
   /* Closed, it slides out by its width plus its hard shadow, or the shadow shows as a line down the left edge. */
@@ -311,8 +385,8 @@
    (a date), the main text (title + caption), a right-aligned value and actions. The row never wraps:
    the main text wraps inside its own column, so dates and amounts keep their places. */
 .mu-listrow {
-  display: flex; align-items: center; gap: var(--mu-s3);
-  padding: var(--mu-s2) 0; border-bottom: var(--mu-border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--mu-s1) var(--mu-s3);
+  padding: var(--mu-s2) 0; border-bottom: var(--mu-border); container: mu-listrow / inline-size;
 }
 .mu-listrow:last-child { border-bottom: 0; }
 .mu-listrow__lead { flex: none; min-width: 52px; color: var(--mu-ink-2); }
@@ -320,6 +394,11 @@
 .mu-listrow__title { display: flex; align-items: center; gap: var(--mu-s2); flex-wrap: wrap; }
 .mu-listrow__value { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .mu-listrow__actions { flex: none; display: flex; gap: var(--mu-s1); }
+/* A narrow row (a phone) gives its text the width: the buttons move to a line of their own below it. */
+@container mu-listrow (max-width: 480px) {
+  .mu-listrow__actions { order: 3; flex-basis: 100%; }
+  .mu-listrow:has(> .mu-listrow__lead) > .mu-listrow__actions { padding-left: calc(52px + var(--mu-s3)); }
+}
 
 
 /* Blur numbers (privacy for screenshots): <html data-blur="on">, switched from the top bar. Every number

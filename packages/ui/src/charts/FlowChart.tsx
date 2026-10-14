@@ -29,13 +29,33 @@ const NODE_W = 10;
 const GAP = 6;
 const PAD = 6;
 const TOP = 34; // band above the columns for the middle node's label
-const LABEL_MIN = 31; // vertical room per label: name + value, and air
+const LINE = 13; // one label line
+const AIR = 5; // between one node's label and the next
+const CH = 7.2; // one IBM Plex Mono character at the 12px label size
+const SIDE_MAX = 0.38; // a label column never takes more than this share of the width
+const MID_MIN = 88; // the ribbons keep this much room when they can
+const MID_FLOOR = 56; // and give some of it up before a single word would be cut
 
 interface Placed extends FlowNode {
   y: number;
   h: number;
   color: string;
+  /** The label, broken to fit its column: one line, or two at the space nearest the middle. */
+  lines: string[];
 }
+
+/** `label` in at most two lines of `max` characters; a word too long for a line is cut with an ellipsis. */
+function fitLabel(label: string, max: number): string[] {
+  const cut = (s: string) => (s.length <= max ? s : `${s.slice(0, Math.max(1, max - 1))}…`);
+  if (label.length <= max) return [label];
+  const spaces = [...label.matchAll(/ /g)].map((m) => m.index!).filter((i) => i <= max);
+  if (!spaces.length) return [cut(label)];
+  const mid = label.length / 2;
+  const at = spaces.reduce((best, i) => (Math.abs(i - mid) < Math.abs(best - mid) ? i : best));
+  return [label.slice(0, at), cut(label.slice(at + 1))];
+}
+
+const labelH = (n: Placed) => (n.lines.length + 1) * LINE + AIR;
 
 const sum = (nodes: FlowNode[]) => nodes.reduce((t, n) => t + n.value, 0);
 
@@ -49,10 +69,10 @@ function ribbon(xa: number, ya: number, xb: number, yb: number, h: number): stri
  *  (top-down) where thin nodes would make them collide, then pulled back up
  *  (bottom-up) so the last one stays inside the box. */
 function labelYs(nodes: Placed[], top: number, bottom: number): number[] {
-  const ys = nodes.map((n) => n.y + n.h / 2 - LABEL_MIN / 2 + 10);
-  for (let i = 0; i < ys.length; i++) ys[i] = Math.max(ys[i]!, i === 0 ? top + 10 : ys[i - 1]! + LABEL_MIN);
+  const ys = nodes.map((n) => n.y + n.h / 2 - labelH(n) / 2 + 10);
+  for (let i = 0; i < ys.length; i++) ys[i] = Math.max(ys[i]!, i === 0 ? top + 10 : ys[i - 1]! + labelH(nodes[i - 1]!));
   for (let i = ys.length - 1; i >= 0; i--) {
-    ys[i] = Math.min(ys[i]!, i === ys.length - 1 ? bottom - LABEL_MIN + 10 : ys[i + 1]! - LABEL_MIN);
+    ys[i] = Math.min(ys[i]!, i === ys.length - 1 ? bottom - labelH(nodes[i]!) + 10 : ys[i + 1]! - labelH(nodes[i]!));
   }
   return ys;
 }
@@ -81,24 +101,44 @@ export function FlowChart({
     const left = sources.filter((n) => n.value > 0);
     const right = uses.filter((n) => n.value > 0);
     const total = Math.max(sum(left), sum(right));
-    const labelW = Math.min(170, Math.max(96, width * 0.28));
-    // Tall enough for every label to have its own line.
-    const H = Math.max(height, TOP + PAD + Math.max(left.length, right.length) * LABEL_MIN);
+    // Each label column is as wide as its longest name or amount needs, up to a
+    // share of the width; a name too long for its column wraps onto two lines.
+    const need = (nodes: FlowNode[]) => nodes.reduce((m, n) => Math.max(m, n.label.length, formatValue(n.value).length), 0) * CH + 10;
+    const sideMax = Math.max(64, Math.min(width * SIDE_MAX, (width - MID_MIN) / 2));
+    let lw = Math.min(need(left), sideMax);
+    let rw = Math.min(need(right), sideMax);
+    const spare = width - MID_MIN - lw - rw;
+    if (spare > 0) { // give room back to a side that wanted more, before the ribbons widen
+      const wantL = need(left) - lw, wantR = need(right) - rw;
+      lw += Math.min(wantL, spare / 2 + Math.max(0, spare / 2 - wantR));
+      rw += Math.min(wantR, spare / 2 + Math.max(0, spare / 2 - wantL));
+    }
+    // A label can wrap at spaces, but a single long word ("transportation") needs its whole width.
+    const word = (nodes: FlowNode[]) => nodes.reduce((m, n) => Math.max(m, ...n.label.split(" ").map((w) => w.length)), 0) * CH + 10;
+    lw = Math.max(lw, Math.min(word(left), width - rw - MID_FLOOR));
+    rw = Math.max(rw, Math.min(word(right), width - lw - MID_FLOOR));
+    const chars = (w: number) => Math.max(4, Math.floor((w - 10) / CH));
+    const lines = (nodes: FlowNode[], w: number) => nodes.map((n) => fitLabel(n.label, chars(w)));
+    const lLines = lines(left, lw);
+    const rLines = lines(right, rw);
+    const stack = (ls: string[][]) => ls.reduce((t, l) => t + (l.length + 1) * LINE + AIR, 0);
+    // Tall enough for every label to have its own lines.
+    const H = Math.max(height, TOP + PAD + Math.max(stack(lLines), stack(rLines)));
     const usable = H - TOP - PAD;
     const room = (n: number) => usable - GAP * Math.max(0, n - 1);
     const scale = total > 0 ? Math.max(0, Math.min(room(left.length), room(right.length))) / total : 0;
-    const place = (nodes: FlowNode[], offset: number): Placed[] => {
+    const place = (nodes: FlowNode[], ls: string[][], offset: number): Placed[] => {
       let y = TOP + (usable - (sum(nodes) * scale + GAP * Math.max(0, nodes.length - 1))) / 2;
       return nodes.map((n, i) => {
-        const p = { ...n, y, h: Math.max(1, n.value * scale), color: n.color ?? seriesColor(i + offset) };
+        const p = { ...n, y, h: Math.max(1, n.value * scale), color: n.color ?? seriesColor(i + offset), lines: ls[i]! };
         y += p.h + GAP;
         return p;
       });
     };
-    const L = place(left, 0);
-    const R = place(right, 0);
-    const x0 = labelW;
-    const x2 = Math.max(x0 + NODE_W * 4, width - labelW - NODE_W);
+    const L = place(left, lLines, 0);
+    const R = place(right, rLines, 0);
+    const x0 = lw;
+    const x2 = Math.max(x0 + NODE_W * 4, width - rw - NODE_W);
     const x1 = (x0 + x2) / 2;
     const centerH = total * scale;
     const cy = TOP + (usable - centerH) / 2;
@@ -115,7 +155,7 @@ export function FlowChart({
       return r;
     });
     return { H, L, R, x0, x1, x2, cy, centerH, ins, outs, total, ly: labelYs(L, TOP, H - PAD), ry: labelYs(R, TOP, H - PAD) };
-  }, [sources, uses, width, height]);
+  }, [sources, uses, width, height, formatValue]);
 
   const dim = (key: string) => hover !== null && hover !== key && hover !== "center";
 
@@ -137,14 +177,20 @@ export function FlowChart({
           <text className="mu-flow__value" x={plot.x1 + NODE_W / 2} y={25} textAnchor="middle">{formatValue(plot.total)}</text>
           {plot.L.map((n, i) => (
             <g key={`l-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")}>
-              <text className="mu-flow__label" x={plot.x0 - 8} y={plot.ly[i]} textAnchor="end">{n.label}</text>
-              <text className="mu-flow__value" x={plot.x0 - 8} y={plot.ly[i]! + 13} textAnchor="end">{formatValue(n.value)}</text>
+              <title>{`${n.label} ${formatValue(n.value)}`}</title>
+              {n.lines.map((line, k) => (
+                <text key={k} className="mu-flow__label" x={plot.x0 - 8} y={plot.ly[i]! + k * LINE} textAnchor="end">{line}</text>
+              ))}
+              <text className="mu-flow__value" x={plot.x0 - 8} y={plot.ly[i]! + n.lines.length * LINE} textAnchor="end">{formatValue(n.value)}</text>
             </g>
           ))}
           {plot.R.map((n, i) => (
             <g key={`r-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")}>
-              <text className="mu-flow__label" x={plot.x2 + NODE_W + 8} y={plot.ry[i]}>{n.label}</text>
-              <text className="mu-flow__value" x={plot.x2 + NODE_W + 8} y={plot.ry[i]! + 13}>{formatValue(n.value)}</text>
+              <title>{`${n.label} ${formatValue(n.value)}`}</title>
+              {n.lines.map((line, k) => (
+                <text key={k} className="mu-flow__label" x={plot.x2 + NODE_W + 8} y={plot.ry[i]! + k * LINE}>{line}</text>
+              ))}
+              <text className="mu-flow__value" x={plot.x2 + NODE_W + 8} y={plot.ry[i]! + n.lines.length * LINE}>{formatValue(n.value)}</text>
             </g>
           ))}
         </svg>

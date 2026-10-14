@@ -41,7 +41,7 @@ export function SettingsPage() {
 
   const itemCols: Column<Item>[] = [
     {
-      key: "inst", header: "Institution", wrap: true,
+      key: "inst", header: "Institution", wrap: true, mobile: "primary",
       cell: (i) => (
         <div className="jf-inst">
           <div style={{ fontWeight: 500 }}>{i.institution_name ?? i.institution_id ?? "Unknown"} <span className="mu-caption">· {i.account_count} account{i.account_count === 1 ? "" : "s"}</span></div>
@@ -52,7 +52,7 @@ export function SettingsPage() {
       sortValue: (i) => i.institution_name ?? "",
     },
     {
-      key: "status", header: "Status", wrap: true,
+      key: "status", header: "Status", wrap: true, mobile: "full",
       cell: (i) => (
         <div className="jf-inst__status">
           <Badge tone={itemStatusTone(i.status)}>{itemStatusLabel(i.status)}{i.error_code ? ` · ${i.error_code}` : ""}</Badge>
@@ -64,9 +64,9 @@ export function SettingsPage() {
         </div>
       ),
     },
-    { key: "sync", header: "Last sync", cell: (i) => <><span className="mu-mono">{formatRelative(i.last_synced_at)}</span><div className="mu-caption">webhook {formatRelative(i.last_webhook_at)}</div></>, sortValue: (i) => i.last_synced_at ?? "" },
+    { key: "sync", header: "Last sync", mobile: "meta", mobileLabel: "synced", cell: (i) => <><span className="mu-mono">{formatRelative(i.last_synced_at)}</span><div className="mu-caption">webhook {formatRelative(i.last_webhook_at)}</div></>, sortValue: (i) => i.last_synced_at ?? "" },
     {
-      key: "actions", header: "", numeric: true, wrap: true,
+      key: "actions", header: "", numeric: true, wrap: true, mobile: "full",
       cell: (i) => (
         <span className="mu-row jf-actions">
           <Button size="sm" variant="quiet" loading={syncItem.isPending && syncItem.variables === i.id} onClick={() => syncItem.mutate(i.id, { onSuccess: (r) => toast(r.queued ? "Sync queued" : "Sync already queued"), onError: (e) => fail(e, "Could not queue sync") })}>Sync now</Button>
@@ -83,20 +83,20 @@ export function SettingsPage() {
   ];
 
   const jobCols: Column<Job>[] = [
-    { key: "kind", header: "Job", cell: (j) => <span className="mu-mono">{j.kind}{j.item_id ? <span className="mu-caption"> · {itemName(j.item_id)}</span> : null}</span> },
-    { key: "status", header: "Status", cell: (j) => <Badge tone={j.status === "failed" ? "critical" : j.status === "done" ? "good" : j.status === "running" ? "accent" : "neutral"}>{j.status}</Badge> },
-    { key: "when", header: "When", cell: (j) => <span className="mu-mono">{formatRelative(j.finished_at ?? j.created_at)}</span> },
-    { key: "err", header: "Note", wrap: true, cell: (j) => <span className="mu-caption">{j.last_error ?? (j.attempts > 1 ? `${j.attempts} attempts` : "")}</span> },
+    { key: "kind", header: "Job", mobile: "primary", cell: (j) => <span className="mu-mono">{j.kind}{j.item_id ? <span className="mu-caption"> · {itemName(j.item_id)}</span> : null}</span> },
+    { key: "status", header: "Status", mobile: "end", cell: (j) => <Badge tone={j.status === "failed" ? "critical" : j.status === "done" ? "good" : j.status === "running" ? "accent" : "neutral"}>{j.status}</Badge> },
+    { key: "when", header: "When", mobile: "sub", mobileLabel: false, cell: (j) => <span className="mu-mono">{formatRelative(j.finished_at ?? j.created_at)}</span> },
+    { key: "err", header: "Note", wrap: true, mobile: "meta", mobileLabel: false, cell: (j) => <span className="mu-caption">{j.last_error ?? (j.attempts > 1 ? `${j.attempts} attempts` : "")}</span> },
   ];
 
   const itemName = (id: string) => (items.data ?? []).find((i) => i.id === id)?.institution_name ?? id.slice(0, 8);
   const lastWebhook = sync.data?.webhooks[0]?.received_at ?? null;
 
   const tokenCols: Column<ApiToken>[] = [
-    { key: "name", header: "Phone", cell: (t) => t.name },
-    { key: "created", header: "Linked", cell: (t) => <span className="mu-mono">{formatRelative(t.created_at)}</span> },
-    { key: "used", header: "Last seen", cell: (t) => <span className="mu-mono">{formatRelative(t.last_used_at)}</span> },
-    { key: "x", header: "", numeric: true, cell: (t) => <Button size="sm" variant="danger" onClick={() => revoke.mutate(t.id, { onSuccess: () => toast("Phone unlinked"), onError: (e) => fail(e, "Could not unlink") })}>Unlink</Button> },
+    { key: "name", header: "Phone", mobile: "primary", cell: (t) => t.name },
+    { key: "created", header: "Linked", mobile: "meta", mobileLabel: "linked", cell: (t) => <span className="mu-mono">{formatRelative(t.created_at)}</span> },
+    { key: "used", header: "Last seen", mobile: "meta", mobileLabel: "last seen", cell: (t) => <span className="mu-mono">{formatRelative(t.last_used_at)}</span> },
+    { key: "x", header: "", numeric: true, mobile: "end", cell: (t) => <Button size="sm" variant="danger" onClick={() => revoke.mutate(t.id, { onSuccess: () => toast("Phone unlinked"), onError: (e) => fail(e, "Could not unlink") })}>Unlink</Button> },
   ];
 
   return (
@@ -109,17 +109,17 @@ export function SettingsPage() {
 
       <Panel flush caption="connections" actions={<span className="mu-caption">{items.data ? `${items.data.filter((i) => i.status !== "removed").length} linked` : ""}</span>}>
         {items.error ? <div style={{ padding: 16 }}><ErrorNote error={items.error} retry={() => items.refetch()} /></div> : (
-          <DataTable className="jf-stack-sm" columns={itemCols} rows={(items.data ?? []).filter((i) => i.status !== "removed")} rowKey={(i) => i.id} empty={items.isLoading ? <Skeleton lines={3} /> : <EmptyState title="No connections" description="Connect a bank, card, loan or brokerage." action={<ConnectButton />} />} />
+          <DataTable columns={itemCols} rows={(items.data ?? []).filter((i) => i.status !== "removed")} rowKey={(i) => i.id} empty={items.isLoading ? <Skeleton lines={3} /> : <EmptyState title="No connections" description="Connect a bank, card, loan or brokerage." action={<ConnectButton />} />} />
         )}
       </Panel>
 
       <Panel flush caption="offline assets" actions={<Button size="sm" variant="quiet" onClick={() => setAdding(true)}>Add offline asset</Button>}>
-        <DataTable className="jf-stack-sm"
+        <DataTable
           columns={[
-            { key: "name", header: "Asset", cell: (a: Account) => <><div style={{ fontWeight: 500 }}>{a.name}</div><div className="mu-caption">{MANUAL.find((m) => m.value === a.manual_category)?.label ?? a.manual_category}</div></> },
-            { key: "value", header: "Value", numeric: true, cell: (a: Account) => <Money value={a.current_balance ?? 0} currency={a.iso_currency} /> },
-            { key: "upd", header: "Updated", cell: (a: Account) => <span className="mu-mono">{formatRelative(a.balance_updated_at)}</span> },
-            { key: "x", header: "", numeric: true, cell: (a: Account) => <span className="mu-row jf-actions"><Button size="sm" variant="quiet" onClick={() => setValueEdit(a)}>Update value</Button><Button size="sm" variant="danger" onClick={() => setConfirmDelete(a)}>Remove</Button></span> },
+            { key: "name", header: "Asset", mobile: "primary", cell: (a: Account) => <><div style={{ fontWeight: 500 }}>{a.name}</div><div className="mu-caption">{MANUAL.find((m) => m.value === a.manual_category)?.label ?? a.manual_category}</div></> },
+            { key: "value", header: "Value", numeric: true, mobile: "end", cell: (a: Account) => <Money value={a.current_balance ?? 0} currency={a.iso_currency} /> },
+            { key: "upd", header: "Updated", mobile: "sub", mobileLabel: false, cell: (a: Account) => <span className="mu-mono">{formatRelative(a.balance_updated_at)}</span> },
+            { key: "x", header: "", numeric: true, mobile: "full", cell: (a: Account) => <span className="mu-row jf-actions"><Button size="sm" variant="quiet" onClick={() => setValueEdit(a)}>Update value</Button><Button size="sm" variant="danger" onClick={() => setConfirmDelete(a)}>Remove</Button></span> },
           ]}
           rows={manualAccounts}
           rowKey={(a) => a.id}
@@ -129,11 +129,11 @@ export function SettingsPage() {
 
       <SubscriptionSettings />
       <Panel flush caption="sync" foot={sync.data ? `last webhook ${formatRelative(lastWebhook)} · refreshes every 10s` : undefined}>
-        <DataTable className="jf-stack-sm" columns={jobCols} rows={(sync.data?.jobs ?? []).slice(0, 20)} rowKey={(j) => j.id} compact empty="No recent jobs." />
+        <DataTable columns={jobCols} rows={(sync.data?.jobs ?? []).slice(0, 20)} rowKey={(j) => j.id} compact empty="No recent jobs." />
       </Panel>
 
       <Panel flush caption="phones" foot="A linked phone can read everything here and change nothing. Unlinking stops it on its next request.">
-        <DataTable className="jf-stack-sm" columns={tokenCols} rows={(tokens.data ?? []).filter((t) => !t.revoked_at)} rowKey={(t) => t.id} compact
+        <DataTable columns={tokenCols} rows={(tokens.data ?? []).filter((t) => !t.revoked_at)} rowKey={(t) => t.id} compact
           empty="No phones linked. Open the jfinances app on your iPhone and tap Sign in." />
       </Panel>
 

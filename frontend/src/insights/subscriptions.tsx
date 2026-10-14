@@ -212,7 +212,7 @@ export function SubscriptionSettings() {
   const [name, setName] = useState("");
   const cols: Column<RecurringStream>[] = [
     {
-      key: "name", header: "Subscription", wrap: true,
+      key: "name", header: "Subscription", wrap: true, mobile: "primary",
       cell: (s) => (
         <div className="jf-cell-account">
           <div>{s.label} {s.is_business && <Badge dot={false}>business</Badge>}</div>
@@ -221,21 +221,21 @@ export function SubscriptionSettings() {
       ),
       sortValue: (s) => s.label,
     },
-    { key: "cadence", header: "Every", cell: (s) => CADENCE[s.cadence], sortValue: (s) => s.cadence },
-    { key: "amount", header: "Amount", numeric: true, cell: (s) => <Money value={s.amount} />, sortValue: (s) => s.amount },
-    { key: "monthly", header: "Per month", numeric: true, cell: (s) => <Money value={s.monthly} />, sortValue: (s) => s.monthly },
+    { key: "cadence", header: "Every", mobile: "sub", mobileLabel: false, cell: (s) => CADENCE[s.cadence], sortValue: (s) => s.cadence },
+    { key: "amount", header: "Amount", numeric: true, mobile: "end", cell: (s) => <Money value={s.amount} />, sortValue: (s) => s.amount },
+    { key: "monthly", header: "Per month", numeric: true, mobile: "hide", cell: (s) => <Money value={s.monthly} />, sortValue: (s) => s.monthly },
     {
-      key: "when", header: "Next",
+      key: "when", header: "Next", mobile: "meta", mobileLabel: "next",
       cell: (s) => s.state === "lapsed"
         ? <span className="mu-caption">lapsed · last {formatDate(s.last_date, { year: true })}</span>
         : <span className="mu-mono">{formatDate(s.next_date)}</span>,
       sortValue: (s) => s.next_date,
     },
     {
-      key: "status", header: "Is it a subscription?",
+      key: "status", header: "Is it a subscription?", mobile: "full",
       cell: (s) => <Segmented size="sm" options={VERDICTS} value={s.status} onChange={(v) => verdict(s.id, v)} aria-label={`${s.label}: is it a subscription?`} />,
     },
-    { key: "rename", header: "", cell: (s) => <Button size="sm" variant="quiet" onClick={() => { setRenaming(s); setName(s.name ?? ""); }}>Rename</Button> },
+    { key: "rename", header: "", mobile: "full", cell: (s) => <Button size="sm" variant="quiet" onClick={() => { setRenaming(s); setName(s.name ?? ""); }}>Rename</Button> },
   ];
   return (
     <Panel

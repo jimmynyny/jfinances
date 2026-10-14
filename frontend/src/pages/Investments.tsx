@@ -34,31 +34,34 @@ export function InvestmentsPage() {
   if (q.error) return <Page><ErrorNote error={q.error} retry={() => q.refetch()} /></Page>;
 
   const holdingCols = (total: number): Column<Holding>[] => [
-    { key: "name", header: "Security", wrap: true, className: "jf-col-name", cell: (h) => <><div>{h.name ?? h.ticker ?? "—"}</div><div className="mu-caption">{h.ticker ?? ""}{h.type ? ` · ${h.type}` : ""}{h.is_cash_equivalent && h.type !== "cash" ? " · cash" : ""}</div></>, sortValue: (h) => h.name ?? h.ticker ?? "" },
-    { key: "qty", header: "Qty", numeric: true, className: "jf-col-wide", cell: (h) => formatNumber(h.quantity, h.quantity % 1 ? 4 : 0), sortValue: (h) => h.quantity },
-    { key: "price", header: "Price", numeric: true, className: "jf-col-wide", cell: (h) => (h.price != null ? <Money value={h.price} currency={h.iso_currency} /> : "—"), sortValue: (h) => h.price },
-    { key: "gain", header: "Gain", numeric: true, cell: (h) => (h.cost_basis != null ? <Money value={h.value - h.cost_basis} currency={h.iso_currency} signed plus /> : "—"), sortValue: (h) => (h.cost_basis != null ? h.value - h.cost_basis : null) },
+    { key: "name", header: "Security", wrap: true, className: "jf-col-name", mobile: "primary",
+      cell: (h) => <><div>{h.name ?? h.ticker ?? "—"}</div><div className="mu-caption">{[h.ticker, h.type, h.is_cash_equivalent && h.type !== "cash" ? "cash" : null].filter(Boolean).join(" · ")}</div></>,
+      sortValue: (h) => h.name ?? h.ticker ?? "" },
+    { key: "qty", header: "Qty", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (h) => formatNumber(h.quantity, h.quantity % 1 ? 4 : 0), sortValue: (h) => h.quantity },
+    { key: "price", header: "Price", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (h) => (h.price != null ? <Money value={h.price} currency={h.iso_currency} /> : "—"), sortValue: (h) => h.price },
+    { key: "gain", header: "Gain", numeric: true, mobile: "sub", mobileLabel: false, cell: (h) => (h.cost_basis != null ? <Money value={h.value - h.cost_basis} currency={h.iso_currency} signed plus /> : "—"), sortValue: (h) => (h.cost_basis != null ? h.value - h.cost_basis : null) },
     {
-      key: "weight", header: "Weight", width: 150, className: "jf-col-wide",
+      key: "weight", header: "Weight", width: 150, className: "jf-col-wide", mobile: "hide",
       cell: (h) => {
         const r = total > 0 ? h.value / total : 0;
         return <PixelMeter size="sm" cells={12} tone="ink" ratio={r} label={`${Math.round(r * 100)}%`} ariaLabel={`${h.ticker ?? h.name ?? "holding"} weight`} />;
       },
       sortValue: (h) => h.value,
     },
-    { key: "value", header: "Value", numeric: true, cell: (h) => <Money value={h.value} currency={h.iso_currency} />, sortValue: (h) => h.value },
+    { key: "value", header: "Value", numeric: true, mobile: "end", cell: (h) => <Money value={h.value} currency={h.iso_currency} />, sortValue: (h) => h.value },
   ];
 
   const activity = act.data ?? [];
   const shown = showAll ? activity : activity.slice(0, 15);
   const activityCols: Column<InvestmentTransaction>[] = [
-    { key: "date", header: "Date", width: 90, cell: (t) => <span className="mu-mono">{formatDate(t.date)}</span>, sortValue: (t) => t.date },
-    { key: "what", header: "Activity", wrap: true, className: "jf-col-name", cell: (t) => <><div>{t.ticker ? <strong>{t.ticker}</strong> : null} {t.security_name ?? t.name}</div><div className="mu-caption">{t.account_name ?? ""}</div></> },
-    { key: "type", header: "Type", className: "jf-col-wide", cell: (t) => <Badge dot={false}>{(t.subtype ?? t.type ?? "—").replace(/_/g, " ")}</Badge> },
-    { key: "qty", header: "Qty", numeric: true, className: "jf-col-wide", cell: (t) => (t.quantity ? formatNumber(t.quantity, t.quantity % 1 ? 4 : 0) : "—"), sortValue: (t) => t.quantity },
-    { key: "price", header: "Price", numeric: true, className: "jf-col-wide", cell: (t) => (t.price ? <Money value={t.price} /> : "—"), sortValue: (t) => t.price },
+    { key: "date", header: "Date", width: 90, mobile: "sub", mobileLabel: false, cell: (t) => <span className="mu-mono">{formatDate(t.date)}</span>, sortValue: (t) => t.date },
+    { key: "what", header: "Activity", wrap: true, className: "jf-col-name", mobile: "primary",
+      cell: (t) => <><div>{t.ticker ? <strong>{t.ticker}</strong> : null} {t.security_name ?? t.name}</div><div className="mu-caption">{t.account_name ?? ""}<span className="mu-stacked-only">{` · ${(t.subtype ?? t.type ?? "").replace(/_/g, " ")}`}</span></div></> },
+    { key: "type", header: "Type", className: "jf-col-wide", mobile: "hide", cell: (t) => <Badge dot={false}>{(t.subtype ?? t.type ?? "—").replace(/_/g, " ")}</Badge> },
+    { key: "qty", header: "Qty", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (t) => (t.quantity ? formatNumber(t.quantity, t.quantity % 1 ? 4 : 0) : "—"), sortValue: (t) => t.quantity },
+    { key: "price", header: "Price", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (t) => (t.price ? <Money value={t.price} /> : "—"), sortValue: (t) => t.price },
     // Plaid: positive amount = cash out of the account (a buy); show cash flow with its sign.
-    { key: "amount", header: "Cash", numeric: true, cell: (t) => (t.amount != null ? <Money value={-t.amount} signed plus /> : "—"), sortValue: (t) => t.amount },
+    { key: "amount", header: "Cash", numeric: true, mobile: "end", cell: (t) => (t.amount != null ? <Money value={-t.amount} signed plus /> : "—"), sortValue: (t) => t.amount },
   ];
 
   return (

@@ -14,6 +14,7 @@ export * from "./components/Drawer";
 export * from "./components/Toast";
 export * from "./components/Misc";
 export * from "./components/DataTable";
+export * from "./components/Filters";
 export * from "./components/AppShell";
 export * from "./components/ViewToggle";
 export * from "./charts/theme";

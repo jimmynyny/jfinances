@@ -19,8 +19,18 @@ interface Props {
   dragging?: boolean;
 }
 
+const STALE_MS = 2 * 24 * 3600 * 1000;
+
+/** The institution's first word already in the account's name ("Chase" in "Chase Savings"). */
+function namesInstitution(name: string, institution: string | null | undefined): boolean {
+  const first = institution?.trim().split(/\s+/)[0];
+  if (!first) return false;
+  return new RegExp(`(^|[^a-z0-9])${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(name);
+}
+
 export function AccountRow({ account: a, upIsGood = true, actions, showStatus = true, handle, onOpen, rowRef, style, dragging }: Props) {
   const needs = a.item_status && a.item_status !== "active";
+  const stale = !a.balance_updated_at || Date.now() - new Date(a.balance_updated_at).getTime() > STALE_MS;
   const cls = ["jf-acct", a.is_hidden && "jf-acct--hidden", dragging && "jf-acct--dragging", onOpen && "jf-acct--open"].filter(Boolean).join(" ");
   const onRowClick = onOpen
     ? (e: MouseEvent<HTMLDivElement>) => {
@@ -38,8 +48,10 @@ export function AccountRow({ account: a, upIsGood = true, actions, showStatus = 
           <div className="jf-acct__name">{a.name}</div>
         )}
         <div className="jf-acct__meta mu-caption">
-          <span>{a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}{a.mask ? <> ··<Num>{a.mask}</Num></> : null}</span>
-          {a.subtype && <span>· {a.subtype.replace(/_/g, " ")}</span>}
+          {/* On a phone the institution drops out when the name already says it, so the line fits. */}
+          {/* The separator ends the first part, so a wrapped line starts with the kind, not "·". */}
+          <span><span className={namesInstitution(a.name, a.institution_name) ? "jf-acct__inst--named" : undefined}>{a.institution_name ?? (a.kind === "manual" ? "offline asset" : "")}</span>{a.mask ? <> ··<Num>{a.mask}</Num></> : null}{a.subtype ? " ·" : null}</span>
+          {a.subtype && <span>{a.subtype.replace(/_/g, " ")}</span>}
           {showStatus && (needs || a.kind === "manual") && <Badge tone={itemStatusTone(a.item_status)}>{itemStatusLabel(a.kind === "manual" ? null : a.item_status)}</Badge>}
           {a.is_hidden && <Badge dot={false}>hidden</Badge>}
         </div>
@@ -50,7 +62,8 @@ export function AccountRow({ account: a, upIsGood = true, actions, showStatus = 
       <div className="jf-acct__bal">
         <Money value={a.current_balance ?? 0} currency={a.iso_currency} mono={false} />
         <span className="mu-caption">
-          {a.change_1m ? <Delta amount={a.change_1m.amount} pct={a.change_1m.pct ?? undefined} upIsGood={upIsGood} /> : formatRelative(a.balance_updated_at)}
+          {a.change_1m ? <Delta amount={a.change_1m.amount} pct={a.change_1m.pct ?? undefined} upIsGood={upIsGood} />
+            : <span className={stale ? "jf-acct__when jf-acct__when--stale" : "jf-acct__when"}>{formatRelative(a.balance_updated_at)}</span>}
         </span>
       </div>
       {actions && <div className="jf-acct__actions">{actions}</div>}

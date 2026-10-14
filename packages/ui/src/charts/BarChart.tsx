@@ -30,6 +30,7 @@ export interface BarChartProps {
 
 const M = { top: 12, right: 8, bottom: 24, left: 8 };
 const Y_LABEL_W = 52;
+const TICK_CH = 7.2; // one IBM Plex Mono character at the 12px tick size
 
 /** Columns ≤24px, 2px surface gap, hover lifts the mark. Grows from a single baseline. */
 export function BarChart({
@@ -75,7 +76,11 @@ export function BarChart({
     const n = mode === "stacked" ? 1 : series.length;
     const inner = Math.min(chartTheme.barMax * n + chartTheme.gap * (n - 1), band * 0.7);
     const barW = (inner - chartTheme.gap * (n - 1)) / n;
-    return { w, h, sy, ticks, band, inner, barW, zero: sy(0) };
+    // Each x label has one band. Where labels would touch (a year of months on a
+    // phone), show every nth, counted back from the latest so it is always named.
+    const widest = data.reduce((m, d) => Math.max(m, String(d.label).length), 0) * TICK_CH + 6;
+    const labelEvery = Math.max(1, Math.ceil(widest / Math.max(band, 1)));
+    return { w, h, sy, ticks, band, inner, barW, zero: sy(0), labelEvery };
   }, [data, series, width, height, mode]);
 
   const colors = series.map((s, i) => s.color ?? (series.length === 1 ? chartTheme.accent : seriesColor(i)));
@@ -127,7 +132,9 @@ export function BarChart({
                       />
                     );
                   })}
-                  <text className="mu-chart__tick" x={cx0} y={plot.h + 16} textAnchor="middle">{d.label}</text>
+                  {(data.length - 1 - i) % plot.labelEvery === 0 && (
+                    <text className="mu-chart__tick" x={cx0} y={plot.h + 16} textAnchor="middle">{d.label}</text>
+                  )}
                 </g>
               );
             })}

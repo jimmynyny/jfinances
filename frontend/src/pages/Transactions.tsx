@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  Badge, Button, Checkbox, DataTable, Drawer, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
+  Badge, Button, Checkbox, DataTable, Drawer, Filters, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
@@ -56,9 +56,9 @@ export function TransactionsPage() {
   const rows = useMemo(() => summary.data?.rows ?? [], [summary.data]);
 
   const columns: Column<Transaction>[] = [
-    { key: "date", header: "Date", width: 90, cell: (t) => <span className="mu-mono">{formatDate(t.date)}</span>, sortValue: (t) => t.date },
+    { key: "date", header: "Date", width: 90, mobile: "sub", mobileLabel: false, cell: (t) => <span className="mu-mono">{formatDate(t.date)}</span>, sortValue: (t) => t.date },
     {
-      key: "name", header: "Description", wrap: true,
+      key: "name", header: "Description", wrap: true, mobile: "primary",
       cell: (t) => (
         <div className="jf-txn-name">
           <span>{t.merchant_name ?? t.name}</span>
@@ -69,14 +69,14 @@ export function TransactionsPage() {
       ),
     },
     {
-      key: "category", header: "Category", width: 180, className: "jf-col-cat",
+      key: "category", header: "Category", width: 180, className: "jf-col-cat", mobile: "hide",
       cell: (t) => (
         <span className="mu-row" style={{ flexWrap: "nowrap", gap: 6 }}>
           <Badge dot={false} tone={t.user_category ? "accent" : "neutral"}>{(t.category ?? "uncategorized").toLowerCase().replace(/_/g, " ")}</Badge>
         </span>
       ),
     },
-    { key: "amount", header: "Amount", numeric: true, width: 120, cell: (t) => <Money value={-t.amount} currency={t.iso_currency} signed plus />, sortValue: (t) => t.amount },
+    { key: "amount", header: "Amount", numeric: true, width: 120, mobile: "end", cell: (t) => <Money value={-t.amount} currency={t.iso_currency} signed plus />, sortValue: (t) => t.amount },
   ];
 
   const total = tx.data?.total ?? 0;
@@ -106,7 +106,13 @@ export function TransactionsPage() {
     <Page>
       <PageHeader title="Transactions" subtitle={tx.data ? `${total.toLocaleString()} in range` : <Skeleton width={100} />} />
 
-      <div className="mu-filters">
+      <Filters summary={[
+        preset === "custom" ? `${custom.from} – ${custom.to}` : preset,
+        accountId ? accountName.get(accountId) ?? "one account" : "all accounts",
+        category ? catName(category) : "all categories",
+        qDebounced ? `“${qDebounced}”` : null,
+        pendingOnly ? "pending" : null,
+      ].filter(Boolean).join(" · ")}>
         <div className="mu-field">
           <span className="mu-label">Range</span>
           <Segmented
@@ -133,7 +139,7 @@ export function TransactionsPage() {
           style={{ minWidth: 200 }}
         />
         <Checkbox label="Pending only" checked={pendingOnly} onChange={(e) => { setPendingOnly(e.target.checked); setPage(1); }} style={{ height: 32 }} />
-      </div>
+      </Filters>
 
       <div className="mu-grid mu-grid--main">
         <Panel flush caption="activity" foot={tx.isFetching ? "updating…" : `page ${page} of ${pages}`}>
