@@ -1,6 +1,7 @@
 """Bank exports, read without help: CSV from any bank (columns found by their
-names and, failing that, by what is in them) and OFX/QFX (Quicken downloads,
-which carry the bank's own ID for each transaction).
+names and, failing that, by what is in them), OFX/QFX (Quicken downloads,
+which carry the bank's own ID for each transaction) and Venmo statements
+(a layout of their own, read by name: parse_venmo).
 
 Pure functions over the file's bytes; services/importer.py decides what to
 keep. Amounts come out in Plaid's sign (positive = money out), balances in
@@ -105,11 +106,15 @@ class Row:
 
 @dataclass
 class Parsed:
-    format: str  # csv | ofx
+    format: str  # csv | ofx | venmo
     rows: list[Row]
     columns: list[Column] = field(default_factory=list)
     mapping: Mapping | None = None
     problems: list[str] = field(default_factory=list)
+    #: What the reader chose to leave out, and why, for the preview.
+    notes: list[str] = field(default_factory=list)
+    #: A word naming the institution (e.g. "venmo"), to suggest the account.
+    bank_hint: str | None = None
     #: OFX's statement balance: (as of, amount in the file's sense).
     ofx_balance: tuple[date, Decimal] | None = None
     #: Last four digits of the account number in the file or its name, to suggest the account.
@@ -271,15 +276,25 @@ def _looks_like_header(cells: list[str]) -> bool:
     return texty >= max(2, len(filled) * 0.6)
 
 
+def _looks_like_data(cells: list[str]) -> bool:
+    return any(date_formats([c]) for c in cells) and any(money(c) is not None for c in cells)
+
+
 def find_header(rows: list[list[str]]) -> int | None:
     """The header line: a row of names followed by rows of the same width with a
-    date and an amount in them. Summary lines above it (BofA) are skipped; a file
-    with no header (Wells Fargo) returns None."""
+    date and an amount in them. Summary lines above it (BofA) are skipped, and so
+    is an opening-balance line under it (Venmo); a file with no header (Wells
+    Fargo) returns None."""
     for i, r in enumerate(rows[:25]):
         if not _looks_like_header(r):
             continue
-        below = [x for x in rows[i + 1:i + 8] if len(x) >= len([c for c in r if c]) - 1]
-        if below and all(any(date_formats([c]) for c in x) and any(money(c) is not None for c in x) for x in below[:3]):
+        below = [x for x in rows[i + 1:i + 9] if len(x) >= len([c for c in r if c]) - 1]
+        data = 0
+        for x in below[:6]:
+            if _looks_like_header(x):  # the next header comes first: this one heads a summary
+                break
+            data += _looks_like_data(x)
+        if below and data >= min(2, len(below)):
             return i
     return None
 
@@ -516,6 +531,97 @@ def _balance_direction(rows: list[Row], newest_first: bool, liability: bool) -> 
     return -1 if disagree > agree else 1
 
 
+# ---------------------------------------------------------------------------
+# Venmo statements
+# ---------------------------------------------------------------------------
+VENMO_COLUMNS = {"id", "datetime", "type", "status", "note", "from", "to", "amount total", "funding source",
+                 "destination"}
+VENMO_BALANCE = "venmo balance"
+#: Activity that never happened.
+DROPPED_STATUS = re.compile(r"cancel|fail|declin|expire|revers", re.I)
+
+
+def venmo_header(rows: list[list[str]]) -> int | None:
+    for i, r in enumerate(rows[:25]):
+        if VENMO_COLUMNS <= {_norm(c) for c in r}:
+            return i
+    return None
+
+
+def _no_digits(text: str) -> str:
+    return re.sub(r"\s*[*#x]*\d{2,}", "", text).strip() or text.strip()
+
+
+def parse_venmo(rows: list[list[str]], header: int) -> Parsed:
+    """A Venmo statement. Only what moved the Venmo balance becomes a row: a
+    payment made straight from a bank account or card never touched it, and is
+    already on that account's statement, so here it would count twice. A row
+    names the other person (the statement's owner is on nearly every row) and
+    carries the note; a cash-out is a transfer to the bank. Balances follow from
+    the opening balance, checked against the closing one."""
+    ix = {_norm(h): j for j, h in enumerate(rows[header])}
+
+    def cell(r: list[str], name: str) -> str:
+        j = ix.get(name)
+        return r[j].strip() if j is not None and j < len(r) else ""
+
+    body = rows[header + 1:]
+    items = [r for r in body if re.fullmatch(r"\d{6,}", cell(r, "id"))]
+    opening = next((money(cell(r, "beginning balance")) for r in body
+                    if not cell(r, "id") and money(cell(r, "beginning balance")) is not None), None)
+    closing = next((money(cell(r, "ending balance")) for r in body
+                    if not cell(r, "id") and money(cell(r, "ending balance")) is not None), None)
+    names = Counter(n for r in items for n in (cell(r, "from"), cell(r, "to")) if n)
+    owner = names.most_common(1)[0][0] if names else ""
+    out: list[tuple[str, Row]] = []
+    problems: list[str] = []
+    off_balance = dropped = 0
+    for i, r in enumerate(items):
+        when = cell(r, "datetime")
+        d = next((x for x in (parse_date(when, f) for f in DATE_FORMATS) if x), None)
+        a = money(cell(r, "amount total"))
+        if d is None or a is None:
+            problems.append(f"row {i + 1}: no {'date' if d is None else 'amount'}")
+            continue
+        if DROPPED_STATUS.search(cell(r, "status")):
+            dropped += 1
+            continue
+        funding, dest = cell(r, "funding source"), cell(r, "destination")
+        if not ((a < 0 and funding.lower() in (VENMO_BALANCE, "")) or (a > 0 and dest.lower() in (VENMO_BALANCE, ""))):
+            off_balance += 1
+            continue
+        kind, note = cell(r, "type"), cell(r, "note")
+        if "transfer" in kind.lower():
+            desc = f"Transfer to {_no_digits(dest)}" if a < 0 else f"Transfer from {_no_digits(funding)}"
+        else:
+            frm, to = cell(r, "from"), cell(r, "to")
+            other = to if frm == owner else frm if to == owner else (to or frm)
+            desc = " · ".join(x for x in (other or kind, note) if x)
+        out.append((when, Row(index=i, date=d, auth_date=None, description=desc[:300],
+                              amount=(-a).quantize(Decimal("0.01")), fitid=f"venmo:{cell(r, 'id')}")))
+    out.sort(key=lambda x: x[0])  # the timestamp orders a day's rows
+    rows_out = [r for _, r in out]
+    notes = []
+    if off_balance:
+        many = off_balance != 1
+        notes.append(f"{off_balance} payment{'s' if many else ''} made straight from a bank account or card "
+                     f"{'are' if many else 'is'} left out: {'they' if many else 'it'} never moved your Venmo "
+                     f"balance, and that account's own transactions already have {'them' if many else 'it'}.")
+    if dropped:
+        notes.append(f"{dropped} cancelled or failed payment{'s' if dropped != 1 else ''} left out.")
+    if opening is not None:
+        bal = opening
+        for r in rows_out:
+            bal -= r.amount  # Plaid's sign: money in is negative
+            r.balance = bal
+        if closing is not None and abs(bal - closing) >= Decimal("0.01"):
+            for r in rows_out:
+                r.balance = None
+            notes.append("The statement's closing balance doesn't follow from its rows, so no balances are set.")
+    return Parsed(format="venmo", rows=rows_out, problems=problems, notes=notes, bank_hint="venmo",
+                  sign_basis="file", signature=signature(rows[header]))
+
+
 def parse(raw: bytes, filename: str | None, *, liability: bool, mapping: Mapping | None = None) -> Parsed:
     """The file as rows. `mapping` (a CSV's confirmed columns) replaces the guess."""
     text = decode(raw)
@@ -524,6 +630,8 @@ def parse(raw: bytes, filename: str | None, *, liability: bool, mapping: Mapping
         p.account_hint = p.account_hint or last4(filename)
         return p
     grid = read_csv(text)
+    if (vh := venmo_header(grid)) is not None:
+        return parse_venmo(grid, vh)
     guessed, cols, ambiguous = guess(grid)
     m = mapping or guessed
     if mapping is not None:

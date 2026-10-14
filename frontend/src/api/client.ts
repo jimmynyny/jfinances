@@ -55,7 +55,7 @@ const DECIMAL = /^-?\d+(\.\d+)?$/;
 const KEEP_STRING = new Set([
   "id", "name", "label", "mask", "key", "kind", "category", "note", "source",
   // an imported file's own text stays as written ("-9.50", a payee called "1234")
-  "samples", "header", "description", "filename", "format", "status", "basis", "why",
+  "samples", "header", "description", "filename", "format", "status", "basis", "why", "notes", "problems",
 ]);
 function numbers(v: unknown, key = ""): unknown {
   if (typeof v === "string") return !KEEP_STRING.has(key) && DECIMAL.test(v) ? Number(v) : v;

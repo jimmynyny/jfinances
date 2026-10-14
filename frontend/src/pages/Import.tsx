@@ -188,7 +188,7 @@ export function ImportPage() {
         <>
           {!preview.account_id ? (
             <Panel caption="account">
-              <span className="mu-caption">Choose which account this file is for{preview.account_hint ? ` (it mentions ··${preview.account_hint})` : ""}; then every row is checked against what it already has.</span>
+              <span className="mu-caption">Choose which account this file is for{preview.account_hint ? ` (it mentions ··${preview.account_hint})` : preview.format === "venmo" ? " (a Venmo statement)" : ""}; then every row is checked against what it already has.</span>
             </Panel>
           ) : (
             <Panel caption="what importing does">
@@ -202,8 +202,9 @@ export function ImportPage() {
                 <p className="jf-facts__note">
                   {preview.range ? <>{c?.total} rows from {formatDate(preview.range.from, { year: true })} to {formatDate(preview.range.to, { year: true })}. </> : null}
                   {preview.connection_from ? <>Your connection has this account from {formatDate(preview.connection_from, { year: true })}; rows from then on are only matched, or added if you tick them. </> : null}
-                  {preview.balances ? <>The running balance sets {preview.balances.days} days of exact balances. </> : null}
+                  {preview.balances ? <>{preview.format === "venmo" ? "The statement's opening balance" : "The running balance"} sets {preview.balances.days} days of exact balances. </> : null}
                 </p>
+                {(preview.notes ?? []).map((n) => <p key={n} className="jf-facts__note">{n}</p>)}
                 {preview.gap && (
                   <p className="jf-import__warn">
                     The file ends {preview.gap.days} days before your connection&apos;s history starts ({formatDate(preview.gap.from)} – {formatDate(preview.gap.to, { year: true })}), so balances before the gap can be off by whatever happened in it.

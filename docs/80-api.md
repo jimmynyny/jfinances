@@ -284,8 +284,8 @@ Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queue
 
 ## Imports
 
-Bank exports (CSV from any bank, QFX/OFX) into a linked bank or card account's history, for
-the years a connection doesn't reach (services/importer.py, services/statement.py). The file
+Bank exports (CSV from any bank, QFX/OFX, Venmo statements) into a linked bank or card account's
+history, for the years a connection doesn't reach (services/importer.py, services/statement.py). The file
 travels as base64 in JSON (≤5 MB) and is never stored; only its name and SHA-256 are.
 
 ### POST /imports/preview (dashboard_only)
@@ -301,7 +301,7 @@ read and what importing it would do:
  "gap":null,"balances":{"days":180,"from":"…","to":"…"},
  "counts":{"total":202,"new":199,"review":1,"matched":2,"duplicate":0,"problems":0},
  "rows":[{"index":0,"date":"2026-04-20","description":"CORNER DELI","amount":"9.50","balance":"…",
-          "status":"review","match":null}, …],"rows_shown":202,"problems":[]}
+          "status":"review","match":null}, …],"rows_shown":202,"problems":[],"notes":[]}
 ```
 Columns are found by header name (ranked synonyms: "Post Date" over "Date", "Description" over
 "Details") and, without a header, by content (dates, a signed amount, a running balance that
@@ -312,7 +312,16 @@ has settle it (`basis: "matched"`). Row statuses: `new` (older than the connecti
 fingerprint), `review` (in the connection's period but not there: added only if ticked). The
 account is suggested from the last four digits in the file or its name, or the account this
 layout was last imported into. `mapping` with `chosen` (the roles the person set) replaces the
-guess; a confirmed layout is remembered by its header for next time.
+guess; a confirmed layout is remembered by its header for next time. A header may sit over an
+opening-balance line.
+
+A Venmo statement (`format: "venmo"`, no `columns` or `mapping`) is read by its own layout. Only
+what moved the Venmo balance becomes a row: a payment made straight from a bank account or card
+never touched it and is already on that account's statement, so it is left out and said so in
+`notes`. A row names the other person and carries the note; a cash-out is "Transfer to <bank>";
+Venmo's transaction ID is the fingerprint. Balances run from the statement's opening balance and
+are set only if they land on its closing balance. The account is suggested by "venmo" in a linked
+account's name or institution.
 
 ### POST /imports → 201 (dashboard_only)
 Body: the preview's plus `account_id` and `include` (the `index` of each ticked review row).

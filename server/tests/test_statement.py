@@ -111,6 +111,52 @@ def test_a_card_balance_reads_as_owed():
     assert [r.balance for r in p.rows] == [Decimal("104.00"), Decimal("120.00"), Decimal("150.00")]
 
 
+def test_venmo_keeps_what_moved_the_balance_and_names_the_other_person():
+    head = ("Account Statement - (@alex-doe) ,,,,,,,,,,,,,,,,,,,,,\n"
+            "Account Activity,,,,,,,,,,,,,,,,,,,,,\n"
+            ",ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,"
+            "Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,"
+            "Terminal Location,Year to Date Venmo Fees,Disclaimer\n"
+            ",,,,,,,,,,,,,,,,$100.00,,,,,\n")
+    rows = [  # id, when, type, note, from, to, amount, funding, destination
+        ("4400000000000000001", "2026-01-03T18:22:10", "Payment", "pizza", "Sam Roe", "Alex Doe", "+ $30.00", "",
+         "Venmo balance"),
+        ("4400000000000000002", "2026-01-04T09:00:00", "Payment", "rent", "Alex Doe", "Pat Poe", "- $1,200.00",
+         "Chase Personal Checking *1234", ""),  # paid from the bank: never touched the balance
+        ("4400000000000000003", "2026-01-05T10:00:00", "Payment", "", "Alex Doe", "Sam Roe", "- $20.00",
+         "Venmo balance", ""),
+        ("4400000000000000004", "2026-01-06T11:00:00", "Standard Transfer", "", "", "", "- $110.00", "",
+         "Chase *1234"),
+        ("4400000000000000005", "2026-01-07T11:00:00", "Payment", "oops", "Alex Doe", "Sam Roe", "- $5.00",
+         "Venmo balance", ""),
+    ]
+    status = {"4400000000000000005": "Canceled"}
+    body = "".join(f",{i},{w},{t},{status.get(i, 'Complete')},{n},{f},{to},\"{a}\",,0,,0,,{fs},{d},,,,Venmo,,\n"
+                   for i, w, t, n, f, to, a, fs, d in rows)
+    foot = (",,,,,,,,,,,,,,,,,$0.00,$0.00,,$0.00,\"In case of errors or questions...\"\n"
+            ",Cryptocurrency summary,,,,,,,,,,,,,,,,,,,,\n,,Bitcoin,,,,,,,,,,,,,,,,,,,\n"
+            ",Available beginning,0e-18,,,,,,,,,,,,,,,,,,,\n")
+    p = _parse(head + body + foot, "VenmoStatement_January_2026.csv")
+    assert p.format == "venmo" and p.bank_hint == "venmo" and not p.problems
+    assert [(r.description, r.amount, r.balance) for r in p.rows] == [
+        ("Sam Roe · pizza", Decimal("-30.00"), Decimal("130.00")),
+        ("Sam Roe", Decimal("20.00"), Decimal("110.00")),
+        ("Transfer to Chase", Decimal("110.00"), Decimal("0.00")),  # ends on the statement's closing balance
+    ]
+    assert p.rows[0].fitid == "venmo:4400000000000000001" and p.rows[0].date == date(2026, 1, 3)
+    assert p.notes[0].startswith("1 payment made straight from a bank account or card is left out")
+    assert "cancelled" in p.notes[1]
+    # A closing balance the rows don't reach: the rows stay, the balances don't.
+    off = _parse(head + body + foot.replace(",,,,,,,,,,,,,,,,,$0.00,", ",,,,,,,,,,,,,,,,,$9.00,"), "v.csv")
+    assert len(off.rows) == 3 and all(r.balance is None for r in off.rows)
+
+
+def test_a_header_may_sit_over_an_opening_balance_line():
+    p = _parse("Date,Description,Amount,Balance\n,,,500.00\n"
+               "10/01/2026,COFFEE,-4.00,496.00\n10/02/2026,LUNCH,-16.00,480.00\n10/03/2026,PAY,1000.00,1480.00\n")
+    assert p.mapping.header_row == 0 and len(p.rows) == 3
+
+
 def test_ofx_uses_the_bank_ids_and_never_keeps_the_account_number():
     text = """OFXHEADER:100
 <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><BANKID>021000021<ACCTID>000123456789<ACCTTYPE>CHECKING

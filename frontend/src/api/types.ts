@@ -668,7 +668,8 @@ export interface ImportRowView {
   match: { date: string; name: string; amount: number; source: string } | null;
 }
 export interface ImportPreview {
-  format: "csv" | "ofx";
+  /** venmo: a Venmo statement, read by its own layout (no columns to confirm). */
+  format: "csv" | "ofx" | "venmo";
   account_id: string | null;
   account_hint: string | null;
   columns: ImportColumn[];
@@ -681,6 +682,8 @@ export interface ImportPreview {
   counts: { total: number; new?: number; review?: number; matched?: number; duplicate?: number; problems?: number };
   balances?: { days: number; from: string; to: string } | null;
   problems: string[];
+  /** What the reader left out on purpose, and why (bank-funded Venmo payments). */
+  notes?: string[];
   rows: ImportRowView[];
   rows_shown?: number;
 }

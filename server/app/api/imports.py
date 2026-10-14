@@ -80,7 +80,8 @@ def preview(body: FileIn, _: Principal = Depends(dashboard_only), sess: Session 
                 "columns": [{"index": c.index, "header": c.header, "samples": c.samples, "role": c.role}
                             for c in parsed.columns],
                 "mapping": parsed.mapping.json() if parsed.mapping else None, "date_ambiguous": parsed.date_ambiguous,
-                "counts": {"total": len(parsed.rows)}, "rows": [], "problems": parsed.problems[:20]}
+                "counts": {"total": len(parsed.rows)}, "rows": [], "problems": parsed.problems[:20],
+                "notes": parsed.notes}
     return {**importer.preview(sess, a, parsed), "account_hint": parsed.account_hint}
 
 

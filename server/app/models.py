@@ -250,7 +250,7 @@ class Import(TimestampMixin, Base):
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     filename: Mapped[str] = mapped_column(String(200), nullable=False)
     file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    format: Mapped[str] = mapped_column(String(8), nullable=False)  # csv | ofx
+    format: Mapped[str] = mapped_column(String(8), nullable=False)  # csv | ofx | venmo
     mapping: Mapped[dict | None] = mapped_column(JSONB)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     date_from: Mapped[date | None] = mapped_column(Date)

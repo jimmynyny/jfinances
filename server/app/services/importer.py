@@ -172,10 +172,17 @@ def read(sess: Session, a: Account, raw: bytes, filename: str, mapping: st.Mappi
 
 def suggest_account(sess: Session, p: st.Parsed) -> Account | None:
     """The account a file most likely belongs to: the last four digits in it or its
-    name, else the account this bank's layout was last imported into."""
+    name, the institution it names (a Venmo statement), else the account this
+    bank's layout was last imported into."""
     accounts = [a for a in sess.execute(select(Account)).scalars() if importable(a)]
     if p.account_hint:
         hits = [a for a in accounts if a.mask == p.account_hint]
+        if len(hits) == 1:
+            return hits[0]
+    if p.bank_hint:
+        def names(a: Account) -> str:
+            return f"{a.name} {a.official_name or ''} {a.item.institution_name if a.item else ''}".lower()
+        hits = [a for a in accounts if p.bank_hint in names(a)]
         if len(hits) == 1:
             return hits[0]
     if p.signature:
@@ -374,6 +381,7 @@ def preview(sess: Session, a: Account, p: st.Parsed) -> dict:
         "balances": {"days": len(balances), "from": min(balances).isoformat(), "to": max(balances).isoformat()}
         if balances else None,
         "problems": p.problems[:20],
+        "notes": p.notes,
         "rows": [_row_json(c) for c in newest[:SHOWN_ROWS]],
         "rows_shown": min(SHOWN_ROWS, len(newest)),
     }
@@ -425,12 +433,12 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
         sess.add_all([BalanceSnapshot(account_id=a.id, as_of=d, current_balance=v, source="import",
                                       note=f"import:{imp.id}") for d, v in balances.items()])
     imp.rows_added, imp.rows_matched, imp.rows_skipped, imp.balances_added = added, matched, skipped, len(balances)
-    if p.format == "csv" and p.signature and p.mapping is not None:
+    if p.signature and (p.mapping is not None or p.format == "venmo"):  # next time: these columns, this account
         prof = sess.execute(select(ImportProfile).where(ImportProfile.signature == p.signature)).scalar_one_or_none()
         if prof is None:
             prof = ImportProfile(signature=p.signature, mapping={})
             sess.add(prof)
-        prof.mapping, prof.account_id = p.mapping.json(), a.id
+        prof.mapping, prof.account_id = p.mapping.json() if p.mapping is not None else {}, a.id
     sess.flush()
     _rederive(sess, a)
     return imp
