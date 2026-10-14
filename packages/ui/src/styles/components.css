@@ -323,3 +323,25 @@
   filter: blur(5px);
   user-select: none;
 }
+
+/* Dashboard: a person's widgets in a 1-3 column grid (.mu-dash--cols-N). A widget spans narrow (one column),
+   wide (two) or full (all); below 900px everything stacks. Editing frames each widget with its tools. */
+.mu-dash { display: grid; gap: var(--mu-s4); grid-template-columns: repeat(var(--mu-dash-cols, 2), minmax(0, 1fr)); align-items: start; }
+.mu-dash--cols-1 { --mu-dash-cols: 1; }
+.mu-dash--cols-2 { --mu-dash-cols: 2; }
+.mu-dash--cols-3 { --mu-dash-cols: 3; }
+.mu-dash__item { min-width: 0; grid-column: span 1; }
+.mu-dash--cols-2 .mu-dash__item--wide, .mu-dash--cols-2 .mu-dash__item--full { grid-column: span 2; }
+.mu-dash--cols-3 .mu-dash__item--wide { grid-column: span 2; }
+.mu-dash--cols-3 .mu-dash__item--full { grid-column: span 3; }
+@media (max-width: 900px) {
+  .mu-dash { grid-template-columns: minmax(0, 1fr); }
+  .mu-dash .mu-dash__item { grid-column: span 1; }
+}
+.mu-dash--editing .mu-dash__item { outline: 1px dashed var(--mu-line-strong); outline-offset: 6px; border-radius: var(--mu-radius); }
+.mu-dash__tools { display: flex; align-items: center; gap: var(--mu-s2); flex-wrap: wrap; margin-bottom: var(--mu-s2); }
+.mu-dash__tools-name { flex: 1 1 auto; font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-2); }
+.mu-dash__handle { all: unset; cursor: grab; touch-action: none; padding: 4px; color: var(--mu-ink-2); display: inline-flex; }
+.mu-dash__handle:focus-visible { box-shadow: var(--mu-focus); }
+.mu-dash__item--dragging { opacity: 0.65; z-index: 2; }
+.mu-dash__settings { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); }

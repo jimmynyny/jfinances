@@ -22,8 +22,8 @@ function Body({ q, height = 220, children }: { q: { error: unknown; data: unknow
   return <>{children()}</>;
 }
 
-export function NetWorthClassesView({ actions }: { actions?: ReactNode }) {
-  const [range, setRange] = useState("2y");
+export function NetWorthClassesView({ actions, initialRange = "2y" }: { actions?: ReactNode; initialRange?: string }) {
+  const [range, setRange] = useState(initialRange);
   const q = useNetWorthByClass(range);
   return (
     <Panel caption="net worth by kind" actions={<>{actions}<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>
@@ -141,8 +141,8 @@ export function LoansView({ actions }: { actions?: ReactNode }) {
   );
 }
 
-export function CardsView({ actions }: { actions?: ReactNode }) {
-  const [range, setRange] = useState("1y");
+export function CardsView({ actions, initialRange = "1y" }: { actions?: ReactNode; initialRange?: string }) {
+  const [range, setRange] = useState(initialRange);
   const q = useCardsInsight(range);
   return (
     <Panel caption="cards" actions={<>{actions}<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>

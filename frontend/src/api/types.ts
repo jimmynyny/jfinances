@@ -560,3 +560,22 @@ export interface CardsInsight {
   charges: Array<{ month: string; interest: number; fees: number }>;
   totals: { interest: number; fees: number };
 }
+
+// --- Dashboard (GET /dashboard; docs/80 "Dashboard") -------------------------------------------
+
+export type WidgetSize = "narrow" | "wide" | "full";
+
+export interface DashboardWidget {
+  id: string;
+  /** A key in frontend/src/dashboard/registry.tsx (and api/dashboard.py VIEWS). */
+  view: string;
+  /** What the view showed when it was pinned (range, grain, scope, account, category, ...). */
+  settings: Record<string, unknown>;
+  size: WidgetSize;
+  position: number;
+}
+
+export interface Dashboard {
+  columns: 1 | 2 | 3;
+  widgets: DashboardWidget[];
+}

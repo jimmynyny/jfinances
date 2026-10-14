@@ -153,6 +153,12 @@ changed by detection; a found stream updates the row for the same merchant
 whose amount is close (same cadence preferred). Overdue by more than the
 cadence's tolerance = lapsed (computed, not stored).
 
+## dashboard_widgets
+Each person's Overview (`api/dashboard.py`): `user_id`, `view` (a key in VIEWS),
+`settings` JSONB (what the view showed when pinned), `size` (`narrow`, `wide`,
+`full`), `position`. `users.dashboard_columns` (1-3) is null until the first read,
+which seeds the default widgets, so an emptied dashboard stays empty.
+
 ## price_points
 Daily closes from public market data (docs/30 "Market data"): `(series, date)`
 primary key, `close`. `series` is `provider:CODE`: `fred:SP500`, `tiingo:SPY`

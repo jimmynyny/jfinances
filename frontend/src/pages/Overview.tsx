@@ -1,48 +1,38 @@
-import { Fragment, useMemo, useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
-  AreaChart, Badge, Delta, EmptyState, Money, Num, Page, PageHeader, Panel, PixelCalendar, PixelMeter, Readout, Segmented, Skeleton,
-  formatDate, formatMoney, seriesColor, type CalendarDay,
-} from "@mooney/ui";
-import { useHistory, useOverview } from "../api/hooks";
-import type { Account, NetWorthPoint, OverviewGroup, Range } from "../api/types";
+  DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge, Button, EmptyState, Page, PageHeader, Segmented, Select, Skeleton, formatDate, useToast } from "@mooney/ui";
+import { ApiError, api } from "../api/client";
+import { useDashboard, useDashboardChange, useOverview } from "../api/hooks";
+import type { Dashboard, DashboardWidget, WidgetSize } from "../api/types";
 import { ConnectButton } from "../components/ConnectButton";
-import { AccountRow } from "../components/AccountRow";
-import { AccountDetail } from "../components/AccountDetail";
-import { ChevronIcon } from "../components/Icons";
-import { AlertsView, UpcomingView } from "../insights/subscriptions";
 import { ErrorNote } from "../components/ErrorNote";
-import { ASSET_GROUPS, LIABILITY_GROUPS, upIsGood } from "../lib/groups";
+import { GripIcon } from "../components/AccountRow";
+import { VIEWS } from "../dashboard/registry";
 
-const RANGES: Array<{ value: Range; label: string }> = [
-  { value: "1m", label: "1m" }, { value: "3m", label: "3m" }, { value: "6m", label: "6m" }, { value: "1y", label: "1y" }, { value: "all", label: "all" },
+const SIZES: Array<{ value: WidgetSize; label: string }> = [
+  { value: "narrow", label: "narrow" }, { value: "wide", label: "wide" }, { value: "full", label: "full" },
 ];
+const COLUMNS: Array<{ value: "1" | "2" | "3"; label: string }> = [{ value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }];
 
-/** Colour follows the group, never its rank or which groups happen to be non-empty.
- *  Assets take slots 1-4, liabilities 5-6, the "other" groups the neutral. */
-const GROUP_SLOT: Record<string, number> = { cash: 0, investments: 1, real_estate: 2, vehicles: 3, credit_cards: 4, loans: 5 };
-const groupColor = (key: string) => (key in GROUP_SLOT ? seriesColor(GROUP_SLOT[key]!) : seriesColor(99));
-
-const signed = (v: number) => `${v > 0 ? "+" : ""}${formatMoney(v, { cents: false })}`;
-
-/** Day-over-day change in net worth from daily history points. */
-function dailyChange(points: NetWorthPoint[] | undefined): CalendarDay[] {
-  if (!points || points.length < 2) return [];
-  return points.slice(1).map((p, i) => ({ date: p.date, value: Math.round((p.net - points[i]!.net) * 100) / 100 }));
-}
-
+/**
+ * Overview: each person's dashboard, an ordered grid of widgets (GET
+ * /dashboard). Overview's own sections are widgets too, so everything can be
+ * rearranged, resized or removed; Insights views arrive with "Pin". Edit
+ * mode shows the tools: drag (pointer or keyboard), size, remove, columns,
+ * add a view, reset to the default.
+ */
 export function OverviewPage() {
-  const [range, setRange] = useState<Range>("3m");
   const ov = useOverview();
-  const hist = useHistory(range);
-  const year = useHistory("1y");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [detail, setDetail] = useState<{ account: Account; good: boolean } | null>(null);
-  const days = useMemo(() => dailyChange(year.data?.points), [year.data]);
-  const est = hist.data?.estimated_before;
+  const dash = useDashboard();
+  const [editing, setEditing] = useState(false);
 
   if (ov.error) return <Page><ErrorNote error={ov.error} retry={() => ov.refetch()} /></Page>;
-
   const d = ov.data;
   if (d && d.account_count === 0) {
     return (
@@ -57,20 +47,19 @@ export function OverviewPage() {
       </Page>
     );
   }
-
-  // Empty groups stay out of the lists and meters.
-  const groups = (d?.groups ?? []).filter((g) => g.accounts.length > 0);
-  const assetsGroups = groups.filter((g) => ASSET_GROUPS.includes(g.key));
-  const liabGroups = groups.filter((g) => LIABILITY_GROUPS.includes(g.key));
   const attention = d?.items_needing_attention ?? [];
-  const visibleCount = groups.reduce((n, g) => n + g.accounts.filter((a) => !a.is_hidden).length, 0);
 
   return (
     <Page>
       <PageHeader
         title="Overview"
         subtitle={d ? <>As of {d.as_of ? formatDate(d.as_of, { year: true }) : "today"}</> : <Skeleton width={140} />}
-        actions={<ConnectButton size="sm" />}
+        actions={<>
+          <Button size="sm" variant={editing ? "primary" : "quiet"} aria-pressed={editing} onClick={() => setEditing((e) => !e)}>
+            {editing ? "Done" : "Edit dashboard"}
+          </Button>
+          <ConnectButton size="sm" />
+        </>}
       />
 
       {attention.length > 0 && (
@@ -84,114 +73,136 @@ export function OverviewPage() {
         </div>
       )}
 
-      {/* The one loud thing on the page: the LED readout over the dot-matrix history. */}
-      <Panel marks className="jf-hero" caption="net worth" actions={<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" />}>
-        {d ? (
-          <Readout
-            value={formatMoney(d.net_worth, { cents: false })}
-            delta={d.change_1m ? <Delta amount={d.change_1m.amount} pct={d.change_1m.pct ?? undefined} label="1 month" /> : undefined}
-            note={<><Num>{formatMoney(d.assets, { cents: false })}</Num> assets − <Num>{formatMoney(d.liabilities, { cents: false })}</Num> liabilities</>}
-          />
-        ) : <Skeleton width={320} height={56} />}
-        <div className="jf-hero__chart">
-          {hist.data && hist.data.points.length > 1 ? (
-            <AreaChart data={hist.data.points} series={[{ key: "net", label: "Net worth" }]} height={240} stale={hist.isFetching} formatTooltipValue={(v) => formatMoney(v)} ariaLabel="Net worth over time" />
-          ) : hist.isLoading ? (
-            <Skeleton height={240} />
+      {dash.error ? <ErrorNote error={dash.error} retry={() => dash.refetch()} /> : !dash.data ? <Skeleton lines={8} height={40} /> : (
+        <>
+          {editing && <Tools dash={dash.data} />}
+          {dash.data.widgets.length === 0 ? (
+            <EmptyState glyph="▦" title="An empty dashboard" description="Pin views from Insights, or add one with Edit dashboard." />
           ) : (
-            <EmptyState glyph="~" title="Not enough history yet" description="Bank and card balances are rebuilt from transactions after the first sync, and a snapshot is taken every morning." />
+            <Grid dash={dash.data} editing={editing} />
           )}
-        </div>
-        {est && (
-          <p className="mu-caption">
-            Before {formatDate(est, { year: true })} the line is estimated: bank and card balances are rebuilt from transactions;
-            investments, loans and property are held at their first recorded value.
-          </p>
-        )}
-      </Panel>
-
-      <div className="mu-grid mu-grid--3">
-        <Panel caption="assets"><Split total={d?.assets} groups={assetsGroups} /></Panel>
-        <Panel caption="liabilities"><Split total={d?.liabilities} groups={liabGroups} /></Panel>
-        <Panel caption="accounts">
-          {d ? (
-            <div className="jf-figure">
-              <div className="jf-figure__value">{visibleCount}<span className="jf-figure__unit">accounts</span></div>
-              <div className="mu-stack" style={{ gap: 6 }}>
-                <span className="mu-row">
-                  <Badge tone={attention.length ? "warn" : "good"}>{attention.length ? `${attention.length} need attention` : "all syncing"}</Badge>
-                </span>
-                <span className="mu-caption">across {groups.length} groups</span>
-                <Link to="/accounts" className="mu-caption">manage accounts</Link>
-              </div>
-            </div>
-          ) : <Skeleton lines={3} />}
-        </Panel>
-      </div>
-
-      <div className="mu-grid mu-grid--2">
-        <UpcomingView />
-        <AlertsView />
-      </div>
-
-      <Panel marks caption="daily change · last 12 months">
-        {days.length > 7 ? (
-          <PixelCalendar days={days} formatValue={signed} maxCell={9} />
-        ) : year.isLoading ? <Skeleton height={120} /> : <span className="mu-caption">The calendar fills in as daily snapshots accumulate.</span>}
-      </Panel>
-
-      <div className="mu-stack">
-        {d ? groups.map((g) => {
-          const open = !collapsed[g.key];
-          const good = upIsGood(g.key);
-          return (
-            <Panel key={g.key} flush className="jf-group">
-              <div className="jf-group__head">
-                <button className="jf-group__toggle" onClick={() => setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))} aria-expanded={open}>
-                  <span className="mu-muted"><ChevronIcon open={open} /></span>
-                  <span className="mu-cell" style={{ background: groupColor(g.key) }} aria-hidden />
-                  <span className="jf-group__title">
-                    {g.label}
-                    {g.change_1m && <Delta amount={g.change_1m.amount} pct={g.change_1m.pct ?? undefined} label="1 month" upIsGood={good} />}
-                  </span>
-                </button>
-                <Money value={g.total} cents={false} mono={false} style={{ fontWeight: 600 }} />
-              </div>
-              {open && g.accounts.filter((a) => !a.is_hidden).map((a) => (
-                <AccountRow key={a.id} account={a} upIsGood={good} onOpen={() => setDetail({ account: a, good })} />
-              ))}
-            </Panel>
-          );
-        }) : <Skeleton lines={6} height={40} />}
-      </div>
-
-      <AccountDetail account={detail?.account ?? null} upIsGood={detail?.good} onClose={() => setDetail(null)} />
+        </>
+      )}
     </Page>
   );
 }
 
-/** A total, a segmented cell meter (one segment per group), and the rows that are its table. */
-function Split({ total, groups }: { total?: number; groups: OverviewGroup[] }) {
-  if (total === undefined) return <Skeleton lines={4} />;
-  const denom = groups.reduce((s, g) => s + Math.max(0, g.total), 0);
+function Tools({ dash }: { dash: Dashboard }) {
+  const qc = useQueryClient();
+  const { toast, error } = useToast();
+  const columns = useDashboardChange((c: 1 | 2 | 3) => api.setColumns(c));
+  const add = useDashboardChange(api.pinWidget);
+  const reset = useDashboardChange(() => api.resetDashboard());
+  const [confirming, setConfirming] = useState(false);
+  const fail = (e: unknown) => error(e instanceof ApiError ? e.message : "Could not save. Try again.");
   return (
-    <div className="jf-figure">
-      <div className="jf-figure__value"><Num>{formatMoney(total, { cents: false })}</Num></div>
-      {groups.length > 0 ? (
-        <>
-          <PixelMeter size="lg" cells={30} segments={groups.map((g) => ({ value: Math.max(0, g.total), color: groupColor(g.key), label: g.label }))} />
-          <div className="jf-split__rows">
-            {groups.map((g) => (
-              <Fragment key={g.key}>
-                <span className="mu-cell" style={{ background: groupColor(g.key) }} aria-hidden />
-                <span>{g.label}</span>
-                <span className="mu-caption"><Num>{denom > 0 ? `${Math.round((Math.max(0, g.total) / denom) * 100)}%` : ""}</Num></span>
-                <Money value={g.total} cents={false} />
-              </Fragment>
-            ))}
-          </div>
-        </>
-      ) : <span className="mu-caption">none</span>}
+    <div className="mu-filters">
+      <div className="mu-field">
+        <span className="mu-label">Columns</span>
+        <Segmented options={COLUMNS} value={String(dash.columns) as "1" | "2" | "3"} aria-label="Columns"
+          onChange={(v) => {
+            qc.setQueryData<Dashboard>(["dashboard"], (old) => (old ? { ...old, columns: Number(v) as 1 | 2 | 3 } : old));
+            columns.mutate(Number(v) as 1 | 2 | 3, { onError: fail });
+          }} />
+      </div>
+      <Select label="Add a view" placeholder="Choose…" value="" style={{ minWidth: 200 }}
+        options={Object.entries(VIEWS).map(([key, v]) => ({ value: key, label: v.label }))}
+        onChange={(e) => e.target.value && add.mutate({ view: e.target.value }, { onSuccess: () => toast("Added to the end"), onError: fail })} />
+      <div className="mu-field">
+        <span className="mu-label">&nbsp;</span>
+        {confirming ? (
+          <span className="mu-row">
+            <Button size="sm" variant="danger" loading={reset.isPending}
+              onClick={() => reset.mutate(undefined, { onSuccess: () => { setConfirming(false); toast("Back to the default"); }, onError: fail })}>
+              Reset everything
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>Cancel</Button>
+          </span>
+        ) : (
+          <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>Reset to default</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Grid({ dash, editing }: { dash: Dashboard; editing: boolean }) {
+  const qc = useQueryClient();
+  const { error } = useToast();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const ids = dash.widgets.map((w) => w.id);
+  const save = (order: string[]) => {
+    const byId = new Map(dash.widgets.map((w) => [w.id, w]));
+    qc.setQueryData<Dashboard>(["dashboard"], { ...dash, widgets: order.map((id, i) => ({ ...byId.get(id)!, position: i })) });
+    api.reorderWidgets(order).then((d) => qc.setQueryData(["dashboard"], d)).catch((err: unknown) => {
+      error(err instanceof ApiError ? err.message : "Could not save the new order");
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    });
+  };
+  const onDragEnd = (e: DragEndEvent) => {
+    if (!e.over || e.active.id === e.over.id) return;
+    save(arrayMove(ids, ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))));
+  };
+  // Buttons do the same without dragging (phones, or anyone who prefers them).
+  const move = (id: string, by: -1 | 1) => {
+    const from = ids.indexOf(id);
+    const to = from + by;
+    if (to >= 0 && to < ids.length) save(arrayMove(ids, from, to));
+  };
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}
+      accessibility={{ screenReaderInstructions: { draggable: "To move a widget, focus its handle and press space or enter, use the arrow keys, then space or enter to drop it, or escape to cancel." } }}>
+      <SortableContext items={ids} strategy={rectSortingStrategy}>
+        <div className={`mu-dash mu-dash--cols-${dash.columns}${editing ? " mu-dash--editing" : ""}`}>
+          {dash.widgets.map((w, i) => (
+            <Widget key={w.id} w={w} editing={editing} first={i === 0} last={i === dash.widgets.length - 1} onMove={(by) => move(w.id, by)} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function Widget({ w, editing, first, last, onMove }: {
+  w: DashboardWidget;
+  editing: boolean;
+  first: boolean;
+  last: boolean;
+  onMove: (by: -1 | 1) => void;
+}) {
+  const qc = useQueryClient();
+  const { error } = useToast();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: w.id, disabled: !editing });
+  const resize = useDashboardChange((size: WidgetSize) => api.updateWidget(w.id, { size }));
+  const remove = useDashboardChange(() => api.removeWidget(w.id));
+  const def = VIEWS[w.view];
+  const label = def?.label ?? w.view;
+  const settings = def?.describe?.(w.settings);
+  const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition };
+  const fail = (e: unknown) => error(e instanceof ApiError ? e.message : "Could not save. Try again.");
+  return (
+    <div ref={setNodeRef} style={style} className={`mu-dash__item mu-dash__item--${w.size}${isDragging ? " mu-dash__item--dragging" : ""}`}>
+      {editing && (
+        <div className="mu-dash__tools">
+          <button type="button" className="mu-dash__handle" ref={setActivatorNodeRef} aria-label={`Move ${label}`} {...attributes} {...listeners}>
+            <GripIcon />
+          </button>
+          <span className="mu-dash__tools-name">{label}{settings ? ` · ${settings}` : ""}</span>
+          <Segmented size="sm" options={SIZES} value={w.size} aria-label={`${label} size`}
+            onChange={(size) => {
+              qc.setQueryData<Dashboard>(["dashboard"], (old) => old && { ...old, widgets: old.widgets.map((x) => (x.id === w.id ? { ...x, size } : x)) });
+              resize.mutate(size, { onError: fail });
+            }} />
+          <Button size="sm" variant="quiet" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${label} earlier`}>←</Button>
+          <Button size="sm" variant="quiet" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${label} later`}>→</Button>
+          <Button size="sm" variant="quiet" loading={remove.isPending} onClick={() => remove.mutate(undefined, { onError: fail })}>Remove</Button>
+        </div>
+      )}
+      {def ? def.render(w.settings, !editing && settings ? <span className="mu-dash__settings">{settings}</span> : undefined)
+        : <EmptyState glyph="?" title={`Unknown view "${w.view}"`} description="Remove it in Edit dashboard." />}
     </div>
   );
 }

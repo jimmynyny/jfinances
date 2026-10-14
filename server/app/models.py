@@ -63,6 +63,9 @@ class User(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")  # owner | member
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Overview's grid: 1, 2 or 3 columns. Null until the dashboard is first
+    #: read, which seeds the default widgets (so an emptied one stays empty).
+    dashboard_columns: Mapped[int | None] = mapped_column(Integer)
 
 
 class ApiToken(TimestampMixin, Base):
@@ -355,6 +358,21 @@ class PricePoint(Base):
     series: Mapped[str] = mapped_column(String(48), primary_key=True)
     date: Mapped[date] = mapped_column(Date, primary_key=True)
     close: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+
+
+class DashboardWidget(TimestampMixin, Base):
+    """One card on a person's Overview: a built-in section or an Insights view
+    pinned with the settings it had (api/dashboard.py VIEWS). Each person
+    arranges their own; `size` spans narrow (one column), wide (two) or full."""
+    __tablename__ = "dashboard_widgets"
+    __table_args__ = (Index("ix_dashboard_widgets_user", "user_id", "position"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    view: Mapped[str] = mapped_column(String(40), nullable=False)
+    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    size: Mapped[str] = mapped_column(String(8), nullable=False, default="wide")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 # ---------------------------------------------------------------------------

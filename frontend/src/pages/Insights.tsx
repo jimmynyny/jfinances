@@ -9,6 +9,7 @@ import {
   CashflowView, CompareView, IncomeSourcesView, MerchantsView, MoneyFlowView, PatternsView, SpendingView,
 } from "../insights/views";
 import { CardsView, HomesView, LoansView, NetWorthClassesView } from "../insights/wealth";
+import { PinButton } from "../dashboard/PinButton";
 
 type Tab = "cashflow" | "spending" | "subscriptions" | "wealth";
 const TABS: Array<{ value: Tab; label: string }> = [
@@ -36,6 +37,9 @@ export function InsightsPage() {
   const accounts = useAccounts();
   const slice = useMemo(() => sliceOf({ range, grain, scope, accountId: accountId || undefined }), [range, grain, scope, accountId]);
   const sliced = tab === "cashflow" || tab === "spending";
+  // What a pinned copy keeps: these settings, re-read each time it is shown (ranges keep rolling).
+  const pinned = { range, grain, scope, accountId: accountId || undefined };
+  const pin = (view: string, extra: Record<string, unknown> = {}) => <PinButton view={view} settings={{ ...pinned, ...extra }} />;
 
   return (
     <Page>
@@ -65,40 +69,40 @@ export function InsightsPage() {
 
       {tab === "cashflow" && (
         <>
-          <CashflowView slice={slice} grain={grain} />
+          <CashflowView slice={slice} grain={grain} actions={pin("cashflow")} />
           <div className="mu-grid mu-grid--main">
-            <MoneyFlowView slice={slice} grain={grain} />
-            <IncomeSourcesView slice={slice} grain={grain} />
+            <MoneyFlowView slice={slice} grain={grain} actions={pin("money_flow")} />
+            <IncomeSourcesView slice={slice} grain={grain} actions={pin("income_sources")} />
           </div>
         </>
       )}
       {tab === "spending" && (
         <>
-          <SpendingView slice={slice} grain={grain} category={category} onCategory={setCategory} />
-          <MerchantsView slice={slice} category={category} />
+          <SpendingView slice={slice} grain={grain} category={category} onCategory={setCategory} actions={pin("spending", { category })} />
+          <MerchantsView slice={slice} category={category} actions={pin("merchants", { category })} />
           <div className="mu-grid mu-grid--main">
-            <PatternsView slice={slice} category={category} />
-            <CompareView slice={slice} category={category} />
+            <PatternsView slice={slice} category={category} actions={pin("patterns", { category })} />
+            <CompareView slice={slice} category={category} actions={pin("compare", { category })} />
           </div>
         </>
       )}
       {tab === "subscriptions" && (
         <div className="mu-grid mu-grid--main">
-          <SubscriptionsView />
+          <SubscriptionsView actions={<PinButton view="subscriptions" />} />
           <div className="mu-stack">
-            <UpcomingView />
-            <AlertsView />
+            <UpcomingView actions={<PinButton view="upcoming" settings={{ days: 30 }} />} />
+            <AlertsView actions={<PinButton view="alerts" />} />
           </div>
         </div>
       )}
       {tab === "wealth" && (
         <>
-          <NetWorthClassesView />
+          <NetWorthClassesView actions={<PinButton view="networth_classes" />} />
           <div className="mu-grid mu-grid--2">
-            <HomesView />
-            <LoansView />
+            <HomesView actions={<PinButton view="homes" />} />
+            <LoansView actions={<PinButton view="loans" />} />
           </div>
-          <CardsView />
+          <CardsView actions={<PinButton view="cards" />} />
         </>
       )}
     </Page>

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   AreaChart, Button, Checkbox, EmptyState, Panel, Segmented, Select, Skeleton, StatTile, formatDate, formatMoney, useToast,
 } from "@mooney/ui";
@@ -7,6 +7,7 @@ import { usePerformance, useRefreshPrices } from "../api/hooks";
 import type { PerfRange } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
 import { useStoredChoice, useStoredSet } from "../lib/storedView";
+import { PinButton } from "../dashboard/PinButton";
 
 /**
  * Investment performance (GET /investments/performance): time-weighted
@@ -18,22 +19,30 @@ import { useStoredChoice, useStoredSet } from "../lib/storedView";
 const RANGES: Array<{ value: PerfRange; label: string }> = [
   { value: "3m", label: "3m" }, { value: "6m", label: "6m" }, { value: "1y", label: "1y" }, { value: "2y", label: "2y" }, { value: "5y", label: "5y" },
 ];
-const RANGE_KEYS = RANGES.map((r) => r.value);
-const BENCH_KEYS = ["sp500", "dow", "nasdaq100", "bitcoin", "world", "bonds", "gold", "sixty_forty", "inflation"] as const;
-type BenchKey = (typeof BENCH_KEYS)[number];
+export const PERF_RANGE_KEYS = RANGES.map((r) => r.value);
+export const BENCH_KEYS = ["sp500", "dow", "nasdaq100", "bitcoin", "world", "bonds", "gold", "sixty_forty", "inflation"] as const;
+export type BenchKey = (typeof BENCH_KEYS)[number];
 
 type Row = { date: string; [series: string]: number | string };
 
 const pct = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 
-export function PerformanceView({ accounts, accountId, onAccount, actions }: {
+export function PerformanceView({ accounts, accountId, onAccount, actions, pinned, pinnable }: {
   accounts: Array<{ id: string; name: string }>;
   accountId: string;
   onAccount: (id: string) => void;
   actions?: ReactNode;
+  /** A pinned dashboard copy starts from its saved range and benchmarks instead of the remembered ones. */
+  pinned?: { range: PerfRange; benchmarks: BenchKey[] };
+  /** Offer "Pin" (on the Investments page; not on a pinned copy). */
+  pinnable?: boolean;
 }) {
-  const [range, setRange] = useStoredChoice("jf.perf.range", RANGE_KEYS, "1y");
-  const [benches, setBenches] = useStoredSet<BenchKey>("jf.perf.benchmarks", BENCH_KEYS, ["sp500"]);
+  const stored = useStoredChoice("jf.perf.range", PERF_RANGE_KEYS, "1y");
+  const storedBenches = useStoredSet<BenchKey>("jf.perf.benchmarks", BENCH_KEYS, ["sp500"]);
+  const local = useState<PerfRange>(pinned?.range ?? "1y");
+  const localBenches = useState<BenchKey[]>(pinned?.benchmarks ?? ["sp500"]);
+  const [range, setRange] = pinned ? local : stored;
+  const [benches, setBenches] = pinned ? localBenches : storedBenches;
   const q = usePerformance({ range, account_id: accountId || undefined, benchmarks: benches });
   const refresh = useRefreshPrices();
   const { toast, error } = useToast();
@@ -67,7 +76,7 @@ export function PerformanceView({ accounts, accountId, onAccount, actions }: {
 
   return (
     <Panel marks caption={accountId ? <>performance · {accounts.find((a) => a.id === accountId)?.name ?? "account"}</> : "performance"}
-      actions={<>{actions}<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>
+      actions={<>{actions}{pinnable && <PinButton view="performance" settings={{ range, benchmarks: benches, accountId: accountId || undefined }} />}<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>
       <div className="mu-stack">
         <div className="mu-filters">
           <Select label="Account" placeholder="All investment accounts" value={accountId} onChange={(e) => onAccount(e.target.value)}

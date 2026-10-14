@@ -72,6 +72,12 @@ export const useLoanPayoffs = (extra: number) =>
   useQuery({ queryKey: ["insights", "loans", extra], queryFn: () => api.loanPayoffs(extra), placeholderData: (prev) => prev });
 export const useCardsInsight = (range: string) =>
   useQuery({ queryKey: ["insights", "cards", range], queryFn: () => api.cardsInsight(range), placeholderData: (prev) => prev });
+// Dashboard: every change answers with the new dashboard (or is refetched), so one cache key.
+export const useDashboard = () => useQuery({ queryKey: ["dashboard"], queryFn: api.dashboard });
+export function useDashboardChange<V>(fn: (v: V) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => void qc.invalidateQueries({ queryKey: ["dashboard"] }) });
+}
 export const usePatterns = (s: InsightSlice, category?: string | null) =>
   useQuery({ queryKey: ["insights", "patterns", s, category ?? null], queryFn: () => api.insightPatterns(s, category), placeholderData: (prev) => prev });
 export const useInvestmentActivity = () => useQuery({ queryKey: [...qk.holdings, "activity"], queryFn: () => api.holdingsTransactions({ limit: 200 }) });

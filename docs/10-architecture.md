@@ -241,6 +241,7 @@ All routes require a principal except `/healthz`. Errors are
 | `GET /liabilities` | liability details per account |
 | `GET /insights/{cashflow,spending,compare,merchants,patterns}` | Insights slices of transactions (docs/80 "Insights") |
 | `GET /insights/{networth,homes,loans,cards}` | net worth by kind, home equity, loan payoff, card costs |
+| `GET/POST/PATCH/DELETE /dashboard…` | each person's Overview widgets (docs/80 "Dashboard") |
 | `GET/PATCH /recurring…`, `GET /alerts`, `POST /alerts/dismiss` | subscriptions found in transactions, alerts (docs/80) |
 | `GET /sync/status` | items with last sync, queued/running jobs, last webhook |
 | `GET /healthz` | `{ok:true, service, env, db:"ok"}` (public) |
@@ -251,7 +252,7 @@ Hooks service: `POST /plaid/webhook` (verified), `GET /healthz`.
 
 Vite + React 19 + TypeScript. Lives in `frontend/`. Consumes the design
 system in `packages/ui` (workspace package `@mooney/ui`). Routes:
-`/` overview, `/accounts`, `/transactions`, `/insights` (cash flow, money flow,
+`/` overview (each person's dashboard: widgets in `frontend/src/dashboard/`, pinned from Insights), `/accounts`, `/transactions`, `/insights` (cash flow, money flow,
 income sources, spending by category with drill-down, merchants, patterns,
 a year-earlier comparison, subscriptions, upcoming charges and alerts; views in
 `frontend/src/insights/`), `/investments`, `/liabilities`,

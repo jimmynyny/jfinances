@@ -702,3 +702,44 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     assert found["large"]["merchant"] == "Shell" and found["large"]["usual"] == "45.00"
     assert client.post("/api/v1/alerts/dismiss", json={"key": found["duplicate"]["key"]}).status_code == 204
     assert "duplicate" not in {a["kind"] for a in client.get("/api/v1/alerts").json()["alerts"]}
+
+
+def test_dashboard_is_per_person_seeded_pinned_and_arranged(client):
+    from server.app.models import DashboardWidget, User
+
+    d = client.get("/api/v1/dashboard").json()  # first read: Overview as it always was
+    assert d["columns"] == 2 and [w["view"] for w in d["widgets"]] == [
+        "networth", "split", "upcoming", "alerts", "calendar", "accounts"]
+    pinned = client.post("/api/v1/dashboard/widgets", json={
+        "view": "cashflow", "settings": {"range": "12m", "grain": "quarter", "scope": "business"}}).json()
+    assert pinned["size"] == "full" and pinned["settings"]["grain"] == "quarter" and pinned["position"] == 6
+    assert client.post("/api/v1/dashboard/widgets", json={"view": "nope"}).status_code == 400
+    too_big = {"view": "loans", "settings": {"x": "y" * 3000}}
+    assert client.post("/api/v1/dashboard/widgets", json=too_big).status_code == 400
+
+    small = client.patch(f"/api/v1/dashboard/widgets/{pinned['id']}", json={"size": "narrow"}).json()
+    assert small["size"] == "narrow" and small["settings"]["scope"] == "business"
+    ids = [w["id"] for w in client.get("/api/v1/dashboard").json()["widgets"]]
+    moved = client.put("/api/v1/dashboard/order", json={"widget_ids": [ids[-1], *ids[:-1]]}).json()
+    assert moved["widgets"][0]["view"] == "cashflow"
+    assert client.put("/api/v1/dashboard/order", json={"widget_ids": ids[:-1]}).status_code == 400  # every widget, once
+    assert client.put("/api/v1/dashboard/columns", json={"columns": 3}).json()["columns"] == 3
+    assert client.put("/api/v1/dashboard/columns", json={"columns": 4}).status_code == 422
+
+    for w in client.get("/api/v1/dashboard").json()["widgets"]:  # emptied stays empty...
+        assert client.delete(f"/api/v1/dashboard/widgets/{w['id']}").status_code == 204
+    assert client.get("/api/v1/dashboard").json()["widgets"] == []
+    reset = client.post("/api/v1/dashboard/reset").json()  # ...until reset
+    assert len(reset["widgets"]) == 6 and reset["columns"] == 2
+
+    with db.session() as sess:  # someone else's widget is out of reach
+        other = User(email="someone@example.com", role="member")
+        sess.add(other)
+        sess.flush()
+        theirs = DashboardWidget(user_id=other.id, view="loans", settings={}, size="narrow", position=0)
+        sess.add(theirs)
+        sess.flush()
+        theirs_id = str(theirs.id)
+    assert client.patch(f"/api/v1/dashboard/widgets/{theirs_id}", json={"size": "full"}).status_code == 404
+    assert client.delete(f"/api/v1/dashboard/widgets/{theirs_id}").status_code == 404
+    assert theirs_id not in {w["id"] for w in client.get("/api/v1/dashboard").json()["widgets"]}

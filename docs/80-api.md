@@ -344,6 +344,35 @@ or category for a merchant with little history). Dismissed keys never return.
 ### POST /alerts/dismiss → 204
 Body: `{"key": "…"}`.
 
+## Dashboard (each person's Overview)
+
+### GET /dashboard
+`{"columns": 1|2|3, "widgets":[{id, view, settings, size, position}]}` for the
+signed-in person only. The first read seeds Overview's sections (`networth`,
+`split`, `upcoming`, `alerts`, `calendar`, `accounts`); after that an emptied
+dashboard stays empty until reset.
+
+### POST /dashboard/widgets → 201
+Body: `{"view": "<key>", "settings"?: {…}, "size"?: "narrow"|"wide"|"full"}` → widget,
+appended. `view` is one of `api/dashboard.py` VIEWS: the sections above plus
+`cashflow`, `money_flow`, `income_sources`, `spending`, `merchants`, `patterns`,
+`compare`, `subscriptions`, `networth_classes`, `homes`, `loans`, `cards`,
+`performance`. `settings` (≤ 2 KB JSON) is what the view showed when pinned:
+for Insights views `{range, grain, scope, accountId?, category?}` (ranges are
+presets, so a pinned "12m" keeps rolling); for performance `{range, benchmarks,
+accountId?}`. 40 widgets at most.
+
+### PATCH /dashboard/widgets/{id} · DELETE /dashboard/widgets/{id} → 204
+Body: `{"size"?: …, "settings"?: {…}}`. 404 for another person's widget.
+
+### PUT /dashboard/order
+Body: `{"widget_ids": [...]}`: every widget on the dashboard, each once, in the
+new order → dashboard.
+
+### PUT /dashboard/columns · POST /dashboard/reset
+`{"columns": 1|2|3}` → dashboard. Reset deletes every widget and seeds the
+default sections again.
+
 ## Sync
 
 ### GET /sync/status

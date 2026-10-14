@@ -2,7 +2,7 @@ import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
   Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
-  CardsInsight, Home, LoanPayoff, NetWorthByClass,
+  CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
@@ -37,6 +37,16 @@ function change(v: unknown): Change | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Raw;
   return { amount: n0(r.amount), pct: toNumber(r.pct), since: str(r.since) ?? undefined };
+}
+
+function widgetOf(r: Raw): DashboardWidget {
+  const size = r.size === "narrow" || r.size === "full" ? r.size : "wide";
+  return { id: String(r.id), view: String(r.view), settings: (r.settings as Record<string, unknown>) ?? {}, size, position: n0(r.position) };
+}
+
+function dashboardOf(r: Raw): Dashboard {
+  const c = n0(r.columns);
+  return { columns: c === 1 || c === 3 ? c : 2, widgets: list(r.widgets, widgetOf) };
 }
 
 /** Decimal strings ("12.50") to numbers, recursively, leaving dates and words alone. */
@@ -484,6 +494,15 @@ export const api = {
     };
   },
   refreshPrices: () => request("POST", "/prices/refresh"),
+  dashboard: async (): Promise<Dashboard> => dashboardOf(await request("GET", "/dashboard")),
+  pinWidget: async (body: { view: string; settings?: Record<string, unknown>; size?: WidgetSize }): Promise<DashboardWidget> =>
+    widgetOf(await request("POST", "/dashboard/widgets", body)),
+  updateWidget: async (id: string, patch: { size?: WidgetSize; settings?: Record<string, unknown> }): Promise<DashboardWidget> =>
+    widgetOf(await request("PATCH", `/dashboard/widgets/${id}`, patch)),
+  removeWidget: (id: string) => request("DELETE", `/dashboard/widgets/${id}`),
+  reorderWidgets: async (widget_ids: string[]): Promise<Dashboard> => dashboardOf(await request("PUT", "/dashboard/order", { widget_ids })),
+  setColumns: async (columns: 1 | 2 | 3): Promise<Dashboard> => dashboardOf(await request("PUT", "/dashboard/columns", { columns })),
+  resetDashboard: async (): Promise<Dashboard> => dashboardOf(await request("POST", "/dashboard/reset")),
   // Net worth and debt: decimal strings become numbers all the way down.
   netWorthByClass: async (range: string): Promise<NetWorthByClass> => numbers(await request("GET", "/insights/networth", undefined, { range })) as NetWorthByClass,
   homes: async (): Promise<Home[]> => numbers((await request("GET", "/insights/homes")).homes) as Home[],

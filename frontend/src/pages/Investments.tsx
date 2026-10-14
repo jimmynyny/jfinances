@@ -69,7 +69,7 @@ export function InvestmentsPage() {
       )}
       {accounts.length > 0 && (
         <div id="performance">
-          <PerformanceView accounts={accounts.map((a) => ({ id: a.account.id, name: a.account.name }))} accountId={perfAccount} onAccount={setPerfAccount} />
+          <PerformanceView accounts={accounts.map((a) => ({ id: a.account.id, name: a.account.name }))} accountId={perfAccount} onAccount={setPerfAccount} pinnable />
         </div>
       )}
       {/* Part-to-whole as 100 cells: one cell per percent. A one-slice waffle is just the total, so skip it. */}
