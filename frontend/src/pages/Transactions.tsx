@@ -4,7 +4,7 @@ import {
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
-import type { Transaction } from "../api/types";
+import type { Account, Transaction } from "../api/types";
 import { ApiError } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
 import { monthLabel } from "../lib/groups";
@@ -118,7 +118,7 @@ export function TransactionsPage() {
             <Input label="To" type="date" value={custom.to} onChange={(e) => { setCustom((c) => ({ ...c, to: e.target.value })); setPage(1); }} />
           </>
         )}
-        <Select label="Account" placeholder="All accounts" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }} options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))} style={{ minWidth: 180 }} />
+        <Select label="Account" placeholder="All accounts" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPage(1); }} options={accountFilterOptions(accounts.data)} style={{ minWidth: 180 }} />
         <Select label="Category" placeholder="All categories" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} options={categories.map((c) => ({ value: c, label: c.toLowerCase().replace(/_/g, " ") }))} style={{ minWidth: 180 }} />
         <Input
           label="Search"
@@ -247,4 +247,21 @@ function TxnForm({ t, onSave }: { t: Transaction; onSave: (patch: { user_categor
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>
   );
+}
+
+/** The Account filter: "Chase: Sapphire ··1234", sorted so each institution's
+ * accounts sit together. Manual accounts (homes, cars) never have transactions. */
+function accountFilterOptions(accounts: Account[] | undefined) {
+  return (accounts ?? [])
+    .filter((a) => a.kind !== "manual")
+    .map((a) => ({ value: a.id, label: accountFilterLabel(a) }))
+    .sort((x, y) => x.label.localeCompare(y.label, undefined, { sensitivity: "base", numeric: true }));
+}
+
+function accountFilterLabel(a: Account): string {
+  // Some institutions already end the name with the mask ("Brokerage - ****3184"): show it once.
+  const tail = /[\s-]*\*+(\w+)\s*$/.exec(a.name);
+  const name = tail && tail[1] === a.mask ? a.name.slice(0, tail.index) : a.name;
+  const inst = a.institution_name ? `${a.institution_name}: ` : "";
+  return `${inst}${name}${a.mask ? `\u00a0··${a.mask}` : ""}${a.closed_at ? " (closed)" : ""}`;
 }
