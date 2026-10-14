@@ -10,7 +10,7 @@ struct AccountRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(account.name).font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink).lineLimit(1)
-                    if account.is_business == true { Badge("business") }
+                    if account.is_business == true { BusinessMark() }
                 }
                 Text(account.subtitle).font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1)
             }
@@ -41,6 +41,7 @@ struct TxnRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(tx.title).font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                    if tx.is_business == true { BusinessMark() }
                     if tx.pending { Badge("pending", tone: .warn) }
                 }
                 Text(subtitle).font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1)
@@ -72,7 +73,10 @@ struct UpcomingRow: View {
             }
             .frame(width: 64, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                    if item.is_business == true { BusinessMark() }
+                }
                 Text([item.cadence, item.account_name].compactMap { $0 }.joined(separator: " · "))
                     .font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1)
             }

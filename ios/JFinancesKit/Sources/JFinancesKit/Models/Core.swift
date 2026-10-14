@@ -121,6 +121,8 @@ public struct Txn: Codable, Hashable, Identifiable, Sendable {
     public let account_name: String?
     public let account_mask: String?
     public let institution_name: String?
+    /// On an account marked business.
+    public let is_business: Bool?
     public let date: String
     public let authorized_date: String?
     /// Plaid's sign: positive is money leaving the account.

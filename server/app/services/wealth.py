@@ -240,6 +240,8 @@ def cards(sess: Session, start: date, end: date) -> dict:
         total_limit += limit
         b_now = Decimal(a.current_balance or 0)
         per_card.append({"id": str(a.id), "name": a.name, "mask": a.mask, "limit": limit or None, "balance": b_now,
+                         "institution_name": a.item.institution_name if a.item else None,
+                         "is_business": a.is_business,
                          "utilization": float(b_now / limit) if limit > 0 else None, "history": hist})
     overall = [{"date": d, "utilization": float(total_bal[d] / total_limit) if total_limit > 0 else None} for d in days]
     detailed = func.coalesce(Transaction.category_detailed, "")

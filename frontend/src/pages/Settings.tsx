@@ -1,3 +1,4 @@
+import { BusinessMark } from "../components/BusinessMark";
 import { useState } from "react";
 import {
   Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Page, PageHeader, Panel, Select, Skeleton, formatRelative, useToast, type Column,
@@ -116,7 +117,7 @@ export function SettingsPage() {
       <Panel flush caption="offline assets" actions={<Button size="sm" variant="quiet" onClick={() => setAdding(true)}>Add offline asset</Button>}>
         <DataTable
           columns={[
-            { key: "name", header: "Asset", mobile: "primary", cell: (a: Account) => <><div style={{ fontWeight: 500 }}>{a.name}</div><div className="mu-caption">{MANUAL.find((m) => m.value === a.manual_category)?.label ?? a.manual_category}</div></> },
+            { key: "name", header: "Asset", mobile: "primary", cell: (a: Account) => <><div style={{ fontWeight: 500 }}>{a.name}{a.is_business && <BusinessMark />}</div><div className="mu-caption">{MANUAL.find((m) => m.value === a.manual_category)?.label ?? a.manual_category}</div></> },
             { key: "value", header: "Value", numeric: true, mobile: "end", cell: (a: Account) => <Money value={a.current_balance ?? 0} currency={a.iso_currency} /> },
             { key: "upd", header: "Updated", mobile: "sub", mobileLabel: false, cell: (a: Account) => <span className="mu-mono">{formatRelative(a.balance_updated_at)}</span> },
             { key: "x", header: "", numeric: true, mobile: "full", cell: (a: Account) => <span className="mu-row jf-actions"><Button size="sm" variant="quiet" onClick={() => setValueEdit(a)}>Update value</Button><Button size="sm" variant="danger" onClick={() => setConfirmDelete(a)}>Remove</Button></span> },

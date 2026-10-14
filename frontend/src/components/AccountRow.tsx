@@ -2,6 +2,7 @@ import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { Badge, Delta, Money, Num, PixelSparkline, formatRelative } from "@mooney/ui";
 import type { Account } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
+import { BusinessMark } from "./BusinessMark";
 
 interface Props {
   account: Account;
@@ -42,11 +43,14 @@ export function AccountRow({ account: a, upIsGood = true, actions, showStatus = 
     <div className={cls} ref={rowRef} style={style} onClick={onRowClick}>
       {handle}
       <div className="jf-acct__info">
-        {onOpen ? (
-          <button type="button" className="jf-acct__name jf-acct__openbtn" onClick={onOpen}>{a.name}</button>
-        ) : (
-          <div className="jf-acct__name">{a.name}</div>
-        )}
+        <div className="jf-acct__namerow">
+          {onOpen ? (
+            <button type="button" className="jf-acct__name jf-acct__openbtn" onClick={onOpen}>{a.name}</button>
+          ) : (
+            <div className="jf-acct__name">{a.name}</div>
+          )}
+          {a.is_business && <BusinessMark />}
+        </div>
         <div className="jf-acct__meta mu-caption">
           {/* On a phone the institution drops out when the name already says it, so the line fits. */}
           {/* The separator ends the first part, so a wrapped line starts with the kind, not "·". */}

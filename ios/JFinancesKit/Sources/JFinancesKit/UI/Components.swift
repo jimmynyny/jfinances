@@ -259,6 +259,31 @@ public struct Badge: View {
 }
 
 /// A 1px rule in the line colour.
+/// A pixel briefcase beside anything on a business account (is_business), so
+/// business reads apart from personal in any list. The same cells as the web's.
+public struct BusinessMark: View {
+    public init() {}
+
+    private static let cells: [CGRect] = [
+        CGRect(x: 3, y: 0, width: 5, height: 1), CGRect(x: 3, y: 1, width: 1, height: 2),
+        CGRect(x: 7, y: 1, width: 1, height: 2), CGRect(x: 0, y: 3, width: 11, height: 2),
+        CGRect(x: 5, y: 5, width: 1, height: 1), CGRect(x: 0, y: 6, width: 11, height: 4),
+    ]
+
+    public var body: some View {
+        Canvas { ctx, size in
+            let u = size.width / 11
+            for c in Self.cells {
+                ctx.fill(Path(CGRect(x: c.minX * u, y: c.minY * u, width: c.width * u, height: c.height * u)),
+                         with: .color(JF.accent))
+            }
+        }
+        .frame(width: 11, height: 10)
+        .accessibilityElement()
+        .accessibilityLabel("Business")
+    }
+}
+
 public struct Rule: View {
     public init() {}
     public var body: some View { Rectangle().fill(JF.line).frame(height: 1) }

@@ -1,3 +1,4 @@
+import { BusinessMark } from "../components/BusinessMark";
 import { useState } from "react";
 import {
   Badge, Button, DataTable, EmptyState, KeyValue, Money, Num, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select,
@@ -124,7 +125,7 @@ function LiabilityCard({ r, assets, onOpen }: { r: Row; assets: Account[]; onOpe
   return (
     <Panel
       stacked
-      title={<button type="button" className="jf-liab__open" onClick={() => onOpen(a, false)}>{a.name}</button>}
+      title={<button type="button" className="jf-liab__open" onClick={() => onOpen(a, false)}>{a.name}{a.is_business && <BusinessMark />}</button>}
       caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <span>{where(a)}</span> : null}</>}
       actions={<>
         {l?.is_overdue ? <Badge tone="critical">overdue</Badge> : null}
@@ -180,7 +181,7 @@ export function LiabilitiesPage() {
   const assetName = (id: string | null) => assets.find((x) => x.id === id)?.name ?? null;
 
   const columnsFor = (group: GroupKey): Column<Row>[] => [
-    { key: "account", header: "Account", wrap: true, mobile: "primary", cell: (r) => <div className="jf-cell-account"><div>{r.a.name}</div><div className="mu-caption">{where(r.a)}</div></div>, sortValue: (r) => r.a.name },
+    { key: "account", header: "Account", wrap: true, mobile: "primary", cell: (r) => <div className="jf-cell-account"><div>{r.a.name}{r.a.is_business && <BusinessMark />}</div><div className="mu-caption">{where(r.a)}</div></div>, sortValue: (r) => r.a.name },
     ...(group === "loan" ? [{ key: "kind", header: "Kind", mobile: "meta" as const, mobileLabel: false as const, cell: (r: Row) => <span className="mu-mono">{r.kind}</span> }] : []),
     { key: "balance", header: "Balance", numeric: true, mobile: "end", cell: (r) => <Money value={r.bal} currency={r.a.iso_currency} />, sortValue: (r) => r.bal },
     { key: "rate", header: "Rate", numeric: true, mobile: "sub", mobileLabel: false, cell: (r) => (r.l?.interest_rate_pct != null ? formatPct(r.l.interest_rate_pct, 3, false) : "—"), sortValue: (r) => r.l?.interest_rate_pct ?? null },

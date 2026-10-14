@@ -15,10 +15,15 @@ export function accountFilterOptions(accounts: Account[] | undefined): SelectGro
   }));
 }
 
+/** The name without a trailing copy of the mask ("Brokerage - ****3184", "Card **2480"): it is shown once, apart. */
+export function nameWithoutMask(name: string, mask: string | null | undefined): string {
+  const tail = /[\s-]*\*+(\w+)\s*$/.exec(name);
+  return tail && tail[1] === mask ? name.slice(0, tail.index) : name;
+}
+
 export function accountFilterLabel(a: Account): string {
-  // Some institutions already end the name with the mask ("Brokerage - ****3184"): show it once.
-  const tail = /[\s-]*\*+(\w+)\s*$/.exec(a.name);
-  const name = tail && tail[1] === a.mask ? a.name.slice(0, tail.index) : a.name;
+  const name = nameWithoutMask(a.name, a.mask);
   const inst = a.institution_name ? `${a.institution_name}: ` : "";
-  return `${inst}${name}${a.mask ? `\u00a0··${a.mask}` : ""}${a.closed_at ? " (closed)" : ""}`;
+  // A select can't hold the briefcase, so business accounts say so in words.
+  return `${inst}${name}${a.mask ? `\u00a0··${a.mask}` : ""}${a.is_business ? " · business" : ""}${a.closed_at ? " (closed)" : ""}`;
 }

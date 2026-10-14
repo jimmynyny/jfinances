@@ -21,7 +21,7 @@ router = APIRouter()
 def _tx_json(t: Transaction, a: Account | None, inst: str | None) -> dict:
     return {
         "id": str(t.id), "account_id": str(t.account_id), "account_name": a.name if a else None,
-        "account_mask": a.mask if a else None, "institution_name": inst,
+        "account_mask": a.mask if a else None, "institution_name": inst, "is_business": bool(a and a.is_business),
         "date": t.date.isoformat(), "authorized_date": ts(t.authorized_date),
         "amount": money(t.amount), "iso_currency": t.iso_currency, "name": t.name,
         "merchant_name": t.merchant_name, "logo_url": t.logo_url, "pending": t.pending,

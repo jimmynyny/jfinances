@@ -1,3 +1,4 @@
+import { BusinessMark } from "../components/BusinessMark";
 import { useState, type ReactNode } from "react";
 import {
   Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Num, Panel, Segmented, Skeleton, formatDate, useToast, type Column,
@@ -39,7 +40,7 @@ function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: strin
   return (
     <div className="mu-listrow">
       <div className="mu-listrow__main">
-        <div className="mu-listrow__title">{s.label} {s.is_business && <Badge dot={false}>business</Badge>} <PriceStep s={s} /></div>
+        <div className="mu-listrow__title">{s.label}{s.is_business && <BusinessMark />} <PriceStep s={s} /></div>
         <div className="mu-caption">
           {CADENCE[s.cadence]} · next {formatDate(s.next_date)}{s.account_name ? <> · {s.account_name}{s.account_mask ? <> ··<Num>{s.account_mask}</Num></> : null}</> : null}
           {s.category ? ` · ${categoryLabel(s.category)}` : ""}
@@ -182,7 +183,7 @@ export function UpcomingView({ days = 30, actions }: { days?: number; actions?: 
             <div key={`${i.stream_id}:${i.date}`} className="mu-listrow">
               <span className="mu-mono mu-listrow__lead">{formatDate(i.date)}</span>
               <div className="mu-listrow__main">
-                <div className="mu-listrow__title">{i.label} {i.overdue && <Badge tone="warn" dot={false}>due</Badge>}{i.status === "detected" && <Badge dot={false}>to review</Badge>}</div>
+                <div className="mu-listrow__title">{i.label}{i.is_business && <BusinessMark />} {i.overdue && <Badge tone="warn" dot={false}>due</Badge>}{i.status === "detected" && <Badge dot={false}>to review</Badge>}</div>
                 {i.account_name && <div className="mu-caption">{i.account_name}</div>}
               </div>
               <div className="mu-listrow__value"><Money value={i.amount} /></div>
@@ -215,7 +216,7 @@ export function SubscriptionSettings() {
       key: "name", header: "Subscription", wrap: true, mobile: "primary",
       cell: (s) => (
         <div className="jf-cell-account">
-          <div>{s.label} {s.is_business && <Badge dot={false}>business</Badge>}</div>
+          <div>{s.label}{s.is_business && <BusinessMark />}</div>
           <div className="mu-caption">{s.name ? `${s.merchant} · ` : ""}{s.charge_count} charges since {formatDate(s.first_date, { year: true })}</div>
         </div>
       ),

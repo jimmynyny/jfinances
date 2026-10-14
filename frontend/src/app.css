@@ -186,3 +186,12 @@
 .jf-import__tabs { padding: 0 var(--mu-s3); }
 .jf-import__rows { padding: 0 var(--mu-s3); }
 .jf-import__rows .mu-listrow__title { overflow-wrap: anywhere; }
+
+/* Business: a pixel briefcase after the name of anything on a business account. */
+.jf-biz { display: inline-flex; align-items: center; margin-left: 6px; color: var(--mu-accent); vertical-align: baseline; flex: none; }
+.jf-biz svg { display: block; fill: currentColor; }
+/* An account row's name truncates; the mark beside it never does. */
+.jf-acct__namerow { display: flex; align-items: center; min-width: 0; }
+.jf-acct__namerow > .jf-acct__name { min-width: 0; }
+/* "Chase: Sapphire": the institution reads quieter than the card's own name. */
+.jf-cats__inst { color: var(--mu-ink-2); }

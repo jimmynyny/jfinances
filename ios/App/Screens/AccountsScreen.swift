@@ -114,7 +114,7 @@ struct AccountDetailScreen: View {
                 KeyValueRow("type") { Text([account.type, account.subtype].compactMap { $0 }.joined(separator: " · ")) }
                 if let m = account.mask { KeyValueRow("number") { Text("··\(m)").font(JFFont.mono(14)) } }
                 if let official = account.official_name, official != account.name { KeyValueRow("bank's name") { Text(official) } }
-                if account.is_business == true { KeyValueRow("use") { Text("business") } }
+                if account.is_business == true { KeyValueRow("use") { HStack(spacing: 6) { BusinessMark(); Text("business") } } }
                 KeyValueRow("updated") { Text(Fmt.relative(account.balance_updated_at)).font(JFFont.mono(13)) }
             }
         }

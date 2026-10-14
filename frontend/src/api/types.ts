@@ -137,6 +137,8 @@ export interface Transaction {
   account_name: string | null;
   account_mask: string | null;
   institution_name: string | null;
+  /** On an account marked business (Daedalus TCG). */
+  is_business: boolean;
   date: string;
   authorized_date: string | null;
   /** Plaid sign: positive = money out. */
@@ -458,6 +460,7 @@ export interface UpcomingCharge {
   cadence: Cadence;
   status: RecurringStatus;
   account_name: string | null;
+  is_business: boolean;
 }
 
 export interface Upcoming {
@@ -554,6 +557,7 @@ export interface LoanPayoff {
 
 export interface CardsInsight {
   cards: Array<{ id: string; name: string; mask: string | null; limit: number | null; balance: number; utilization: number | null;
+    institution_name: string | null; is_business: boolean;
     history: Array<{ date: string; balance: number; utilization: number | null }> }>;
   overall: Array<{ date: string; utilization: number | null }>;
   charges: Array<{ month: string; interest: number; fees: number }>;

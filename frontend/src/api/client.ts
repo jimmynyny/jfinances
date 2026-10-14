@@ -146,6 +146,7 @@ function transaction(r: Raw): Transaction {
     account_name: str(r.account_name),
     account_mask: str(r.account_mask),
     institution_name: str(r.institution_name),
+    is_business: bool(r.is_business),
     date: String(r.date),
     authorized_date: str(r.authorized_date),
     amount: n0(r.amount),
@@ -494,7 +495,8 @@ export const api = {
     return {
       from: String(r.from), to: String(r.to), total: n0(r.total),
       items: list(r.items, (x) => ({ stream_id: String(x.stream_id), label: String(x.label), date: String(x.date), overdue: bool(x.overdue),
-        amount: n0(x.amount), cadence: x.cadence as UpcomingCadence, status: x.status as RecurringStatus, account_name: str(x.account_name) })),
+        amount: n0(x.amount), cadence: x.cadence as UpcomingCadence, status: x.status as RecurringStatus, account_name: str(x.account_name),
+        is_business: bool(x.is_business) })),
     };
   },
   alerts: async (days = 60): Promise<Alert[]> =>

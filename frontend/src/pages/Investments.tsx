@@ -1,3 +1,4 @@
+import { BusinessMark, businessSuffix } from "../components/BusinessMark";
 import { useMemo, useState } from "react";
 import {
   Badge, Button, DataTable, EmptyState, Money, Page, PageHeader, Panel, PixelMeter, Skeleton, Waffle,
@@ -19,6 +20,7 @@ export function InvestmentsPage() {
   const [showAll, setShowAll] = useState(false);
   const [perfAccount, setPerfAccount] = useState("");
   const accounts = useMemo(() => q.data?.accounts ?? [], [q.data]);
+  const biz = useMemo(() => new Set(accounts.filter((a) => a.account.is_business).map((a) => a.account.id)), [accounts]);
 
   const byAccount = useMemo(() => accounts.map((a) => ({ key: a.account.id, label: a.account.name, value: a.holdings_value })), [accounts]);
   const byType = useMemo(() => {
@@ -56,7 +58,7 @@ export function InvestmentsPage() {
   const activityCols: Column<InvestmentTransaction>[] = [
     { key: "date", header: "Date", width: 90, mobile: "sub", mobileLabel: false, cell: (t) => <span className="mu-mono">{formatDate(t.date)}</span>, sortValue: (t) => t.date },
     { key: "what", header: "Activity", wrap: true, className: "jf-col-name", mobile: "primary",
-      cell: (t) => <><div>{t.ticker ? <strong>{t.ticker}</strong> : null} {t.security_name ?? t.name}</div><div className="mu-caption">{t.account_name ?? ""}<span className="mu-stacked-only">{` · ${(t.subtype ?? t.type ?? "").replace(/_/g, " ")}`}</span></div></> },
+      cell: (t) => <><div>{t.ticker ? <strong>{t.ticker}</strong> : null} {t.security_name ?? t.name}</div><div className="mu-caption">{t.account_name ?? ""}{t.account_id && biz.has(t.account_id) && <BusinessMark />}<span className="mu-stacked-only">{` · ${(t.subtype ?? t.type ?? "").replace(/_/g, " ")}`}</span></div></> },
     { key: "type", header: "Type", className: "jf-col-wide", mobile: "hide", cell: (t) => <Badge dot={false}>{(t.subtype ?? t.type ?? "—").replace(/_/g, " ")}</Badge> },
     { key: "qty", header: "Qty", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (t) => (t.quantity ? formatNumber(t.quantity, t.quantity % 1 ? 4 : 0) : "—"), sortValue: (t) => t.quantity },
     { key: "price", header: "Price", numeric: true, className: "jf-col-wide", mobile: "hide", cell: (t) => (t.price ? <Money value={t.price} /> : "—"), sortValue: (t) => t.price },
@@ -72,7 +74,7 @@ export function InvestmentsPage() {
       )}
       {accounts.length > 0 && (
         <div id="performance">
-          <PerformanceView accounts={accounts.map((a) => ({ id: a.account.id, name: a.account.name }))} accountId={perfAccount} onAccount={setPerfAccount} pinnable />
+          <PerformanceView accounts={accounts.map((a) => ({ id: a.account.id, name: a.account.name + businessSuffix(a.account.is_business) }))} accountId={perfAccount} onAccount={setPerfAccount} pinnable />
         </div>
       )}
       {/* Part-to-whole as 100 cells: one cell per percent. A one-slice waffle is just the total, so skip it. */}
@@ -87,7 +89,7 @@ export function InvestmentsPage() {
           key={a.account.id}
           flush
           caption={a.account.institution_name ?? "account"}
-          title={a.account.name}
+          title={<>{a.account.name}{a.account.is_business && <BusinessMark />}</>}
           actions={<span className="mu-row"><span className="mu-caption">priced {formatRelative(a.holdings[0]?.price_as_of ?? a.account.balance_updated_at)}</span><Money value={a.holdings_value} cents={false} mono={false} style={{ fontWeight: 600 }} />
             <Button size="sm" variant="quiet" onClick={() => { setPerfAccount(a.account.id); document.getElementById("performance")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Performance</Button></span>}
         >

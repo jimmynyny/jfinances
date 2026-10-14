@@ -255,6 +255,7 @@ public struct UpcomingCharge: Codable, Hashable, Sendable, Identifiable {
     public let status: String
     public let category: String?
     public let account_name: String?
+    public let is_business: Bool?
     public var id: String { stream_id + date }
 }
 

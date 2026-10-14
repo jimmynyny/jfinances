@@ -261,6 +261,7 @@ struct StreamRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(stream.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                    if stream.is_business == true { BusinessMark() }
                     if stream.status == "detected" { Badge("unreviewed") }
                     if stream.state == "lapsed" { Badge("lapsed", tone: .warn) }
                     if let prev = stream.previous_amount, prev != stream.amount { Badge(stream.amount > prev ? "price up" : "price down", tone: .accent) }

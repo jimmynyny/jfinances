@@ -1,3 +1,4 @@
+import { businessSuffix } from "../components/BusinessMark";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -159,7 +160,7 @@ export function ImportPage() {
         <div className="mu-stack">
           <div className="jf-import__pick">
             <Select label="Account" placeholder="Choose the account…" value={accountId}
-              options={eligible.map((a) => ({ value: a.id, label: `${a.name}${a.mask ? ` ··${a.mask}` : ""}` }))}
+              options={eligible.map((a) => ({ value: a.id, label: `${a.name}${a.mask ? ` ··${a.mask}` : ""}${businessSuffix(a.is_business)}` }))}
               onChange={(e) => { setAccountId(e.target.value); if (file) void read({ accountId: e.target.value }); }} />
             <div className="mu-field">
               <span className="mu-label">Export</span>

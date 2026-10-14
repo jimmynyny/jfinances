@@ -9,6 +9,7 @@ import type { Account, Transaction } from "../api/types";
 import { ApiError } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
 import { accountFilterOptions } from "../lib/accountOptions";
+import { BusinessMark } from "../components/BusinessMark";
 import { GROUP_LABEL, groupOf, monthLabel } from "../lib/groups";
 
 type Preset = "30d" | "90d" | "mtd" | "ytd" | "custom";
@@ -68,7 +69,7 @@ export function TransactionsPage() {
       key: "name", header: "Description", wrap: true, mobile: "primary",
       cell: (t) => (
         <div className="jf-txn-name">
-          <span>{t.merchant_name ?? t.name}</span>
+          <span>{t.merchant_name ?? t.name}{t.is_business && <BusinessMark />}</span>
           <small>{t.account_name ?? accountName.get(t.account_id) ?? ""}{t.pending ? " · pending" : ""}</small>
           {/* Phone: the category column is hidden, so the category rides under the name. */}
           <span className="jf-txn-name__cat"><Badge dot={false} tone={t.user_category ? "accent" : "neutral"}>{(t.category ?? "uncategorized").toLowerCase().replace(/_/g, " ")}</Badge></span>
@@ -259,7 +260,7 @@ function TxnForm({ t, account, onShowAccount, onSave }: {
   return (
     <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); void onSave({ user_category: cat.trim() || null, notes: notes.trim() || null }); }}>
       <div>
-        <div style={{ fontWeight: 600 }}>{t.merchant_name ?? t.name}</div>
+        <div style={{ fontWeight: 600 }}>{t.merchant_name ?? t.name}{t.is_business && <BusinessMark />}</div>
         <div className="mu-caption">{formatDate(t.date, { year: true })} · {t.account_name ?? ""}{t.pending ? " · pending" : ""}</div>
       </div>
       <Money value={-t.amount} currency={t.iso_currency} signed plus style={{ fontSize: "var(--mu-fs-xl)" }} />

@@ -8,6 +8,7 @@ import { useAccountDetails, useAccountHistory, useAccounts } from "../api/hooks"
 import type { Account, Range, TermsKey } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
 import { DetailSections, RecentActivity, TermsForm } from "./AccountFacts";
+import { BusinessMark } from "./BusinessMark";
 
 const RANGES: Array<{ value: Range; label: string }> = [
   { value: "1m", label: "1m" }, { value: "3m", label: "3m" }, { value: "6m", label: "6m" }, { value: "1y", label: "1y" }, { value: "all", label: "all" },
@@ -56,7 +57,8 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
     <Drawer
       open={!!a}
       onClose={onClose}
-      title={a?.name ?? ""}
+      title={a ? <>{a.name}{a.is_business && <BusinessMark />}</> : ""}
+      label={a?.name}
       footer={editing ? undefined : <>
         {a && canImport && <Button variant="quiet" onClick={() => navigate(`/import?account=${a.id}`)}>Import history</Button>}
         {a && onRefresh && a.kind === "plaid" && <Button variant="quiet" loading={refreshing} onClick={() => onRefresh(a)}>Refresh balance</Button>}

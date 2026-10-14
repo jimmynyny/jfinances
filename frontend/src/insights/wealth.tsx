@@ -1,9 +1,11 @@
+import { nameWithoutMask } from "../lib/accountOptions";
+import { BusinessMark } from "../components/BusinessMark";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   BarChart, EmptyState, Input, KeyValue, Money, Num, Panel, PixelMeter, PixelSparkline, Segmented, Skeleton, StatTile,
   formatDate, formatMoney, seriesColor,
 } from "@mooney/ui";
-import { useCardsInsight, useHomes, useLoanPayoffs, useNetWorthByClass } from "../api/hooks";
+import { useAccounts, useCardsInsight, useHomes, useLoanPayoffs, useNetWorthByClass } from "../api/hooks";
 import { ErrorNote } from "../components/ErrorNote";
 
 /**
@@ -52,8 +54,15 @@ export function NetWorthClassesView({ actions, initialRange = "2y" }: { actions?
   );
 }
 
+/** Ids of the accounts marked business, to mark them in these lists. */
+function useBusinessIds(): Set<string> {
+  const accounts = useAccounts();
+  return new Set((accounts.data ?? []).filter((a) => a.is_business).map((a) => a.id));
+}
+
 export function HomesView({ actions }: { actions?: ReactNode }) {
   const q = useHomes();
+  const biz = useBusinessIds();
   return (
     <Panel caption="homes and equity" actions={actions}>
       <Body q={q}>
@@ -63,7 +72,7 @@ export function HomesView({ actions }: { actions?: ReactNode }) {
           <div className="mu-stack">
             {q.data!.map((h) => (
               <div key={h.id} className="mu-stack">
-                <div className="jf-cats__head"><span>{h.name}</span><Money value={h.equity} cents={false} /></div>
+                <div className="jf-cats__head"><span>{h.name}{biz.has(h.id) && <BusinessMark />}</span><Money value={h.equity} cents={false} /></div>
                 <KeyValue items={[
                   { key: "value", value: <Money value={h.value} cents={false} /> },
                   { key: "owed", value: <Money value={h.owed} cents={false} /> },
@@ -94,6 +103,7 @@ export function LoansView({ actions }: { actions?: ReactNode }) {
     return () => clearTimeout(t);
   }, [extraText]);
   const q = useLoanPayoffs(extra);
+  const biz = useBusinessIds();
   return (
     <Panel caption="loan payoff" actions={actions}>
       <Body q={q}>
@@ -106,7 +116,7 @@ export function LoansView({ actions }: { actions?: ReactNode }) {
               const thisYear = s?.per_year.find((y) => y.year === new Date().getFullYear());
               return (
                 <div key={l.id} className="mu-stack">
-                  <div className="jf-cats__head"><span>{l.name}</span><Money value={l.balance} cents={false} /></div>
+                  <div className="jf-cats__head"><span>{l.name}{biz.has(l.id) && <BusinessMark />}</span><Money value={l.balance} cents={false} /></div>
                   {!s ? <span className="mu-caption">{l.note}</span> : (
                     <>
                       <KeyValue items={[
@@ -144,6 +154,7 @@ export function LoansView({ actions }: { actions?: ReactNode }) {
 export function CardsView({ actions, initialRange = "1y" }: { actions?: ReactNode; initialRange?: string }) {
   const [range, setRange] = useState(initialRange);
   const q = useCardsInsight(range);
+  const biz = useBusinessIds();
   return (
     <Panel caption="cards" actions={<>{actions}<Segmented size="sm" options={RANGES} value={range} onChange={setRange} aria-label="Range" /></>}>
       <Body q={q}>
@@ -161,7 +172,10 @@ export function CardsView({ actions, initialRange = "1y" }: { actions?: ReactNod
               <div className="mu-stack jf-cats">
                 {d.cards.map((c) => (
                   <div key={c.id} className="jf-cats__row">
-                    <span className="jf-cats__name">{c.name}{c.mask ? <> <span className="mu-caption">··<Num>{c.mask}</Num></span></> : null}</span>
+                    <span className="jf-cats__name">
+                      {c.institution_name ? <span className="jf-cats__inst">{c.institution_name}: </span> : null}{nameWithoutMask(c.name, c.mask)}
+                      {(c.is_business || biz.has(c.id)) && <BusinessMark />}{c.mask ? <> <span className="mu-caption">··<Num>{c.mask}</Num></span></> : null}
+                    </span>
                     {c.utilization != null
                       ? <PixelMeter size="sm" cells={16} ratio={Math.min(1, c.utilization)} tone={c.utilization >= 0.5 ? "neg" : c.utilization >= 0.3 ? "warn" : "accent"}
                           label={`${Math.round(c.utilization * 100)}%`} ariaLabel={`${c.name} utilization`} />

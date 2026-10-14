@@ -309,6 +309,7 @@ struct UpcomingView: View {
                                 Text(when(item)).font(JFFont.mono(10, .medium)).foregroundStyle(item.overdue ? JF.neg : JF.ink2)
                                     .frame(width: 44, alignment: .leading)
                                 Text(item.label).font(JFFont.sans(13, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                                if item.is_business == true { BusinessMark() }
                                 Spacer(minLength: 4)
                                 Figure(text: Fmt.money(item.amount), show: show, font: JFFont.mono(12))
                             }
@@ -363,7 +364,10 @@ struct AccountView: View {
                 default:
                     VStack(alignment: .leading, spacing: 4) {
                         WidgetCaption(text: a.is_liability ? "owed" : "balance")
-                        Text(a.name).font(JFFont.sans(14, .semibold)).foregroundStyle(JF.ink).lineLimit(1)
+                        HStack(spacing: 5) {
+                            Text(a.name).font(JFFont.sans(14, .semibold)).foregroundStyle(JF.ink).lineLimit(1)
+                            if a.is_business == true { BusinessMark() }
+                        }
                         Text(a.subtitle).font(JFFont.mono(10)).foregroundStyle(JF.ink3).lineLimit(1)
                         Spacer(minLength: 0)
                         Figure(text: Fmt.money(a.balance, cents: false, currency: a.currency), show: show, font: JFFont.pixel(26)).widgetAccentable()
