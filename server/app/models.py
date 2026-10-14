@@ -346,6 +346,17 @@ class DismissedAlert(Base):
     dismissed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+class PricePoint(Base):
+    """A daily close from public market data (services/prices.py): benchmarks and
+    the securities the household holds. `series` is "provider:CODE", e.g.
+    "fred:SP500", "tiingo:SPY" (dividend-adjusted), "tiingo_close:AAPL" (as traded)."""
+    __tablename__ = "price_points"
+
+    series: Mapped[str] = mapped_column(String(48), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    close: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+
+
 # ---------------------------------------------------------------------------
 # Plumbing: jobs, webhooks, link sessions
 # ---------------------------------------------------------------------------

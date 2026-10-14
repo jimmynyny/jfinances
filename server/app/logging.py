@@ -22,6 +22,8 @@ _REDACT = [
     re.compile(r"link-(?:sandbox|production|development)-[0-9a-f-]{20,}"),
     re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),  # JWT
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{16,}"),
+    re.compile(r"(?i)\btoken\s+[A-Za-z0-9]{20,}"),  # Tiingo's Authorization header
+    re.compile(r"(?i)(?:api_key|token)=[A-Za-z0-9]{16,}"),  # FRED takes its key in the query string
 ]
 
 
@@ -59,6 +61,9 @@ def configure(level: str = "info", service: str = "web") -> None:
     root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # httpx logs every request URL at INFO, and FRED's key travels in the URL: never let those through.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     old_factory = logging.getLogRecordFactory()
 
     def factory(*args, **kwargs):

@@ -153,6 +153,11 @@ changed by detection; a found stream updates the row for the same merchant
 whose amount is close (same cadence preferred). Overdue by more than the
 cadence's tolerance = lapsed (computed, not stored).
 
+## price_points
+Daily closes from public market data (docs/30 "Market data"): `(series, date)`
+primary key, `close`. `series` is `provider:CODE`: `fred:SP500`, `tiingo:SPY`
+(dividend-adjusted), `tiingo_close:AAPL` (as traded), `tiingo_crypto:btcusd`.
+
 ## dismissed_alerts
 Alerts the user waved off (`services/alerts.py`), by stable key:
 `dup:<txn>:<txn>`, `large:<txn>`, `price:<stream>:<date>`.

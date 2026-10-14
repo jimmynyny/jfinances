@@ -227,6 +227,23 @@ with the other transfers. Transactions show it as `category: "PAYMENT"`.
 ### GET /holdings/transactions?account_id&limit=200
 `{"transactions":[{"id":"…","account_id":"…","account_name":"…","institution_name":"…","date":"…","name":"BUY VTI","type":"buy","subtype":"buy","ticker":"VTI","security_name":"…","quantity":"10","amount":"2811.20","price":"281.12","fees":"0.00"}]}`
 
+## Investment performance
+
+### GET /investments/performance?range=3m|6m|1y|2y|5y&account_id=…&benchmark=sp500,dow
+Time-weighted return of every investment account together (or one), and each
+benchmark asked for from the same first day:
+`{range, from, to, series[{date, value, flows, return}], estimated_before,
+accounts[{id, name, rebuilt, coverage, tracked_since}], benchmarks[{key, label,
+source, points[{date, return}]}], available[{key, label, available, since, note}]}`.
+`return` is a ratio (0.12 = +12%); `flows` is money moved in (+) or out (−);
+`estimated_before` is the first real snapshot when the line starts earlier
+(rebuilt before it). Benchmarks: `sp500`, `dow`, `nasdaq100`, `bitcoin`, `world`,
+`bonds`, `gold`, `sixty_forty`, `inflation`; `source` is null when no stored
+prices cover the range.
+
+### POST /prices/refresh → 202 (dashboard_only)
+Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queued).
+
 ## Liabilities
 
 ### GET /liabilities

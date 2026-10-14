@@ -156,6 +156,7 @@ raises, the job retries with backoff and ends up in `/sync/status`.
 | 06:00 daily | `snapshot_balances` |
 | 06:30 daily | `refresh_investments_all` |
 | 07:00 Mondays | `refresh_liabilities_all` |
+| 22:30 daily | `refresh_prices` (market data, below; also on the worker's first start with none stored) |
 | every 10 min | release stale `running` jobs, prune old ones |
 
 Times are settings (`NIGHTLY_SYNC_UTC` etc.) if they ever need to move.
@@ -190,6 +191,33 @@ however many accounts it covers.
 - Rough size: a bank login is $0.30, plus $0.20 with a card, mortgage or
   student loan; an investment login is $0.53. Ten logins come to about
   $4–5 a month.
+
+## Market data (benchmarks, investment history)
+
+Not Plaid, and nothing about the household leaves: only series codes and dates.
+`services/prices.py` fetches daily closes into `price_points`:
+
+| provider | key | series | used for |
+|---|---|---|---|
+| FRED (St. Louis Fed) | `FRED_API_KEY` | `fred:SP500`, `fred:DJIA`, `fred:NASDAQ100` (price indexes, ~10 years), `fred:CBBTCUSD`, `fred:CPIAUCSL` (monthly) | S&P 500, Dow, Nasdaq-100 without dividends; Bitcoin; inflation |
+| Tiingo | `TIINGO_API_KEY` | `tiingo:SPY`, `DIA`, `QQQ`, `VT`, `AGG`, `GLD` (dividend-adjusted close) | total-return benchmarks, 60/40 (VT + AGG, rebalanced daily) |
+| Tiingo | same | `tiingo_close:<ticker>` (close as traded), `tiingo_crypto:<coin>usd` | pricing past holdings to rebuild investment history |
+
+Keys are Railway variables only. FRED takes its key in the query string, so
+logging silences httpx's request lines and redacts `api_key=`/`Token` values;
+provider errors are logged by series and status, never by URL. A refresh
+starts at the day after the last stored close (2014-01-01 the first time); a
+429 stops that provider until the next run. A benchmark uses its first series
+with data covering the range (Tiingo's fund first, FRED's index as the
+fallback), and the API says which.
+
+Performance (`services/performance.py`) is a time-weighted return: each day's
+return is (value − flows) / previous value − 1, chained, where flows are cash
+deposits, contributions, withdrawals and transfers (an account joining the
+portfolio counts as a flow too). Values come from balance snapshots; before an
+account's first snapshot, holdings are rebuilt by undoing later trades from
+today's holdings and priced with `tiingo_close` (no price history: held at
+today's price, reported as `coverage`). docs/80 "Investment performance".
 
 ## Sandbox testing
 

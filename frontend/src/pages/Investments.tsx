@@ -7,6 +7,7 @@ import { useHoldings, useInvestmentActivity } from "../api/hooks";
 import type { Holding, InvestmentTransaction } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
 import { ConnectButton } from "../components/ConnectButton";
+import { PerformanceView } from "../insights/performance";
 
 /** Security types in a fixed order, so a type keeps its colour whatever the mix. */
 const TYPE_ORDER = ["equity", "etf", "mutual fund", "fixed income", "cash", "derivative", "cryptocurrency", "loan", "other"];
@@ -16,6 +17,7 @@ export function InvestmentsPage() {
   const q = useHoldings();
   const act = useInvestmentActivity();
   const [showAll, setShowAll] = useState(false);
+  const [perfAccount, setPerfAccount] = useState("");
   const accounts = useMemo(() => q.data?.accounts ?? [], [q.data]);
 
   const byAccount = useMemo(() => accounts.map((a) => ({ key: a.account.id, label: a.account.name, value: a.holdings_value })), [accounts]);
@@ -65,6 +67,11 @@ export function InvestmentsPage() {
       {q.data && accounts.length === 0 && (
         <EmptyState glyph="∿" title="No investment accounts yet" description="Brokerages, 401(k)s and 529s show up here once connected with the Investments product." action={<ConnectButton kind="investments" />} />
       )}
+      {accounts.length > 0 && (
+        <div id="performance">
+          <PerformanceView accounts={accounts.map((a) => ({ id: a.account.id, name: a.account.name }))} accountId={perfAccount} onAccount={setPerfAccount} />
+        </div>
+      )}
       {/* Part-to-whole as 100 cells: one cell per percent. A one-slice waffle is just the total, so skip it. */}
       {(byAccount.length > 1 || byType.length > 1) && (
         <div className="mu-grid mu-grid--2">
@@ -78,7 +85,8 @@ export function InvestmentsPage() {
           flush
           caption={a.account.institution_name ?? "account"}
           title={a.account.name}
-          actions={<span className="mu-row"><span className="mu-caption">priced {formatRelative(a.holdings[0]?.price_as_of ?? a.account.balance_updated_at)}</span><Money value={a.holdings_value} cents={false} mono={false} style={{ fontWeight: 600 }} /></span>}
+          actions={<span className="mu-row"><span className="mu-caption">priced {formatRelative(a.holdings[0]?.price_as_of ?? a.account.balance_updated_at)}</span><Money value={a.holdings_value} cents={false} mono={false} style={{ fontWeight: 600 }} />
+            <Button size="sm" variant="quiet" onClick={() => { setPerfAccount(a.account.id); document.getElementById("performance")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Performance</Button></span>}
         >
           <DataTable columns={holdingCols(a.holdings_value)} rows={a.holdings} rowKey={(h) => h.id} defaultSort={{ key: "value", dir: "desc" }} compact empty="No holdings reported yet — the investments refresh runs daily." />
         </Panel>

@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     daily_snapshot_utc: str = "06:00"
     daily_investments_utc: str = "06:30"
     weekly_liabilities_utc: str = "07:00"   # Mondays
+    daily_prices_utc: str = "22:30"         # after US markets close
+
+    # --- market data (benchmarks, investment history; docs/30 "Market data") -
+    fred_api_key: str = ""
+    tiingo_api_key: str = ""
     refresh_min_interval_seconds: int = 600
 
     @field_validator("plaid_products", "plaid_country_codes", mode="before")

@@ -480,3 +480,35 @@ export interface Alert {
   category?: string | null;
   transaction_ids: string[];
 }
+
+// --- Investment performance (GET /investments/performance; docs/80) ---------------------------
+
+export type PerfRange = "3m" | "6m" | "1y" | "2y" | "5y";
+
+export interface PerformancePoint {
+  date: string;
+  value: number;
+  /** Money moved in (+) or out (-) that day: not a gain. */
+  flows: number;
+  /** Time-weighted return since the first day, 0.12 = +12%. */
+  return: number;
+}
+
+export interface BenchmarkLine {
+  key: string;
+  label: string;
+  /** The price series drawn; null when none covers the range. */
+  source: string | null;
+  points: Array<{ date: string; return: number }>;
+}
+
+export interface Performance {
+  from: string;
+  to: string;
+  series: PerformancePoint[];
+  /** The line before this day is rebuilt from trades and daily prices. */
+  estimated_before: string | null;
+  accounts: Array<{ id: string; name: string; rebuilt: boolean; coverage: number | null; tracked_since: string | null }>;
+  benchmarks: BenchmarkLine[];
+  available: Array<{ key: string; label: string; available: boolean; since: string | null; note: string }>;
+}

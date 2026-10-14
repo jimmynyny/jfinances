@@ -63,6 +63,8 @@ def build_scheduler() -> BackgroundScheduler:
     h, m = _hm(s.weekly_liabilities_utc)
     sched.add_job(_schedule("refresh_liabilities_all"), CronTrigger(day_of_week="mon", hour=h, minute=m),
                   id="liabilities")
+    h, m = _hm(s.daily_prices_utc)
+    sched.add_job(_schedule("refresh_prices"), CronTrigger(hour=h, minute=m), id="prices")
     sched.add_job(_housekeeping, "interval", minutes=10, id="housekeeping")
     return sched
 
@@ -78,6 +80,18 @@ def loop_once() -> bool:
         return True
 
 
+def _first_prices(s) -> None:
+    """A fresh install has no market data: fetch it now rather than after tonight's close."""
+    if not (s.fred_api_key or s.tiingo_api_key):
+        return
+    from sqlalchemy import select
+
+    from .models import PricePoint
+    with session() as sess:
+        if sess.execute(select(PricePoint.series).limit(1)).first() is None:
+            enqueue(sess, "refresh_prices", {})
+
+
 def main() -> None:
     s = settings()
     configure(s.log_level, service="worker")
@@ -90,6 +104,7 @@ def main() -> None:
         signal.signal(sig, lambda *_: _stop.set())
     sched = build_scheduler()
     sched.start()
+    _first_prices(s)
     log.info("worker started; polling every %.1fs", s.worker_poll_seconds)
     try:
         while not _stop.is_set():

@@ -1,7 +1,7 @@
 import type {
   Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
-  Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming,
+  Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
@@ -458,6 +458,21 @@ export const api = {
       transaction_ids: Array.isArray(a.transaction_ids) ? (a.transaction_ids as unknown[]).map(String) : [],
     })),
   dismissAlert: (key: string) => request("POST", "/alerts/dismiss", { key }),
+  performance: async (q: { range: PerfRange; account_id?: string; benchmarks: string[] }): Promise<Performance> => {
+    const r = await request("GET", "/investments/performance", undefined,
+      { range: q.range, account_id: q.account_id, benchmark: q.benchmarks.length ? q.benchmarks.join(",") : undefined });
+    return {
+      from: String(r.from), to: String(r.to), estimated_before: str(r.estimated_before),
+      series: list(r.series, (p) => ({ date: String(p.date), value: n0(p.value), flows: n0(p.flows), return: Number(p.return ?? 0) })),
+      accounts: list(r.accounts, (a) => ({ id: String(a.id), name: String(a.name), rebuilt: bool(a.rebuilt),
+        coverage: a.coverage == null ? null : Number(a.coverage), tracked_since: str(a.tracked_since) })),
+      benchmarks: list(r.benchmarks, (b) => ({ key: String(b.key), label: String(b.label), source: str(b.source),
+        points: list(b.points, (p) => ({ date: String(p.date), return: Number(p.return ?? 0) })) })),
+      available: list(r.available, (b) => ({ key: String(b.key), label: String(b.label), available: bool(b.available),
+        since: str(b.since), note: String(b.note ?? "") })),
+    };
+  },
+  refreshPrices: () => request("POST", "/prices/refresh"),
   insightPatterns: async (s: InsightSlice, category?: string | null): Promise<PatternsInsight> => {
     const r = await request("GET", "/insights/patterns", undefined, sliceQuery(s, { category }));
     return {

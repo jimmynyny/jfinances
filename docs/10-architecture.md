@@ -89,6 +89,9 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `HOOKS_BASE_URL` | ✓ | ✓ | ✓ | `https://jfinances-hooks.sellingtcg.com` — Plaid webhook base |
 | `API_HOST` | ✓ |  |  | Hostname that uses bearer-token auth instead of Access (future iOS) |
 | `PORT` | ✓ | ✓ |  | `8080`, set explicitly to match the custom domains' target port |
+| `FRED_API_KEY` | ✓ | ✓ | ✓ | St. Louis Fed market data (benchmark indexes, Bitcoin, CPI); only the worker calls it. Optional: without it those benchmarks are off. docs/30 "Market data" |
+| `TIINGO_API_KEY` | ✓ | ✓ | ✓ | Tiingo daily prices (dividend-adjusted fund benchmarks, holdings history); only the worker calls it. Optional |
+| `DAILY_PRICES_UTC` | | | ✓ | Default `22:30`, after US markets close |
 
 Boot validation (`config.validate_for_boot()`): in `APP_ENV=production` the
 web service refuses to start if `CF_ACCESS_AUD`, `CF_ACCESS_TEAM`,

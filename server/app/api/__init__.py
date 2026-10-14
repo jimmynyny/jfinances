@@ -10,6 +10,7 @@ from . import (
     me,
     networth,
     overview,
+    performance,
     recurring,
     sync,
     tokens,
@@ -17,6 +18,6 @@ from . import (
 )
 
 router = APIRouter(prefix="/api/v1")
-for mod in (me, overview, networth, accounts, items, link, transactions, holdings, liabilities, insights, recurring,
-            sync, tokens):
+for mod in (me, overview, networth, accounts, items, link, transactions, holdings, performance, liabilities, insights,
+            recurring, sync, tokens):
     router.include_router(mod.router)

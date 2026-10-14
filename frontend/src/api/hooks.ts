@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Account, Grain, InsightSlice, Range, Summary, TransactionQuery } from "./types";
+import type { Account, Grain, InsightSlice, PerfRange, Range, Summary, TransactionQuery } from "./types";
 
 /** Query keys in one place so invalidation is grep-able. */
 export const qk = {
@@ -58,6 +58,12 @@ export function useDetectRecurring() {
 export function useDismissAlert() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: api.dismissAlert, onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKeys.alerts }) });
+}
+export const usePerformance = (q: { range: PerfRange; account_id?: string; benchmarks: string[] }) =>
+  useQuery({ queryKey: ["performance", q], queryFn: () => api.performance(q), placeholderData: (prev) => prev });
+export function useRefreshPrices() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: api.refreshPrices, onSuccess: () => void qc.invalidateQueries({ queryKey: ["performance"] }) });
 }
 export const usePatterns = (s: InsightSlice, category?: string | null) =>
   useQuery({ queryKey: ["insights", "patterns", s, category ?? null], queryFn: () => api.insightPatterns(s, category), placeholderData: (prev) => prev });
