@@ -259,6 +259,32 @@ def test_account_trend_is_daily_and_ends_at_current_balance(client):
     assert overview_rows[acct_id]["trend"] == trend
 
 
+def test_month_change_holds_newly_linked_accounts_flat(client):
+    """An account first tracked today has no month-ago balance. The chart holds it
+    flat, so the month's change must too, not count its whole balance as a gain."""
+    from datetime import UTC, datetime, timedelta
+
+    def manual(name, category, value):
+        r = client.post("/api/v1/accounts/manual", json={"name": name, "manual_category": category, "value": value})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    cash = manual("Old cash", "cash", "1000")
+    forty_days_ago = (datetime.now(UTC) - timedelta(days=40)).date().isoformat()
+    r = client.put(f"/api/v1/accounts/{cash}/value", json={"value": "900", "as_of": forty_days_ago})
+    assert r.status_code == 200, r.text
+    manual("New house", "real_estate", "500000")  # tracked from today only
+    ov = client.get("/api/v1/overview").json()
+    assert ov["net_worth"] == "501000.00"
+    assert ov["change_1m"]["amount"] == "100.00"  # was 500100.00: the house counted as a month's gain
+    groups = {g["key"]: g["change_1m"] for g in ov["groups"]}
+    assert groups["cash"]["amount"] == "100.00"
+    assert groups["real_estate"] is None  # nothing to compare with yet
+    history = client.get("/api/v1/networth/history?range=3m").json()["points"]
+    month_ago = ov["change_1m"]["since"]
+    assert [p["net"] for p in history if p["date"] == month_ago] == ["500900.00"]  # the chart agrees
+
+
 def test_summary_splits_in_and_out_and_excludes_transfers(client):
     from datetime import date
 

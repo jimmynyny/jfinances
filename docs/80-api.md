@@ -48,6 +48,10 @@ Codes you will see: `auth.missing_credential` 401, `auth.bad_access_jwt` 401,
  ]}
 ```
 Group keys are fixed and always present (possibly empty).
+`change_1m` compares today with 30 days ago on the net worth chart's own balances (see
+`/networth/history`: an account first tracked later is held flat at its first value), so it
+always matches the line. It is null when no account was tracked 30 days ago; a group's is null
+when none of its visible accounts was.
 
 ### GET /networth/history?range=1m|3m|6m|1y|all
 ```json

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth.deps import current_user
@@ -13,6 +14,7 @@ from ..db import get_session
 from ..models import Account, BalanceSnapshot, PlaidItem
 from ..services import networth
 from ..services.trends import balance_trends
+from ..services.wealth import balances_on
 from ._common import account_json, money, ts
 
 router = APIRouter()
@@ -34,29 +36,19 @@ def _rows(sess: Session) -> list[tuple[Account, networth.AccountRow]]:
     return out
 
 
-def _net_on(sess: Session, day) -> tuple[Decimal, Decimal, Decimal] | None:
-    """Net worth as of a date from snapshots (latest snapshot on or before day
-    per account)."""
-    sub = (select(BalanceSnapshot.account_id, func.max(BalanceSnapshot.as_of).label("d"))
-           .where(BalanceSnapshot.as_of <= day).group_by(BalanceSnapshot.account_id).subquery())
-    q = (select(Account.is_liability, Account.is_hidden, BalanceSnapshot.current_balance)
-         .join(sub, sub.c.account_id == BalanceSnapshot.account_id)
-         .where(BalanceSnapshot.as_of == sub.c.d)
-         .join(Account, Account.id == BalanceSnapshot.account_id)
-         .outerjoin(PlaidItem, PlaidItem.id == Account.item_id)
-         .where((PlaidItem.id.is_(None)) | (PlaidItem.status != "removed")))
-    rows = sess.execute(q).all()
-    if not rows:
-        return None
-    assets = liabilities = Decimal("0")
-    for is_liab, hidden, bal in rows:
-        if hidden or bal is None:
-            continue
-        if is_liab:
-            liabilities += Decimal(bal)
-        else:
-            assets += Decimal(bal)
-    return assets, liabilities, assets - liabilities
+def _balances_then(sess: Session, accounts: list[Account], day) -> tuple[dict[str, Decimal], set[str]]:
+    """Each account's balance on `day` as the net worth chart draws it (the latest
+    snapshot on or before the day, else its first one, held flat before tracking
+    began), and the accounts that were tracked by then. Comparing today's full net
+    worth with only the tracked accounts' month-ago total made a month's change
+    out of every account linked since."""
+    ids = [a.id for a in accounts]
+    tracked = {str(aid) for aid in sess.execute(
+        select(BalanceSnapshot.account_id).where(BalanceSnapshot.account_id.in_(ids), BalanceSnapshot.as_of <= day)
+        .distinct()).scalars()}
+    if not tracked:
+        return {}, tracked
+    return {str(aid): v[day] for aid, v in balances_on(sess, accounts, [day]).items()}, tracked
 
 
 @router.get("/overview")
@@ -66,12 +58,13 @@ def overview(_: Principal = Depends(current_user), sess: Session = Depends(get_s
     by_id = {str(a.id): a for a, _ in pairs}
     assets, liabilities, net = networth.totals(rows)
     month_ago = (datetime.now(UTC) - timedelta(days=30)).date()
-    then = _net_on(sess, month_ago)
+    then_by_acct, tracked = _balances_then(sess, [a for a, _ in pairs], month_ago)
     change = None
-    if then is not None:
-        change = {"amount": money(net - then[2]), "pct": (
-            str(networth.pct_change(net, then[2])) if networth.pct_change(net, then[2]) is not None else None),
-            "since": month_ago.isoformat()}
+    if tracked:
+        _, _, then = networth.totals(replace(r, current_balance=then_by_acct.get(r.id)) for r in rows)
+        pct = networth.pct_change(net, then)
+        change = {"amount": money(net - then), "pct": str(pct) if pct is not None else None,
+                  "since": month_ago.isoformat()}
 
     trends = balance_trends(sess, [a.id for a, _ in pairs], current={a.id: a.current_balance for a, _ in pairs})
     groups = []
@@ -83,15 +76,10 @@ def overview(_: Principal = Depends(current_user), sess: Session = Depends(get_s
             "accounts": [{**account_json(by_id[r.id]),
                           "trend": [money(v) for v in trends.get(by_id[r.id].id, [])]} for r in g["accounts"]],
         })
-    # Per-group month change from snapshots.
-    sub = (select(BalanceSnapshot.account_id, func.max(BalanceSnapshot.as_of).label("d"))
-           .where(BalanceSnapshot.as_of <= month_ago).group_by(BalanceSnapshot.account_id).subquery())
-    q = (select(BalanceSnapshot.account_id, BalanceSnapshot.current_balance)
-         .join(sub, (sub.c.account_id == BalanceSnapshot.account_id) & (sub.c.d == BalanceSnapshot.as_of)))
-    then_by_acct = {str(aid): Decimal(bal or 0) for aid, bal in sess.execute(q).all()}
+    # Per-group month change, on the same month-ago balances.
     for g in groups:
         visible = [a for a in g["accounts"] if not a["is_hidden"]]
-        if not visible or not any(a["id"] in then_by_acct for a in visible):
+        if not any(a["id"] in tracked for a in visible):
             continue
         then_total = sum((then_by_acct.get(a["id"], Decimal(0)) for a in visible), Decimal(0))
         now_total = Decimal(g["total"])
