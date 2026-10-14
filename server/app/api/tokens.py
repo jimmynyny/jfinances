@@ -1,8 +1,10 @@
-"""Device tokens for the API hostname. Dashboard-only."""
+"""Linked phones (api_tokens), listed and revoked from the dashboard only.
+
+Tokens are minted by the link flow (api/mobile.py), never by hand.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,17 +24,6 @@ def list_tokens(p: Principal = Depends(dashboard_only), sess: Session = Depends(
                         .order_by(ApiToken.created_at.desc())).scalars()
     return {"tokens": [{"id": str(t.id), "name": t.name, "created_at": ts(t.created_at),
                         "last_used_at": ts(t.last_used_at), "revoked_at": ts(t.revoked_at)} for t in rows]}
-
-
-class TokenIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-
-
-@router.post("/tokens", status_code=201)
-def create(body: TokenIn, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
-    row, plaintext = tok.issue_token(sess, user_id=p.user_id, name=body.name)
-    return {"id": str(row.id), "name": row.name, "token": plaintext,
-            "note": "This token is shown once. Store it in the device keychain."}
 
 
 @router.delete("/tokens/{token_id}", status_code=204)

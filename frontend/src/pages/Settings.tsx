@@ -1,9 +1,9 @@
 import { useState } from "react";
 import {
-  Badge, Button, DataTable, Drawer, EmptyState, Input, KeyValue, Money, Page, PageHeader, Panel, Select, Skeleton, formatRelative, useToast, type Column,
+  Badge, Button, DataTable, Drawer, EmptyState, Input, Money, Page, PageHeader, Panel, Select, Skeleton, formatRelative, useToast, type Column,
 } from "@mooney/ui";
-import { useAccounts, useApiTokens, useCreateManual, useCreateToken, useDeleteManual, useItems, useRemoveItem, useRevokeToken, useSetManualValue, useSyncAll, useSyncItem, useSyncStatus } from "../api/hooks";
-import type { Account, ApiToken, Item, Job, ManualCategory, NewApiToken } from "../api/types";
+import { useAccounts, useApiTokens, useCreateManual, useDeleteManual, useItems, useRemoveItem, useRevokeToken, useSetManualValue, useSyncAll, useSyncItem, useSyncStatus } from "../api/hooks";
+import type { Account, ApiToken, Item, Job, ManualCategory } from "../api/types";
 import { ApiError } from "../api/client";
 import { ConnectButton } from "../components/ConnectButton";
 import { ErrorNote } from "../components/ErrorNote";
@@ -28,13 +28,10 @@ export function SettingsPage() {
   const createManual = useCreateManual();
   const setValue = useSetManualValue();
   const revoke = useRevokeToken();
-  const createToken = useCreateToken();
   const syncAll = useSyncAll();
   const deleteManual = useDeleteManual();
   const { toast, error } = useToast();
   const [adding, setAdding] = useState(false);
-  const [newToken, setNewToken] = useState<NewApiToken | null>(null);
-  const [tokenName, setTokenName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Account | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Item | null>(null);
   const [valueEdit, setValueEdit] = useState<Account | null>(null);
@@ -96,17 +93,17 @@ export function SettingsPage() {
   const lastWebhook = sync.data?.webhooks[0]?.received_at ?? null;
 
   const tokenCols: Column<ApiToken>[] = [
-    { key: "name", header: "Name", cell: (t) => t.name },
-    { key: "created", header: "Created", cell: (t) => <span className="mu-mono">{formatRelative(t.created_at)}</span> },
-    { key: "used", header: "Last used", cell: (t) => <span className="mu-mono">{formatRelative(t.last_used_at)}</span> },
-    { key: "x", header: "", numeric: true, cell: (t) => (t.revoked_at ? <Badge>revoked</Badge> : <Button size="sm" variant="danger" onClick={() => revoke.mutate(t.id, { onSuccess: () => toast("Token revoked"), onError: (e) => fail(e, "Could not revoke") })}>Revoke</Button>) },
+    { key: "name", header: "Phone", cell: (t) => t.name },
+    { key: "created", header: "Linked", cell: (t) => <span className="mu-mono">{formatRelative(t.created_at)}</span> },
+    { key: "used", header: "Last seen", cell: (t) => <span className="mu-mono">{formatRelative(t.last_used_at)}</span> },
+    { key: "x", header: "", numeric: true, cell: (t) => <Button size="sm" variant="danger" onClick={() => revoke.mutate(t.id, { onSuccess: () => toast("Phone unlinked"), onError: (e) => fail(e, "Could not unlink") })}>Unlink</Button> },
   ];
 
   return (
     <Page>
       <PageHeader
         title="Settings"
-        subtitle="Connections, offline assets, sync, and device access."
+        subtitle="Connections, offline assets, sync, and linked phones."
         actions={<><Button size="sm" variant="quiet" loading={syncAll.isPending} onClick={() => syncAll.mutate(undefined, { onSuccess: () => toast("Sync queued for every connection"), onError: (e) => fail(e, "Could not queue sync") })}>Sync everything</Button><ConnectButton size="sm" /></>}
       />
 
@@ -135,28 +132,10 @@ export function SettingsPage() {
         <DataTable className="jf-stack-sm" columns={jobCols} rows={(sync.data?.jobs ?? []).slice(0, 20)} rowKey={(j) => j.id} compact empty="No recent jobs." />
       </Panel>
 
-      <Panel
-        flush
-        caption="device access"
-        actions={
-          <form className="mu-row" style={{ flexWrap: "nowrap" }} onSubmit={(e) => { e.preventDefault(); if (!tokenName.trim()) return; createToken.mutate(tokenName.trim(), { onSuccess: (t) => { setNewToken(t); setTokenName(""); }, onError: (err) => fail(err, "Could not create token") }); }}>
-            <Input placeholder="Device name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} style={{ width: 160 }} />
-            <Button size="sm" type="submit" variant="quiet" loading={createToken.isPending} disabled={!tokenName.trim()}>Issue token</Button>
-          </form>
-        }
-      >
-        <DataTable className="jf-stack-sm" columns={tokenCols} rows={tokens.data ?? []} rowKey={(t) => t.id} compact empty="No device tokens issued. Tokens are for the future iOS app on the API hostname." />
+      <Panel flush caption="phones" foot="A linked phone can read everything here and change nothing. Unlinking stops it on its next request.">
+        <DataTable className="jf-stack-sm" columns={tokenCols} rows={(tokens.data ?? []).filter((t) => !t.revoked_at)} rowKey={(t) => t.id} compact
+          empty="No phones linked. Open the jfinances app on your iPhone and tap Sign in." />
       </Panel>
-
-      <Drawer open={!!newToken} onClose={() => setNewToken(null)} title="Device token" footer={<Button variant="primary" onClick={() => setNewToken(null)}>I've copied it</Button>}>
-        {newToken && (
-          <div className="mu-stack">
-            <p>This is the only time the token is shown. Store it in the device's keychain.</p>
-            <KeyValue items={[{ key: "name", value: newToken.name }, { key: "token", value: <code className="mu-mono" style={{ overflowWrap: "anywhere" }}>{newToken.token}</code> }]} />
-            {newToken.note && <p className="mu-caption">{newToken.note}</p>}
-          </div>
-        )}
-      </Drawer>
 
       <Drawer
         open={!!confirmDelete}

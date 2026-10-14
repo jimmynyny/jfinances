@@ -24,8 +24,11 @@ All eight records exist (created 2026-10-13). If a service's custom domain is
 ever re-created in Railway, its CNAME target and TXT value change: copy the
 new ones from Railway → service → Settings → Networking.
 
-Future: `jfinances-api` / `jfinances-sandbox-api` → the same `web` services,
-for the iOS app (see `docs/90-roadmap.md`).
+Phones: `jfinances-api` / `jfinances-sandbox-api` → CNAME to the same `web`
+service's Railway target (production / sandbox), proxied, plus their
+`_railway-verify` TXT records, and **no Access application** (the app sends
+its own bearer token; docs/40 §5). Add a WAF rate-limit rule on these two
+hostnames as the outer wall.
 
 Single-level names only. `api.jfinances.sellingtcg.com` would need Advanced
 Certificate Manager; `jfinances-api.sellingtcg.com` is covered by Universal SSL.

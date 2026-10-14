@@ -14,7 +14,7 @@ If code and this doc disagree, fix one of them the same day.
                  Cloudflare (DNS proxy, WAF, Access)
                               │
      ┌────────────────────────┼─────────────────────────────┐
-     │ jfinances.sellingtcg.com│ jfinances-hooks.sellingtcg.com│ jfinances-api.sellingtcg.com (future iOS)
+     │ jfinances.sellingtcg.com│ jfinances-hooks.sellingtcg.com│ jfinances-api.sellingtcg.com (iOS app)
      │   behind Access         │   NO Access (Plaid posts here)│   NO Access (app-issued bearer tokens)
      ▼                         ▼                               ▼
  ┌────────┐              ┌─────────┐                     (same `web` service, second hostname)
@@ -87,7 +87,7 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `ALLOWED_USERS` | ✓ |  |  | Comma-separated emails that may use the app, **in order**: the first is `owner`, the rest `member`. Reconciled into `users` at every web boot (lock-serialised across uvicorn workers) |
 | `PUBLIC_BASE_URL` | ✓ |  |  | `https://jfinances.sellingtcg.com` — builds the OAuth redirect URI |
 | `HOOKS_BASE_URL` | ✓ | ✓ | ✓ | `https://jfinances-hooks.sellingtcg.com` — Plaid webhook base |
-| `API_HOST` | ✓ |  |  | Hostname that uses bearer-token auth instead of Access (future iOS) |
+| `API_HOST` | ✓ |  |  | `jfinances-api.sellingtcg.com` (sandbox: `jfinances-sandbox-api.sellingtcg.com`). The hostname where phones use bearer tokens instead of Access; it serves `/api/*` only. Unset = no phone access |
 | `PORT` | ✓ | ✓ |  | `8080`, set explicitly to match the custom domains' target port |
 | `FRED_API_KEY` | ✓ | ✓ | ✓ | St. Louis Fed market data (benchmark indexes, Bitcoin, CPI); only the worker calls it. Optional: without it those benchmarks are off. docs/30 "Market data" |
 | `TIINGO_API_KEY` | ✓ | ✓ | ✓ | Tiingo daily prices (dividend-adjusted fund benchmarks, holdings history); only the worker calls it. Optional |
@@ -116,12 +116,14 @@ ES256 JWT in `Plaid-Verification`. We fetch the JWK by `kid` from
 `iat` within 5 minutes, and compare `request_body_sha256` to the raw body
 with a constant-time compare. Anything else → 401 and the body is dropped.
 
-**Devices (API hostname, future iOS).** Modelled on vending's `mobile.py`.
-A phone links once through an Access-protected page, receives an app-issued
-256-bit token, and sends `Authorization: Bearer` on the API hostname. Only
-SHA-256 hashes are stored (`api_tokens` table). The token resolves to a
-`users` row, so revoking the user revokes the phone. The table and the
-principal abstraction exist from day one; the link flow ships later.
+**Phones (API hostname).** Modelled on vending's `mobile.py`. A phone links
+once through Access (`GET /api/v1/mobile/link` on the dashboard hostname),
+trades the two-minute code it is handed for an app-issued 256-bit token, and
+sends `Authorization: Bearer` on the API hostname. Only SHA-256 hashes are
+stored (`mobile_link_codes`, `api_tokens`). The token resolves to a `users`
+row, so disabling the user stops the phone, and it is **read-only**:
+`current_user` refuses anything but GET/HEAD/OPTIONS from a token. Details in
+docs/40 §5.
 
 **Principals.** `auth/deps.py` exposes `current_user()` which resolves a
 `Principal(email, user_id, via="access"|"token")`. Routers depend on it and

@@ -166,10 +166,6 @@ export function useUpdateTransaction() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["transactions"] }),
   });
 }
-export function useCreateToken() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: api.createApiToken, onSuccess: () => void qc.invalidateQueries({ queryKey: qk.tokens }) });
-}
 export function useRevokeToken() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: api.revokeApiToken, onSuccess: () => void qc.invalidateQueries({ queryKey: qk.tokens }) });

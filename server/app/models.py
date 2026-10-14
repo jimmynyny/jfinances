@@ -69,7 +69,8 @@ class User(TimestampMixin, Base):
 
 
 class ApiToken(TimestampMixin, Base):
-    """A device credential we issue (future iOS). Only the SHA-256 is stored."""
+    """A phone's credential, minted by the link flow (auth/mobile.py). Only the
+    SHA-256 is stored."""
 
     __tablename__ = "api_tokens"
 
@@ -81,6 +82,21 @@ class ApiToken(TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship()
+
+
+class MobileLinkCode(TimestampMixin, Base):
+    """A two-minute code minted behind Access and traded once by the phone
+    for an `api_tokens` row (auth/mobile.py). Only the SHA-256 is stored."""
+
+    __tablename__ = "mobile_link_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    device_name: Mapped[str | None] = mapped_column(String(120))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@ class Code(StrEnum):
     NOT_ALLOWED = "auth.not_allowed"
     FORBIDDEN = "auth.forbidden"
     NOT_CONFIGURED = "auth.not_configured"
+    BAD_LINK_CODE = "auth.bad_link_code"
+    READ_ONLY = "auth.read_only"
 
 
 class AuthError(Exception):

@@ -333,14 +333,6 @@ export interface ApiToken {
   revoked_at: string | null;
 }
 
-export interface NewApiToken {
-  id: string;
-  name: string;
-  /** Shown once. */
-  token: string;
-  note: string | null;
-}
-
 export interface ApiErrorBody {
   /** Some errors carry details next to code and message (e.g. the duplicate guard's 409). */
   error: { code: string; message: string; [detail: string]: unknown };

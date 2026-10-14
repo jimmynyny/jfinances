@@ -13,7 +13,8 @@ Errors:
 ```
 
 Codes you will see: `auth.missing_credential` 401, `auth.bad_access_jwt` 401,
-`auth.bad_token` 401/429, `auth.not_allowed` 403, `auth.forbidden` 403,
+`auth.bad_token` 401/429, `auth.bad_link_code` 400, `auth.not_allowed` 403,
+`auth.forbidden` 403, `auth.read_only` 403,
 `not_found` 404, `bad_request` 400, `validation` 422, `conflict` 409,
 `rate_limited` 429, `plaid_error` 502, `internal` 500.
 
@@ -391,11 +392,26 @@ default sections again.
 ### POST /sync/all → 202 (dashboard_only) — queue sync/investments/liabilities for every item.
 ### POST /sync/snapshot → 202 (dashboard_only) — queue today's balance snapshot.
 
-## Device tokens (dashboard_only)
+## Phones
 
-### GET /tokens → `{"tokens":[{"id","name","created_at","last_used_at","revoked_at"}]}`
-### POST /tokens `{"name":"Jimmy's iPhone"}` → 201 `{"id","name","token":"<shown once>","note"}`
-### DELETE /tokens/{id} → 204
+A token is read-only: anything but GET/HEAD/OPTIONS with a token is 403
+`auth.read_only`. docs/40 §5 has the whole flow.
+
+### GET /mobile/link?nonce=N&name=… (dashboard hostname, dashboard_only)
+Opened by the app in a system web sheet. Mints a one-time code (120 s) and
+answers 302 `jfinances://linked?code=…&nonce=N`. `nonce`: 8–64 of
+`[A-Za-z0-9_-]`, else 400.
+
+### POST /mobile/redeem (API hostname only, no auth)
+`{"code","nonce","name"?}` → `{"token":"<shown once>","id","name","email","display_name"}`.
+400 `auth.bad_link_code` for an unknown, used, expired or mismatched code; 429
+after 20 bad attempts a minute from one address.
+
+### POST /mobile/unlink (API hostname only, bearer)
+Revokes the presenting token → `{"revoked":true,"id"}`.
+
+### GET /tokens (dashboard_only) → `{"tokens":[{"id","name","created_at","last_used_at","revoked_at"}]}`
+### DELETE /tokens/{id} (dashboard_only) → 204: unlinks that phone.
 
 ## Public
 

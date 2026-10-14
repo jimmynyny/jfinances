@@ -3,24 +3,14 @@
 Things deliberately *not* built yet, with the hooks left in place so they
 do not require a redesign.
 
-## iOS app (future)
+## iOS app: next steps
 
-Modelled on vending's mobile flow (`vending.sellingtcg.com/server/app/auth/mobile.py`).
+The link flow and read-only phone tokens are built (docs/40 §5). Reserved:
 
-- Hostname `jfinances-api.sellingtcg.com` → the same `web` service, **not**
-  behind Access. `API_HOST` is already a variable; `auth/deps.py` already
-  switches to bearer-token auth when `Host == API_HOST`.
-- Link flow: the phone opens `https://jfinances.sellingtcg.com/settings/devices/link?nonce=N`
-  in `ASWebAuthenticationSession` (Access login happens there), the server
-  302s to `jfinances://linked?code=C&nonce=N`, the app POSTs
-  `/v1/devices/link {code, nonce, name}` on the API host and receives a
-  token stored in the Keychain.
-- `api_tokens` table exists now (sha256 of token, `revoked_at`). Revoking the
-  user revokes every device on its next request.
-- Rate limit unknown tokens per IP in-process, and rely on Cloudflare WAF
-  rate rules on the API host as the outer wall.
-- Read-only scope first. Any write endpoint on the API host must be a
-  deliberate decision.
+- Writes from the phone (sync now, dismiss an alert, confirm a
+  subscription). Each one is a deliberate decision: today `current_user`
+  refuses every non-GET from a token.
+- Push notifications for alerts (needs APNs keys and a sender in `worker`).
 
 ## Google login in Access
 

@@ -3,7 +3,7 @@ import type {
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
   Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
-  Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory, NewApiToken,
+  Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
 } from "./types";
 
@@ -521,10 +521,6 @@ export const api = {
 
   apiTokens: async (): Promise<ApiToken[]> =>
     list((await request("GET", "/tokens")).tokens, (t) => ({ id: String(t.id), name: String(t.name ?? ""), created_at: String(t.created_at ?? ""), last_used_at: str(t.last_used_at), revoked_at: str(t.revoked_at) })),
-  createApiToken: async (name: string): Promise<NewApiToken> => {
-    const r = await request("POST", "/tokens", { name });
-    return { id: String(r.id), name: String(r.name ?? name), token: String(r.token), note: str(r.note) };
-  },
   revokeApiToken: (id: string) => request<void>("DELETE", `/tokens/${id}`),
 };
 

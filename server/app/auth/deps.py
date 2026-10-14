@@ -21,11 +21,27 @@ def _host(request: Request) -> str:
     return (request.headers.get("host") or "").split(":")[0].lower()
 
 
-def current_user(request: Request, sess: Session = Depends(get_session)) -> Principal:
+def on_api_host(request: Request) -> bool:
     s = settings()
-    if s.api_host and _host(request) == s.api_host.lower():
-        client_ip = request.client.host if request.client else "?"
-        principal = authenticate_bearer(request.headers, sess, client_ip)
+    return bool(s.api_host) and _host(request) == s.api_host.lower()
+
+
+def client_ip(request: Request) -> str:
+    # Cloudflare fronts every hostname, so the connecting address is an edge's;
+    # the visitor's is in this header. Throttling the edge would throttle all.
+    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+
+
+#: A phone reads. Enforced here rather than per handler, so a write endpoint
+#: added later is refused to phones unless someone decides otherwise.
+_READS = ("GET", "HEAD", "OPTIONS")
+
+
+def current_user(request: Request, sess: Session = Depends(get_session)) -> Principal:
+    if on_api_host(request):
+        principal = authenticate_bearer(request.headers, sess, client_ip(request))
+        if request.method not in _READS:
+            raise AuthError(Code.READ_ONLY, "a linked phone can read, not change", status=403)
     else:
         principal = authenticate_human(request.headers, request.cookies, sess)
     request.state.principal = principal

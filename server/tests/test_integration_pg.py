@@ -140,16 +140,83 @@ def test_full_flow(client):
     liab = client.get("/api/v1/liabilities").json()
     assert liab["accounts"][0]["detail"]["interest_rate_pct"] == "24.99"
 
-    # token issuing is dashboard-only and never stores plaintext
-    t = client.post("/api/v1/tokens", json={"name": "phone"}).json()
-    assert len(t["token"]) > 32
-    assert client.get("/api/v1/tokens").json()["tokens"][0]["name"] == "phone"
-
     # unlink keeps history
     gone = client.delete(f"/api/v1/items/{item['id']}").json()
     assert gone["status"] == "removed"
     ov2 = client.get("/api/v1/overview").json()
     assert ov2["net_worth"] == "410000.00"
+
+
+def test_phone_link_flow(client, monkeypatch):
+    """Access session mints a code, the phone redeems it on the API host for a
+    read-only token, and can give it back."""
+    from datetime import UTC, datetime, timedelta
+    from urllib.parse import parse_qs, urlparse
+
+    from sqlalchemy import update
+
+    from server.app.auth import tokens as tok
+    from server.app.db import session
+    from server.app.models import MobileLinkCode
+
+    monkeypatch.setenv("API_HOST", "api.example.com")
+    reset_settings_cache()
+    tok._bad_attempts.clear()
+    api = {"host": "api.example.com"}
+
+    def mint(nonce="nonce-1234"):
+        r = client.get(f"/api/v1/mobile/link?nonce={nonce}&name=Test%20iPhone", follow_redirects=False)
+        assert r.status_code == 302, r.text
+        loc = urlparse(r.headers["location"])
+        assert (loc.scheme, loc.netloc) == ("jfinances", "linked")
+        q = parse_qs(loc.query)
+        assert q["nonce"] == [nonce]
+        return q["code"][0]
+
+    assert client.get("/api/v1/mobile/link?nonce=bad", follow_redirects=False).status_code == 400
+    code = mint()
+    # redeeming is for the API hostname only, and needs the matching nonce
+    assert client.post("/api/v1/mobile/redeem", json={"code": code, "nonce": "nonce-1234"}).status_code == 404
+    assert client.post("/api/v1/mobile/redeem", headers=api,
+                       json={"code": code, "nonce": "nonce-9999"}).status_code == 400
+    r = client.post("/api/v1/mobile/redeem", headers=api, json={"code": code, "nonce": "nonce-1234", "name": ""})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["email"] == "jimmy@example.com" and body["name"] == "Test iPhone" and len(body["token"]) > 32
+    # a code works once
+    assert client.post("/api/v1/mobile/redeem", headers=api,
+                       json={"code": code, "nonce": "nonce-1234"}).status_code == 400
+
+    phone = {**api, "authorization": f"Bearer {body['token']}"}
+    me = client.get("/api/v1/me", headers=phone).json()
+    assert me["via"] == "token" and me["email"] == "jimmy@example.com"
+    assert client.get("/api/v1/overview", headers=phone).status_code == 200
+    # read-only, whatever the endpoint
+    r = client.post("/api/v1/alerts/dismiss-all", headers=phone)
+    assert r.status_code == 403 and r.json()["error"]["code"] == "auth.read_only"
+    assert client.post("/api/v1/sync/all", headers=phone).status_code == 403
+    # a phone cannot mint codes for another phone
+    assert client.get("/api/v1/mobile/link?nonce=nonce-5678", headers=phone, follow_redirects=False).status_code == 403
+    # the dashboard bundle is not served on the API host
+    assert client.get("/", headers=api).status_code == 404
+    assert client.get("/insights", headers=api).status_code == 404
+    # the dashboard lists the phone
+    listed = client.get("/api/v1/tokens").json()["tokens"]
+    assert [t["name"] for t in listed] == ["Test iPhone"] and listed[0]["last_used_at"]
+
+    # an expired code is refused
+    code2 = mint("nonce-abcd")
+    with session() as s:
+        s.execute(update(MobileLinkCode).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+    r = client.post("/api/v1/mobile/redeem", headers=api, json={"code": code2, "nonce": "nonce-abcd"})
+    assert r.status_code == 400 and "expired" in r.json()["error"]["message"]
+
+    # the phone gives its token back; it stops working at once
+    r = client.post("/api/v1/mobile/unlink", headers=phone)
+    assert r.status_code == 200 and r.json()["revoked"] is True
+    assert client.get("/api/v1/overview", headers=phone).status_code == 401
+    assert client.get("/api/v1/tokens").json()["tokens"][0]["revoked_at"]
+    tok._bad_attempts.clear()
 
 
 def test_reorder_accounts(client):

@@ -18,7 +18,7 @@ Read in this order:
 | `60-runbook.md` | Operations: secrets rotation, re-link, restore, logs, common failures. |
 | `70-design-system.md` | `@mooney/ui`: tokens, components, charts, reuse in other dashboards. |
 | `80-api.md` | Every endpoint with examples. |
-| `90-roadmap.md` | iOS app, Google login, tailoring ideas, out-of-scope list. |
+| `90-roadmap.md` | Phone writes, Google login, tailoring ideas, out-of-scope list. |
 
 Principles that every change should respect:
 

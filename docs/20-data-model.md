@@ -12,6 +12,7 @@ from what we already stored instead of another billable call.
 
 ```
 users ──< api_tokens
+users ──< mobile_link_codes
 users ──< link_sessions >── plaid_items
 users ──< plaid_items ──< accounts ──< transactions
                                   ├──< balance_snapshots
@@ -40,10 +41,17 @@ is refused on their next request.
 | `last_seen_at` | written on each authenticated request |
 
 ## api_tokens
-Device credentials for the API hostname (future iOS). **Only the SHA-256 of
-the token is stored.** The plaintext is returned once by `POST /api/v1/tokens`
-and never again. `revoked_at` is a soft revoke; `last_used_at` tells you which
-phone is which.
+Phone credentials for the API hostname (docs/40 §5). **Only the SHA-256 of
+the token is stored.** The plaintext is returned once, to the phone, by
+`POST /api/v1/mobile/redeem`. `name` is what the phone called itself;
+`revoked_at` is a soft revoke; `last_used_at` (written at most every 5
+minutes) tells you which phone is in use.
+
+## mobile_link_codes
+The two-minute codes `GET /api/v1/mobile/link` mints behind Access: `user_id`,
+the app's `nonce`, SHA-256 `code_hash`, `expires_at`, `used_at` (set by the
+one redeem that wins). Rows more than a day past expiry are deleted whenever
+a new code is minted.
 
 ## plaid_items
 One row per Plaid Item (one login at one institution). The row outlives an

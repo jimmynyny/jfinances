@@ -1,14 +1,13 @@
-"""Device credentials for the API hostname (future iOS app).
+"""Phone credentials for the API hostname (docs/40 §5).
 
 A phone cannot complete an interactive Access login every day, so after one
-Access-protected linking step it receives a token WE issue. Only the SHA-256
-of the token is stored. The token resolves to a `users` row and goes through
-the same allowlist check as an Access session, so disabling the user disables
-the phone on its next request.
+Access-protected linking step (auth/mobile.py) it holds a token WE issue.
+Only the SHA-256 of the token is stored. The token resolves to a `users` row
+and goes through the same allowlist check as an Access session, so disabling
+the user disables the phone on its next request.
 
-The issuing endpoints are dashboard-only (`/api/v1/tokens`, Access-authed).
-The phone link flow itself (deep link + nonce) is deferred; see
-docs/40-auth-and-security.md §5.
+Listing and revoking are dashboard-only (`/api/v1/tokens`); a phone revokes
+its own token with `POST /api/v1/mobile/unlink`.
 """
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ import logging
 import threading
 import time
 from collections import deque
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,9 +31,12 @@ _THROTTLE_WINDOW = 60.0
 _THROTTLE_MAX = 20
 _throttle_lock = threading.Lock()
 _bad_attempts: dict[str, deque[float]] = {}
+#: `last_used_at` is written at most this often: a widget polls, and a write
+#: per poll buys nothing.
+LAST_USED_EVERY = timedelta(minutes=5)
 
 
-def _throttle(client_ip: str) -> None:
+def throttle(client_ip: str) -> None:
     now = time.monotonic()
     with _throttle_lock:
         q = _bad_attempts.setdefault(client_ip, deque())
@@ -44,29 +46,48 @@ def _throttle(client_ip: str) -> None:
             raise AuthError(Code.BAD_TOKEN, "too many bad tokens", status=429)
 
 
-def _record_bad(client_ip: str) -> None:
+def record_bad(client_ip: str) -> None:
     with _throttle_lock:
         _bad_attempts.setdefault(client_ip, deque()).append(time.monotonic())
+        if len(_bad_attempts) > 10_000:  # a wide scan must not grow this without bound
+            _bad_attempts.clear()
 
 
-def authenticate_bearer(headers, sess: Session, client_ip: str = "?") -> Principal:
+def _presented(headers) -> str:
     auth = headers.get("authorization") or ""
     if not auth.lower().startswith("bearer "):
         raise AuthError(Code.NO_CREDENTIAL, "expected 'Authorization: Bearer <token>'")
-    _throttle(client_ip)
-    presented = auth[7:].strip()
+    return auth[7:].strip()
+
+
+def _find(sess: Session, presented: str, client_ip: str):
+    throttle(client_ip)
     if len(presented) < 32:
-        _record_bad(client_ip)
+        record_bad(client_ip)
         raise AuthError(Code.BAD_TOKEN, "token rejected")
     row = sess.execute(
         select(ApiToken, User).join(User, User.id == ApiToken.user_id)
         .where(ApiToken.token_hash == sha256_hex(presented))
     ).first()
     if row is None or row.ApiToken.revoked_at is not None:
-        _record_bad(client_ip)
+        record_bad(client_ip)
         raise AuthError(Code.BAD_TOKEN, "token rejected")
-    row.ApiToken.last_used_at = datetime.now(UTC)
+    return row
+
+
+def authenticate_bearer(headers, sess: Session, client_ip: str = "?") -> Principal:
+    row = _find(sess, _presented(headers), client_ip)
+    now = datetime.now(UTC)
+    if row.ApiToken.last_used_at is None or now - row.ApiToken.last_used_at > LAST_USED_EVERY:
+        row.ApiToken.last_used_at = now
     return principal_for_email(row.User.email, sess, via="token")
+
+
+def revoke_presented(headers, sess: Session, client_ip: str = "?") -> ApiToken:
+    """A phone giving its own token back (`POST /mobile/unlink`)."""
+    row = _find(sess, _presented(headers), client_ip)
+    row.ApiToken.revoked_at = datetime.now(UTC)
+    return row.ApiToken
 
 
 def issue_token(sess: Session, *, user_id, name: str) -> tuple[ApiToken, str]:

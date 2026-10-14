@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api import router as api_router
+from .auth.deps import on_api_host
 from .auth.errors import AuthError
 from .auth.human import seed_allowed_users
 from .config import settings
@@ -134,8 +135,10 @@ _NOT_BUILT = """<!doctype html><meta charset=utf-8><title>jfinances</title>
 
 
 @app.get("/{path:path}", include_in_schema=False)
-def spa(path: str):
-    if path.startswith("api/"):
+def spa(path: str, request: Request):
+    # The API hostname has no Access in front of it, so it serves the API and
+    # nothing else: the dashboard's bundle stays behind Access.
+    if path.startswith("api/") or on_api_host(request):
         return JSONResponse({"error": {"code": "not_found", "message": "no such route"}}, status_code=404)
     d = _spa_dir()
     if d is None:

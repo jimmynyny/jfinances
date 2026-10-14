@@ -13,7 +13,7 @@ database each refuse on their own.
 | Forged Plaid webhook | ES256 signature + body hash + 5-minute freshness, before anything is read |
 | Database dump leaks | Plaid access tokens are AES-256-GCM encrypted with a key that lives only in `web`/`worker` env |
 | Token in logs | redaction regexes in the log formatter; tokens are never in log calls to begin with |
-| Device token stolen | only the hash is stored; revoke by id; a disabled user disables all their tokens |
+| Device token stolen | only the hash is stored; tokens are read-only; unlink from Settings by name; a disabled user disables all their tokens |
 | Config mistake ships | boot validation refuses placeholders, env mismatches and dev bypasses in deployed environments |
 | Browser-side attacks | same-origin only (no CORS), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` on API responses |
 
@@ -70,20 +70,44 @@ relink, unlink, refresh button) and `worker` (sync) have the key; `hooks`
 does not. The version byte allows a second key during rotation
 (docs/60 §4).
 
-## 5. Devices: the API hostname (future iOS)
+## 5. Phones: the API hostname
 
-Design follows vending's `mobile.py`. `API_HOST` names a hostname with no
-Access. Requests there must carry `Authorization: Bearer <token>`.
-`auth/tokens.py` hashes the token, finds the `api_tokens` row, rejects
-revoked ones, throttles an IP after 20 bad tokens a minute, and resolves the
-user through the same `principal_for_email` as Access. Endpoints marked
-`dashboard_only` (issuing tokens, unlinking items, exchanging public tokens)
-refuse a device principal.
+Design follows vending's `mobile.py` (`auth/mobile.py`, `api/mobile.py`).
+`API_HOST` names a hostname with no Access; it serves `/api/*` and nothing
+else (the dashboard bundle stays behind Access), and every request there must
+carry `Authorization: Bearer <token>`.
 
-Not built yet: the phone linking handshake (Access-protected page mints a
-short-lived code, the app redeems it on the API hostname for a token). The
-tables and the principal plumbing are in place so adding it does not touch
-auth for humans.
+Linking, once per phone:
+
+```
+app  --ASWebAuthenticationSession-->  GET https://jfinances.sellingtcg.com/api/v1/mobile/link?nonce=N&name=…
+                                      (Access login: one-time PIN; dashboard_only)
+web  --302-->  jfinances://linked?code=C&nonce=N      (C: 256 bits, 120 s, one use; only its hash is stored)
+app  --POST https://jfinances-api.sellingtcg.com/api/v1/mobile/redeem {code, nonce, name}-->
+web  --> {token, id, name, email}                    (a new api_tokens row; only its hash is stored)
+```
+
+- The nonce is made by the app for each attempt and must come back with the
+  code, so a code lifted from a redirect is useless to anyone else.
+- The burn is a conditional UPDATE; two redeems of one code cannot both win.
+- `mobile/link` needs an Access session (`dashboard_only`): a phone cannot
+  mint codes for another phone.
+- `mobile/redeem` and `mobile/unlink` answer on the API hostname only.
+
+Requests: `auth/tokens.py` hashes the token, finds the `api_tokens` row,
+rejects revoked ones, throttles an address (`CF-Connecting-IP`) after 20 bad
+tokens or codes a minute, and resolves the user through the same
+`principal_for_email` as Access. `last_used_at` is written at most every 5
+minutes (widgets poll).
+
+**Read-only.** `current_user` refuses any method but GET/HEAD/OPTIONS from a
+token with 403 `auth.read_only`, for every route, including ones added later.
+Endpoints marked `dashboard_only` refuse a token even for GET. The only write
+a phone makes is `POST /mobile/unlink`, which revokes its own token.
+
+Settings → phones lists each person's linked phones by name with last-seen,
+and unlinks one (it stops on its next request). Tokens are never minted by
+hand.
 
 ## 6. Secrets hygiene
 
@@ -91,14 +115,15 @@ auth for humans.
   `.env.example` with real values.
 - Logs: JSON lines through `logging.py`; a formatter-level redaction catches
   Plaid token shapes, JWTs and bearer strings. Do not log request bodies.
-- `GET /api/v1/tokens` never returns token plaintext; `POST` returns it once.
+- `GET /api/v1/tokens` never returns token plaintext; `POST /mobile/redeem`
+  returns it once, to the phone.
 - Access tokens never appear in any API response.
 - Rotation procedures are in docs/60-runbook.md.
 
 ## 7. What is deliberately not here
 
-- No CORS. The SPA is same-origin. A future iOS app talks to the API
-  hostname with bearer auth; CORS is a browser concept and does not apply.
+- No CORS. The SPA is same-origin. The iOS app talks to the API hostname
+  with bearer auth; CORS is a browser concept and does not apply.
 - No sessions or cookies of our own. Access owns the session.
 - No role matrix. Two people, both can do everything; `users.role` exists
   for when that changes.
