@@ -26,7 +26,7 @@ export function BlurToggle() {
   return (
     <Button size="sm" variant={on ? "primary" : "quiet"} aria-pressed={on} onClick={() => setMode(on ? "off" : "on")}
       title={on ? "Show numbers" : "Blur every number on screen, for screenshots"}>
-      {on ? "numbers blurred" : "blur numbers"}
+      blur
     </Button>
   );
 }

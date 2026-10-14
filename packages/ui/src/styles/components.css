@@ -320,7 +320,8 @@
   .mu-waffle__val, .mu-waffle__pct, .mu-pcal__summary, .mu-pcal__scale, .mu-pbars__unit,
   .mu-chart__tip-v, .mu-chart__endlabel, .mu-chart__tick--y, .mu-flow__value
 ) {
-  filter: blur(5px);
+  /* Scales with the text: a fixed radius left the 40-64px readouts legible. */
+  filter: blur(max(7px, 0.45em));
   user-select: none;
 }
 
