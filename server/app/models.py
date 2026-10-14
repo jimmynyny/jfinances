@@ -415,6 +415,25 @@ class AccountTerms(TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+class CategoryRule(TimestampMixin, Base):
+    """The person's latest category for a merchant on an account, one way (money
+    out or in), learned from their edits and given to that merchant's new
+    transactions there (services/category_rules.py). A later edit replaces it;
+    filing one back under the bank's category forgets it."""
+    __tablename__ = "category_rules"
+    __table_args__ = (UniqueConstraint("account_id", "merchant", "direction", name="uq_category_rules_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    #: insights.merchant_key: the bank's merchant name, else the cleaned description.
+    merchant: Mapped[str] = mapped_column(String(300), nullable=False)
+    direction: Mapped[str] = mapped_column(String(3), nullable=False)  # out | in
+    user_category: Mapped[str] = mapped_column(String(80), nullable=False)
+    learned_from: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id", ondelete="SET NULL"))
+    times_applied: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AssetDetails(TimestampMixin, Base):
     """What a market valuation needs to know about an offline home or vehicle
     (services/valuations.py): a home's address and size, a vehicle's VIN,

@@ -190,6 +190,17 @@ with `source = 'import'` (and `note = 'import:<id>'`), only on days before track
 an offline account (no tracking: kept by hand), on every day without a typed (`manual`) value,
 and the daily carry-forward never overwrites one.
 
+## category_rules
+Categories learned from the person's edits (services/category_rules.py): one row
+per (`account_id`, `merchant`, `direction`), where `merchant` is Insights' name
+for it (`insights.merchant_key`) and `direction` is `out` (a charge) or `in`
+(a refund, a payment): `user_category` is the latest the person filed one under.
+Every category set, on one transaction or many, writes the rule for each key it
+touches; back to the bank's category deletes it. A transaction a sync or an
+import adds takes its key's category when it has none of its own (a pending
+one's carried edit wins); existing transactions are never changed.
+`times_applied` and `last_applied_at` say how often it has filed one.
+
 ## asset_details, valuations
 Monthly market values for offline homes and vehicles (services/valuations.py).
 `asset_details` (one row per account) holds what a valuation needs: a home's

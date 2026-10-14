@@ -28,6 +28,7 @@ from ..models import (
     is_liability_for,
 )
 from ..plaid_client import PlaidClient, PlaidError, plaid
+from . import category_rules
 from .networth import LIABILITY_GROUPS
 
 log = logging.getLogger(__name__)
@@ -226,8 +227,10 @@ def sync_transactions(sess: Session, item: PlaidItem, client: PlaidClient | None
         refresh_accounts(sess, item, client)
         accounts = {a.plaid_account_id: a for a in item.accounts}
 
+    # The person's learned categories fill in new transactions (services/category_rules.py).
+    rules = category_rules.load(sess, [a.id for a in accounts.values()])
     for raw in added + modified:
-        _upsert_transaction(sess, accounts, raw)
+        _upsert_transaction(sess, accounts, raw, rules)
     counts["added"] = len(added)
     counts["modified"] = len(modified)
     if removed:
@@ -248,14 +251,16 @@ def sync_transactions(sess: Session, item: PlaidItem, client: PlaidClient | None
     return counts
 
 
-def _upsert_transaction(sess: Session, accounts: dict[str, Account], raw: dict[str, Any]) -> None:
+def _upsert_transaction(sess: Session, accounts: dict[str, Account], raw: dict[str, Any],
+                        rules: dict | None = None) -> None:
     acct = accounts.get(raw["account_id"])
     if acct is None:
         log.warning("transaction for unknown account %s skipped", raw["account_id"])
         return
     pid = raw["transaction_id"]
     row = sess.execute(select(Transaction).where(Transaction.plaid_transaction_id == pid)).scalar_one_or_none()
-    if row is None:
+    new = row is None
+    if new:
         row = Transaction(account_id=acct.id, plaid_transaction_id=pid, date=_date(raw["date"]),
                           amount=_d(raw["amount"]) or Decimal("0"), name=raw.get("name") or "")
         sess.add(row)
@@ -277,11 +282,13 @@ def _upsert_transaction(sess: Session, accounts: dict[str, Account], raw: dict[s
     row.raw = raw
     # When a pending transaction posts, Plaid removes the pending one and adds
     # a new one carrying pending_transaction_id. Carry user edits across.
-    if row.pending_transaction_id and (row.user_category is None and row.notes is None):
+    if row.pending_transaction_id and (row.user_category is None and row.notes is None and row.business is None):
         prev = sess.execute(select(Transaction).where(
             Transaction.plaid_transaction_id == row.pending_transaction_id)).scalar_one_or_none()
         if prev is not None:
-            row.user_category, row.notes = prev.user_category, prev.notes
+            row.user_category, row.notes, row.business = prev.user_category, prev.notes, prev.business
+    if new and rules:
+        category_rules.apply(rules, row)
 
 
 # ---------------------------------------------------------------------------

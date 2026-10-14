@@ -186,6 +186,13 @@ export function useRemoveItem() {
   const inv = useInvalidateMoney();
   return useMutation({ mutationFn: api.removeItem, onSuccess: inv });
 }
+/** Categories learned from the person's edits; every category change may teach one. */
+export const useCategoryRules = () => useQuery({ queryKey: ["transactions", "rules"], queryFn: api.categoryRules });
+export function useForgetRule() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: api.forgetRule, onSuccess: () => void qc.invalidateQueries({ queryKey: ["transactions", "rules"] }) });
+}
+
 /** A category change moves money between groups everywhere they are summed. */
 function useCategoryChanged() {
   const qc = useQueryClient();

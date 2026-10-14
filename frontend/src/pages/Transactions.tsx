@@ -333,7 +333,7 @@ export function TransactionsPage() {
             onSave={async (patch, said) => {
               try {
                 const r = await editMany.mutateAsync({ ids: [...selected], patch });
-                toast(`${r.updated.toLocaleString()} updated: ${said}`);
+                toast(`${r.updated.toLocaleString()} updated: ${said}${patch.user_category !== undefined ? ". Their merchants' new transactions on the same accounts will follow" : ""}`);
                 setSelected(new Set());
                 setEditingMany(false);
               } catch (e) {
@@ -360,8 +360,11 @@ export function TransactionsPage() {
             onSave={async (patch) => {
               try {
                 const saved = await update.mutateAsync({ id: editing.id, patch });
+                const learned = patch.user_category !== undefined && patch.user_category !== editing.user_category;
                 setEditing(saved);
-                toast("Saved");
+                toast(!learned ? "Saved" : patch.user_category
+                  ? `Saved. New ${saved.merchant_name ?? "transactions like this"} ${saved.amount > 0 ? "charges" : "money in"} on ${saved.account_name ?? "this account"} will be filed as ${categoryWords(patch.user_category)} too.`
+                  : "Saved. It's back to the bank's category, and new ones will be too.");
               } catch (e) {
                 error(e instanceof ApiError ? e.message : "Could not save");
               }

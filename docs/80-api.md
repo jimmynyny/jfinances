@@ -261,6 +261,14 @@ the number: `sum` is every matching row's amount added up (Plaid's sign).
 Body: `{"user_category"?: str|null, "notes"?: str|null, "business"?: bool|null}` → transaction.
 `business`: true business, false personal, null as its account.
 
+### GET /transactions/rules · DELETE /transactions/rules/{id} → 204
+The categories learned from the person's edits, newest first: `{"rules":[{id, account_id,
+account_name, account_mask, merchant, direction: out|in, user_category, updated_at, times_applied,
+last_applied_at}]}`. Setting a category (PATCH one or many) teaches the rule for each transaction's
+merchant, account and direction; the latest wins and back to the bank's forgets it. New
+transactions from a sync or an import take their rule's category. DELETE forgets one (what it
+already filed stays).
+
 ### GET /transactions/ids
 The list's filters → `{"ids":["…"],"total":340}`, newest first: every match, to select them all.
 More than 5,000 is a 400 (`too_many`): narrow the filters.

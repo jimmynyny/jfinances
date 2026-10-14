@@ -42,6 +42,7 @@ from ..models import (
     Security,
     Transaction,
 )
+from . import category_rules
 from . import statement as st
 from .insights import merchant_key
 
@@ -422,6 +423,7 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
     sess.add(imp)
     sess.flush()
     learned = learn(sess)
+    rules = category_rules.load(sess, [a.id])
     added = matched = skipped = 0
     for c in classified:
         r = c.row
@@ -443,6 +445,7 @@ def apply(sess: Session, a: Account, p: st.Parsed, *, raw: bytes, filename: str,
                         name=r.description[:300], merchant_name=merchant, pending=False, category_primary=primary,
                         category_detailed=detailed, raw={"import_id": str(imp.id), "row": r.index,
                                                          "bank_category": r.category})
+        category_rules.apply(rules, t)  # the person's own filing for this merchant here, when there is one
         sess.add(t)
         sess.flush()
         sess.add(ImportRow(import_id=imp.id, account_id=a.id, fingerprint=c.fingerprint, date=r.date,

@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
-from ..models import Account, PlaidItem, Transaction
-from ..services import insights
+from ..models import Account, CategoryRule, PlaidItem, Transaction
+from ..services import category_rules, insights
 from ..services.flows import PAYMENT, display_category, is_liability_payment_clause, is_transfer_clause
 from ._common import ApiError, money, parse_uuid, ts
 
@@ -209,6 +209,7 @@ def patch_transaction(tx_id: str, body: TxPatch, _: Principal = Depends(current_
     t, a, inst = row
     if "user_category" in body.model_fields_set:
         t.user_category = (body.user_category or "").strip() or None
+        category_rules.learn(sess, [t], t.user_category)  # its merchant's next ones here follow
     if "notes" in body.model_fields_set:
         t.notes = (body.notes or "").strip() or None
     if "business" in body.model_fields_set:
@@ -238,15 +239,40 @@ def edit_many(body: BulkEdit, _: Principal = Depends(current_user), sess: Sessio
         changes["business"] = body.business
     if not changes:
         raise ApiError(400, "bad_request", "nothing to change: send user_category and/or business")
-    found = sess.execute(select(func.count()).select_from(Transaction)
-                         .where(Transaction.id.in_(ids), Transaction.removed_at.is_(None))).scalar() or 0
-    if found != len(ids):
+    rows = sess.execute(select(Transaction).where(Transaction.id.in_(ids),
+                                                  Transaction.removed_at.is_(None))).scalars().all()
+    if len(rows) != len(ids):
         raise ApiError(404, "not_found",
-                       f"{len(ids) - found} of these transactions no longer exist; reload and try again")
+                       f"{len(ids) - len(rows)} of these transactions no longer exist; reload and try again")
     sess.execute(update(Transaction).where(Transaction.id.in_(ids)).values(**changes)
                  .execution_options(synchronize_session=False))
+    if "user_category" in changes:  # each merchant's next ones on that account follow
+        category_rules.learn(sess, rows, changes["user_category"])
     sess.flush()
     return {"updated": len(ids), **changes}
+
+
+@router.get("/transactions/rules")
+def learned_rules(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """The categories learned from the person's edits, newest first: each merchant on
+    each account, money out apart from money in."""
+    rows = sess.execute(select(CategoryRule, Account).join(Account, Account.id == CategoryRule.account_id)
+                        .order_by(CategoryRule.updated_at.desc())).all()
+    return {"rules": [{"id": str(r.id), "account_id": str(r.account_id), "account_name": a.name,
+                       "account_mask": a.mask, "merchant": r.merchant, "direction": r.direction,
+                       "user_category": r.user_category, "updated_at": ts(r.updated_at),
+                       "times_applied": r.times_applied, "last_applied_at": ts(r.last_applied_at)}
+                      for r, a in rows]}
+
+
+@router.delete("/transactions/rules/{rule_id}", status_code=204)
+def forget_rule(rule_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Stop filing a merchant's new transactions this way (the ones already filed stay)."""
+    rule = sess.get(CategoryRule, parse_uuid(rule_id))
+    if rule is None:
+        raise ApiError(404, "not_found", "rule not found")
+    sess.delete(rule)
+    sess.flush()
 
 
 def _summary_key(group_by: str, t: Transaction, a: Account) -> str:

@@ -802,3 +802,18 @@ export interface AssetInfo {
   projected_miles?: number | null;
   priced_at_zip?: string | null;
 }
+
+/** A category learned from the person's edits (GET /transactions/rules). */
+export interface CategoryRule {
+  id: string;
+  account_id: string;
+  account_name: string;
+  account_mask: string | null;
+  merchant: string;
+  /** out: charges; in: money in (refunds, payments). */
+  direction: "out" | "in";
+  user_category: string;
+  updated_at: string | null;
+  times_applied: number;
+  last_applied_at: string | null;
+}

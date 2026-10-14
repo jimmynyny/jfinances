@@ -5,7 +5,7 @@ import type {
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SummaryQuery, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
-  WebhookEvent, ImportFile, ImportPreview, ImportRecord, GroupKey, AssetDraft, AssetInfo,
+  WebhookEvent, ImportFile, ImportPreview, ImportRecord, GroupKey, AssetDraft, AssetInfo, CategoryRule,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -408,6 +408,16 @@ export const api = {
     return Array.isArray(r.ids) ? r.ids.map(String) : [];
   },
   /** File several transactions under one category; null puts them back under the bank's. */
+  /** Categories learned from the person's edits, newest first. */
+  categoryRules: async (): Promise<CategoryRule[]> =>
+    list((await request("GET", "/transactions/rules")).rules, (r) => ({
+      id: String(r.id), account_id: String(r.account_id), account_name: String(r.account_name ?? ""),
+      account_mask: r.account_mask == null ? null : String(r.account_mask), merchant: String(r.merchant),
+      direction: r.direction === "in" ? "in" : "out", user_category: String(r.user_category),
+      updated_at: r.updated_at == null ? null : String(r.updated_at), times_applied: n0(r.times_applied),
+      last_applied_at: r.last_applied_at == null ? null : String(r.last_applied_at),
+    })),
+  forgetRule: async (id: string): Promise<void> => { await request("DELETE", `/transactions/rules/${id}`); },
   /** Several transactions at once: a category (null: the bank's) and/or business (null: as the account). */
   editTransactions: async (ids: string[], patch: { user_category?: string | null; business?: boolean | null }): Promise<{ updated: number }> => {
     const r = await request("PATCH", "/transactions", { ids, ...patch });

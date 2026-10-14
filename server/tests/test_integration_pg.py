@@ -1012,6 +1012,81 @@ def test_homes_and_cars_are_valued_once_a_month_within_budget(client, monkeypatc
     assert calls == [] and "SECRET" not in stored
 
 
+def test_categories_are_learned_per_merchant_account_and_direction(client):
+    """Filing a merchant's charge teaches its next charges on that account; the
+    latest filing wins; a refund (money in) and another account don't follow;
+    back to the bank's category forgets; imported rows follow too."""
+    import base64
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    from server.app.models import Account, PlaidItem, Transaction
+    from server.app.services import category_rules, plaid_sync
+
+    with db.session() as sess:
+        item = PlaidItem(item_id="item-rules", institution_name="Card Bank", access_token_enc=b"x", products=[])
+        sess.add(item)
+        sess.flush()
+        card = Account(kind="plaid", item_id=item.id, plaid_account_id="card-a", name="Gold", type="credit",
+                       subtype="credit card", is_liability=True)
+        other = Account(kind="plaid", item_id=item.id, plaid_account_id="card-b", name="Blue", type="credit",
+                        subtype="credit card", is_liability=True)
+        bank = Account(kind="plaid", item_id=item.id, plaid_account_id="chk", name="Checking", type="depository",
+                       subtype="checking")
+        sess.add_all([card, other, bank])
+        sess.flush()
+        first = Transaction(account_id=card.id, plaid_transaction_id="r-1", date=date(2026, 9, 1),
+                            amount=Decimal("6.50"), name="STARBUCKS 123", merchant_name="Starbucks",
+                            category_primary="FOOD_AND_DRINK")
+        sess.add(first)
+        sess.flush()
+        first_id, card_id, bank_id = str(first.id), card.id, str(bank.id)
+
+    def arrive(pid, account, amount, merchant="Starbucks"):
+        """A new transaction from the connection, the way a sync adds it."""
+        with db.session() as sess:
+            accounts = {a.plaid_account_id: a for a in sess.query(Account).filter(Account.item_id.isnot(None))}
+            rules = category_rules.load(sess, [a.id for a in accounts.values()])
+            plaid_sync._upsert_transaction(sess, accounts, {
+                "transaction_id": pid, "account_id": account, "date": "2026-10-01", "amount": amount,
+                "name": merchant.upper(), "merchant_name": merchant, "pending": False,
+                "personal_finance_category": {"primary": "FOOD_AND_DRINK"}}, rules)
+            sess.flush()
+            return sess.query(Transaction).filter_by(plaid_transaction_id=pid).one().user_category
+
+    assert arrive("r-0", "card-a", 4.00) is None  # nothing learned yet
+    client.patch(f"/api/v1/transactions/{first_id}", json={"user_category": "COFFEE"})
+    assert arrive("r-2", "card-a", 5.25) == "COFFEE"
+    assert arrive("r-3", "card-a", -5.25) is None  # a refund is money in: its own rule
+    assert arrive("r-4", "card-b", 5.25) is None  # another card: its own rule
+    client.patch("/api/v1/transactions", json={"ids": [first_id], "user_category": "TREATS"})
+    assert arrive("r-5", "card-a", 7.00) == "TREATS"  # the latest filing wins
+    rules = client.get("/api/v1/transactions/rules").json()["rules"]
+    assert [(r["merchant"], r["direction"], r["user_category"], r["times_applied"]) for r in rules] == [
+        ("Starbucks", "out", "TREATS", 2)]  # one rule, used twice (as COFFEE, then TREATS)
+    client.patch("/api/v1/transactions", json={"ids": [first_id], "user_category": None})
+    assert arrive("r-6", "card-a", 3.00) is None and client.get("/api/v1/transactions/rules").json()["rules"] == []
+
+    # An imported export follows the rules too.
+    with db.session() as sess:
+        sess.add(Transaction(account_id=uuid.UUID(bank_id), plaid_transaction_id="r-7", date=date(2026, 9, 2),
+                             amount=Decimal("1200"), name="LANDLORD LLC", category_primary="TRANSFER_OUT"))
+    seven = next(t for t in client.get("/api/v1/transactions", params={"q": "LANDLORD"}).json()["transactions"])
+    client.patch(f"/api/v1/transactions/{seven['id']}", json={"user_category": "RENT"})
+    csv_text = "Date,Description,Amount\n05/02/2026,LANDLORD LLC,-1200.00\n"
+    r = client.post("/api/v1/imports", json={"filename": "chk.csv", "account_id": bank_id,
+                                            "content_b64": base64.b64encode(csv_text.encode()).decode()})
+    assert r.status_code == 201, r.text
+    with db.session() as sess:
+        imported = sess.query(Transaction).filter_by(source="import", account_id=uuid.UUID(bank_id)).one()
+        assert imported.user_category == "RENT"
+    rule = client.get("/api/v1/transactions/rules").json()["rules"][0]
+    assert client.delete(f"/api/v1/transactions/rules/{rule['id']}").status_code == 204
+    assert client.get("/api/v1/transactions/rules").json()["rules"] == []
+    assert card_id
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal
