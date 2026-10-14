@@ -81,6 +81,7 @@ query.
 | `balance_updated_at` | when we last wrote the balance (used by the snapshot job to decide `plaid` vs `carry`) |
 | `is_liability` | derived at write time from `type` / `manual_category` so the overview never recomputes it |
 | `is_hidden` | excluded from totals and charts, still listed |
+| `is_business` | a business account (Daedalus TCG), set in the account's Edit form; Insights keep business and personal apart |
 | `display_order` | user sort |
 | `closed_at` | Plaid stopped returning it, or the item was unlinked |
 | `last_refresh_requested_at` | rate limit for the Refresh button |

@@ -154,6 +154,8 @@ class Account(TimestampMixin, Base):
     balance_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_liability: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: A business account (Daedalus TCG): Insights keep it out of personal numbers.
+    is_business: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_refresh_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

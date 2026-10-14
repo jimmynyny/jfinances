@@ -54,6 +54,7 @@ function account(r: Raw): Account {
     balance_updated_at: str(r.balance_updated_at),
     is_liability: bool(r.is_liability),
     is_hidden: bool(r.is_hidden),
+    is_business: bool(r.is_business),
     display_order: n0(r.display_order),
     closed_at: str(r.closed_at),
     secured_by_id: str(r.secured_by_id),
@@ -297,7 +298,7 @@ export const api = {
     const r = await request("GET", `/accounts/${id}/history`, undefined, { range });
     return list(r.points, (p) => ({ date: String(p.date), balance: n0(p.balance), source: (p.source as AccountHistoryPoint["source"]) ?? "plaid" }));
   },
-  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; display_order?: number; secured_by_id?: string | null }): Promise<Account> =>
+  updateAccount: async (id: string, patch: { name?: string; is_hidden?: boolean; is_business?: boolean; display_order?: number; secured_by_id?: string | null }): Promise<Account> =>
     account(await request("PATCH", `/accounts/${id}`, patch)),
   createManualAccount: async (body: { name: string; manual_category: ManualCategory; value: number; iso_currency?: string }): Promise<Account> =>
     account(await request("POST", "/accounts/manual", { ...body, value: dec(body.value) })),

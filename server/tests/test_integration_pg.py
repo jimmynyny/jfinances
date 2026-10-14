@@ -395,6 +395,8 @@ def test_loan_can_be_secured_by_an_offline_asset(client):
     assert r.status_code == 200 and r.json()["secured_by_id"] == house
     renamed = client.patch(f"/api/v1/accounts/{mortgage_id}", json={"name": "Lien mortgage 2"}).json()
     assert renamed["secured_by_id"] == house  # a patch without the field keeps the link
+    flagged = client.patch(f"/api/v1/accounts/{mortgage_id}", json={"is_business": True}).json()
+    assert flagged["is_business"] is True and flagged["secured_by_id"] == house
     assert link(card_id, house).status_code == 400  # cards aren't secured by anything
     assert link(mortgage_id, cash).status_code == 400  # cash isn't collateral
     assert link(mortgage_id, card_id).status_code == 400  # only offline assets

@@ -56,6 +56,7 @@ def account_json(a: Account, item: PlaidItem | None = None) -> dict[str, Any]:
         "balance_updated_at": ts(a.balance_updated_at),
         "is_liability": a.is_liability,
         "is_hidden": a.is_hidden,
+        "is_business": a.is_business,
         "display_order": a.display_order,
         "closed_at": ts(a.closed_at),
         "secured_by_id": str(a.secured_by_id) if a.secured_by_id else None,

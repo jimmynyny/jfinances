@@ -45,6 +45,8 @@ export interface Account {
   balance_updated_at: string | null;
   is_liability: boolean;
   is_hidden: boolean;
+  /** Business (Daedalus TCG): Insights keep it out of personal numbers. */
+  is_business: boolean;
   display_order: number;
   closed_at: string | null;
   /** The offline asset (home, car) this loan is secured by. */

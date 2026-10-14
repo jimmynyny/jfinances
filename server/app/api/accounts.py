@@ -42,6 +42,7 @@ def list_accounts(_: Principal = Depends(current_user), sess: Session = Depends(
 class AccountPatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     is_hidden: bool | None = None
+    is_business: bool | None = None
     display_order: int | None = None
     #: The offline asset (home, car) this loan is secured by; null unlinks.
     secured_by_id: str | None = None
@@ -68,6 +69,8 @@ def patch_account(account_id: str, body: AccountPatch, _: Principal = Depends(cu
         a.name = body.name.strip() or a.name
     if body.is_hidden is not None:
         a.is_hidden = body.is_hidden
+    if body.is_business is not None:
+        a.is_business = body.is_business
     if body.display_order is not None:
         a.display_order = body.display_order
     if "secured_by_id" in body.model_fields_set:  # an explicit null unlinks

@@ -69,7 +69,7 @@ Account object:
 {"id":"…","item_id":"…|null","kind":"plaid|manual","name":"…","official_name":"…","mask":"4821",
  "type":"depository|credit|loan|investment|other|manual","subtype":"checking","manual_category":null,
  "iso_currency":"USD","current_balance":"…","available_balance":"…","credit_limit":"…",
- "balance_updated_at":"…","is_liability":false,"is_hidden":false,"display_order":0,"closed_at":null,
+ "balance_updated_at":"…","is_liability":false,"is_hidden":false,"is_business":false,"display_order":0,"closed_at":null,
  "secured_by_id":"…|null","institution_name":"Citi","institution_id":"ins_5","item_status":"active"}
 ```
 
@@ -87,7 +87,7 @@ top to bottom, hidden ones included; each gets `display_order` = its index.
 Groups sort independently, so sending one group never disturbs another.
 
 ### PATCH /accounts/{id}
-Body: `{"name"?: str, "is_hidden"?: bool, "display_order"?: int, "secured_by_id"?: uuid|null}` → account.
+Body: `{"name"?: str, "is_hidden"?: bool, "is_business"?: bool, "display_order"?: int, "secured_by_id"?: uuid|null}` → account.
 `secured_by_id` links a loan (any liability but a credit card) to the offline asset it is secured
 by: a manual `real_estate`, `vehicle` or `other_asset` account. `null` unlinks; leaving the field
 out keeps the link. 400 for a card, or a target that isn't such an asset.

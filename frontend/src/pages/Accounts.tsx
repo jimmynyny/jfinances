@@ -137,9 +137,10 @@ export function AccountsPage() {
   );
 }
 
-function EditForm({ account, onSave }: { account: Account; onSave: (patch: { name?: string; is_hidden?: boolean }, value?: number) => Promise<void> }) {
+function EditForm({ account, onSave }: { account: Account; onSave: (patch: { name?: string; is_hidden?: boolean; is_business?: boolean }, value?: number) => Promise<void> }) {
   const [name, setName] = useState(account.name);
   const [hidden, setHidden] = useState(account.is_hidden);
+  const [business, setBusiness] = useState(account.is_business);
   const [value, setValueStr] = useState(account.current_balance?.toString() ?? "");
   const manual = account.kind === "manual";
   const dirtyValue = manual && value !== (account.current_balance?.toString() ?? "");
@@ -149,12 +150,13 @@ function EditForm({ account, onSave }: { account: Account; onSave: (patch: { nam
       onSubmit={(e) => {
         e.preventDefault();
         const v = dirtyValue ? Number(value) : undefined;
-        void onSave({ name: name.trim() || account.name, is_hidden: hidden }, Number.isFinite(v as number) ? v : undefined);
+        void onSave({ name: name.trim() || account.name, is_hidden: hidden, is_business: business }, Number.isFinite(v as number) ? v : undefined);
       }}
     >
       <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} help={account.official_name ?? undefined} />
       {manual && <Input label="Current value" mono inputMode="decimal" value={value} onChange={(e) => setValueStr(e.target.value)} help="Saving a new value records today's snapshot." />}
       <Checkbox label="Hide from overview and totals" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+      <Checkbox label="Business account (kept out of personal insights)" checked={business} onChange={(e) => setBusiness(e.target.checked)} />
       <div className="mu-caption">
         {account.kind === "plaid" ? `${account.institution_name ?? "connected"} · ${account.type}${account.subtype ? ` / ${account.subtype}` : ""}` : `offline · ${account.manual_category}`}
       </div>
