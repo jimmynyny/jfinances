@@ -497,3 +497,44 @@ def test_history_keeps_real_rows_and_never_breaks_a_sync(client, monkeypatch):
     with db.session() as sess:
         assert sess.execute(select(PlaidItem.institution_name)
                             .where(PlaidItem.item_id == "item-gap")).scalar() == "Gap Bank"
+
+
+def test_money_into_a_card_or_loan_is_a_payment(client):
+    from datetime import date
+    from decimal import Decimal
+
+    from server.app.models import Account, Transaction
+
+    with db.session() as sess:
+        chk = Account(kind="plaid", name="Pay checking", type="depository", subtype="checking")
+        card = Account(kind="plaid", name="Pay card", type="credit", subtype="credit card", is_liability=True)
+        sess.add_all([chk, card])
+        sess.flush()
+        rows = [  # (account, amount: Plaid sign, + = out, primary, detailed)
+            (chk, "-1000.00", "INCOME", "INCOME_WAGES"),
+            (chk, "500.00", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"),  # the bank side of a card payment
+            (card, "-500.00", "INCOME", "INCOME_OTHER_INCOME"),  # the card side, as some issuers report it
+            (card, "-20.00", "GENERAL_MERCHANDISE", "GENERAL_MERCHANDISE_OTHER"),  # a refund
+            (card, "100.00", "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT"),
+        ]
+        for i, (a, amt, primary, detailed) in enumerate(rows):
+            sess.add(Transaction(account_id=a.id, plaid_transaction_id=f"pay-{i}", date=date(2026, 8, 3 + i),
+                                 amount=amt, name=f"{primary.lower()}-{i}", pending=False,
+                                 category_primary=primary, category_detailed=detailed))
+        chk_id, card_id = str(chk.id), str(card.id)
+
+    def cats(**params):
+        r = client.get("/api/v1/transactions/summary",
+                       params={"group_by": "category", "from": "2026-08-01", "to": "2026-08-31", **params})
+        assert r.status_code == 200, r.text
+        return {x["label"]: (Decimal(x["inflow"]), Decimal(x["outflow"])) for x in r.json()["rows"]}
+
+    # Household: a card payment is a transfer on both sides, so income is the paycheck alone.
+    assert cats() == {"INCOME": (1000, 0), "GENERAL_MERCHANDISE": (20, 0), "FOOD_AND_DRINK": (0, 100)}
+    # On the card itself, its money in is its payments (and the refund).
+    assert cats(account_id=card_id) == {"PAYMENTS": (500, 0), "GENERAL_MERCHANDISE": (20, 0),
+                                        "FOOD_AND_DRINK": (0, 100)}
+    # The bank account's own view still leaves the card payment out.
+    assert cats(account_id=chk_id) == {"INCOME": (1000, 0)}
+    txs = client.get("/api/v1/transactions", params={"account_id": card_id}).json()["transactions"]
+    assert {t["name"]: t["category"] for t in txs}["income-2"] == "PAYMENT"

@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth.deps import current_user
@@ -25,7 +25,7 @@ def _tx_json(t: Transaction, a: Account | None, inst: str | None) -> dict:
         "amount": money(t.amount), "iso_currency": t.iso_currency, "name": t.name,
         "merchant_name": t.merchant_name, "logo_url": t.logo_url, "pending": t.pending,
         "category_primary": t.category_primary, "category_detailed": t.category_detailed,
-        "category": t.user_category or t.category_primary, "user_category": t.user_category,
+        "category": display_category(t, a), "user_category": t.user_category,
         "payment_channel": t.payment_channel, "notes": t.notes, "removed_at": ts(t.removed_at),
     }
 
@@ -98,6 +98,26 @@ def patch_transaction(tx_id: str, body: TxPatch, _: Principal = Depends(current_
 TRANSFER_PRIMARY = ("TRANSFER_IN", "TRANSFER_OUT")
 CARD_PAYMENT_DETAILED = "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
 
+#: Money into a card or loan is a payment from another account, whatever the
+#: issuer called it (some report a card payment as INCOME). It is the second
+#: half of a transfer: left out of household In/Out like card payments, and
+#: shown as PAYMENT on the card or loan itself.
+PAYMENT_PRIMARY = ("INCOME", "TRANSFER_IN", "LOAN_PAYMENTS")
+PAYMENT = "PAYMENT"
+
+
+def is_liability_payment_clause():
+    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
+    return and_(Account.is_liability.is_(True), Transaction.amount < 0, effective.in_(PAYMENT_PRIMARY))
+
+
+def display_category(t: Transaction, a: Account | None) -> str | None:
+    """The category a transaction shows: its own, except a payment into a card or loan."""
+    cat = t.user_category or t.category_primary
+    if a is not None and a.is_liability and t.amount < 0 and cat in PAYMENT_PRIMARY:
+        return PAYMENT
+    return cat
+
 
 def is_transfer_clause():
     """SQL predicate for internal transfers, honouring the user's category."""
@@ -115,7 +135,9 @@ def summary(from_: date | None = Query(default=None, alias="from"), to: date | N
     positive), `outflow` (money out, positive), and `total` (net, Plaid sign:
     positive = more out than in). Month rows are chronological; the others
     are biggest net outflow first."""
-    cat = func.coalesce(Transaction.user_category, Transaction.category_primary, "UNCATEGORIZED")
+    pay = is_liability_payment_clause()
+    cat = case((pay, literal(PAYMENT)),
+               else_=func.coalesce(Transaction.user_category, Transaction.category_primary, "UNCATEGORIZED"))
     key = {"category": cat, "month": func.to_char(Transaction.date, "YYYY-MM"),
            "account": cast(Transaction.account_id, String)}[group_by]
     outflow = func.coalesce(func.sum(case((Transaction.amount > 0, Transaction.amount))), 0)
@@ -124,8 +146,12 @@ def summary(from_: date | None = Query(default=None, alias="from"), to: date | N
                    outflow.label("outflow"), func.count().label("count"))
             .join(Account, Account.id == Transaction.account_id)
             .where(Transaction.removed_at.is_(None), Transaction.pending.is_(False)))
+    acct = sess.get(Account, parse_uuid(account_id, "account_id")) if account_id else None
     if not include_transfers:
-        stmt = stmt.where(~is_transfer_clause())
+        # A card or loan's own view counts its payments as its money in;
+        # anywhere else they are the second half of a transfer.
+        stmt = (stmt.where(or_(~is_transfer_clause(), pay)) if acct is not None and acct.is_liability
+                else stmt.where(~is_transfer_clause(), ~pay))
     if from_:
         stmt = stmt.where(Transaction.date >= from_)
     if to:
@@ -138,7 +164,8 @@ def summary(from_: date | None = Query(default=None, alias="from"), to: date | N
     if group_by == "account":
         names = {str(a.id): a.name for a in sess.execute(select(Account)).scalars()}
     return {"group_by": group_by, "transfers": "included" if include_transfers else "excluded",
-            "rows": [{"key": k, "label": names.get(k, k), "total": money(t), "inflow": money(i),
+            "rows": [{"key": k, "label": "PAYMENTS" if k == PAYMENT else names.get(k, k), "total": money(t),
+                      "inflow": money(i),
                       "outflow": money(o), "count": c} for k, t, i, o, c in rows]}
 
 

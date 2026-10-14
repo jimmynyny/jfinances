@@ -202,6 +202,13 @@ payments (`LOAN_PAYMENTS_CREDIT_CARD_PAYMENT`). Counting them would double
 count: a transfer is out of one account and into another, and a card payment
 repays purchases already counted on the card.
 
+Money into a card or loan (`is_liability`, negative amount) whose category is
+`INCOME`, `TRANSFER_IN` or `LOAN_PAYMENTS` is a payment from another account,
+whatever the issuer called it (some report card payments as `INCOME`). It is
+grouped under the key `PAYMENT` (label `PAYMENTS`); with `account_id` set to
+that card or loan it counts as money in, and everywhere else it is excluded
+with the other transfers. Transactions show it as `category: "PAYMENT"`.
+
 ### GET /transactions/categories
 `{"categories":["FOOD_AND_DRINK","GENERAL_MERCHANDISE", "…"]}`
 

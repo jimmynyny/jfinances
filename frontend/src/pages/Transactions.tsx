@@ -49,6 +49,8 @@ export function TransactionsPage() {
   const update = useUpdateTransaction();
 
   const accountName = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a.name])), [accounts.data]);
+  // On a card or loan, money out is charges and money in is payments (the API files them as PAYMENTS).
+  const onLiability = !!(accounts.data ?? []).find((a) => a.id === accountId)?.is_liability;
   const categories = cats.data ?? [];
   const rows = useMemo(() => summary.data?.rows ?? [], [summary.data]);
 
@@ -162,21 +164,21 @@ export function TransactionsPage() {
         <Panel caption="summary" actions={<Segmented size="sm" options={[{ value: "category", label: "by category" }, { value: "month", label: "by month" }]} value={summaryBy} onChange={setSummaryBy} />}>
           {summary.isLoading ? <Skeleton lines={6} /> : summaryBy === "category" ? (
             <div className="mu-stack jf-cats">
-              <div className="jf-cats__head"><span>money out</span><Money value={outTotal} cents={false} /></div>
+              <div className="jf-cats__head"><span>{onLiability ? "charges" : "money out"}</span><Money value={outTotal} cents={false} /></div>
               {spending.slice(0, 12).map((r) => (
                 <div key={r.key} className="jf-cats__row">
                   <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
                   <PixelMeter size="sm" cells={16} tone="ink" ratio={outTotal > 0 ? r.outflow / outTotal : 0} label={formatMoney(r.outflow, { cents: false })} ariaLabel={`${catName(r.label)} spending`} />
                 </div>
               ))}
-              {spending.length === 0 && <span className="mu-caption">no spending in range</span>}
+              {spending.length === 0 && <span className="mu-caption">{onLiability ? "no charges in range" : "no spending in range"}</span>}
               {income.length > 0 && (
                 <>
-                  <div className="jf-cats__head"><span>money in</span><Money value={inTotal} cents={false} /></div>
+                  <div className="jf-cats__head"><span>{onLiability ? "payments & credits" : "money in"}</span><Money value={inTotal} cents={false} /></div>
                   {income.map((r) => (
                     <div key={r.key} className="jf-cats__row">
                       <span className="jf-cats__name">{catName(r.label)} <span className="mu-caption">· {r.count}</span></span>
-                      <PixelMeter size="sm" cells={16} tone="series" color="var(--mu-div-pos)" ratio={inTotal > 0 ? r.inflow / inTotal : 0} label={formatMoney(r.inflow, { cents: false })} ariaLabel={`${catName(r.label)} income`} />
+                      <PixelMeter size="sm" cells={16} tone="series" color="var(--mu-div-pos)" ratio={inTotal > 0 ? r.inflow / inTotal : 0} label={formatMoney(r.inflow, { cents: false })} ariaLabel={`${catName(r.label)} money in`} />
                     </div>
                   ))}
                 </>
@@ -193,9 +195,11 @@ export function TransactionsPage() {
           ) : <span className="mu-caption">nothing in range</span>}
           {summary.data && (
             <p className="jf-cats__note">
-              {summary.data.transfers === "excluded"
-                ? "Excludes transfers between your accounts and card payments."
-                : "Includes transfers between your accounts and card payments."}
+              {summary.data.transfers === "included"
+                ? "Includes transfers between your accounts and card payments."
+                : onLiability
+                  ? "Payments into this account count as money in; other transfers are excluded."
+                  : "Excludes transfers between your accounts and card payments."}
             </p>
           )}
         </Panel>
