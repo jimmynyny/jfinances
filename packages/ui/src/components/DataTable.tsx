@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cx } from "../lib/format";
 
 export interface Column<Row> {
@@ -59,6 +59,29 @@ export interface DataTableProps<Row> {
   stale?: boolean;
   caption?: string;
   className?: string;
+  /**
+   * Ticking rows to act on several at once: a checkbox leads each row and the
+   * header's ticks every row shown. While set, a click anywhere on a row ticks
+   * it instead of opening it.
+   */
+  selection?: {
+    selected: ReadonlySet<string>;
+    onChange: (next: Set<string>) => void;
+    /** What a row's checkbox is called for screen readers, e.g. its description. */
+    label?: (row: Row) => string;
+  };
+}
+
+/** The header checkbox: on when every row shown is ticked, half when some are. */
+function TickAll({ state, onChange }: { state: "none" | "some" | "all"; onChange: (on: boolean) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = state === "some"; }, [state]);
+  return (
+    <label className="mu-check mu-table__tick">
+      <input ref={ref} type="checkbox" checked={state === "all"} aria-label="Select every row shown"
+        onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
 }
 
 export function DataTable<Row>({
@@ -75,6 +98,7 @@ export function DataTable<Row>({
   stale,
   caption,
   className,
+  selection,
 }: DataTableProps<Row>) {
   const [sortState, setSortState] = useState(defaultSort ?? null);
   const sort = sortProp ?? sortState;
@@ -103,12 +127,46 @@ export function DataTable<Row>({
     else setSortState(next);
   }
 
+  const keys = sorted.map(rowKey);
+  const ticked = selection ? keys.filter((k) => selection.selected.has(k)).length : 0;
+  const lastTick = useRef<string | null>(null);
+  // The latest ticks, ahead of the next render: two quick clicks both count.
+  const ticks = useRef<ReadonlySet<string>>(new Set());
+  if (selection) ticks.current = selection.selected;
+  /** Tick or untick a row; with shift, every row from the last one ticked to it follows suit. */
+  const tick = (k: string, range = false) => {
+    if (!selection) return;
+    const next = new Set(ticks.current);
+    const on = !next.has(k);
+    const from = range && lastTick.current !== null ? keys.indexOf(lastTick.current) : -1;
+    const to = keys.indexOf(k);
+    if (from >= 0 && to >= 0) {
+      for (let i = Math.min(from, to); i <= Math.max(from, to); i++) { if (on) next.add(keys[i]!); else next.delete(keys[i]!); }
+    } else if (on) next.add(k); else next.delete(k);
+    lastTick.current = k;
+    ticks.current = next;
+    selection.onChange(next);
+  };
+  const tickAll = (on: boolean) => {
+    if (!selection) return;
+    const next = new Set(ticks.current);
+    for (const k of keys) { if (on) next.add(k); else next.delete(k); }
+    ticks.current = next;
+    selection.onChange(next);
+  };
+  const open = selection ? (row: Row, range?: boolean) => tick(rowKey(row), range) : onRowClick;
+
   return (
     <div className={cx("mu-table-wrap", stale && "mu-chart--stale", className)}>
-      <table className={cx("mu-table", compact && "mu-table--compact")}>
+      <table className={cx("mu-table", compact && "mu-table--compact", selection && "mu-table--select")}>
         {caption && <caption className="mu-sr">{caption}</caption>}
         <thead>
           <tr>
+            {selection && (
+              <th className="mu-th--tick" scope="col">
+                <TickAll state={ticked === 0 ? "none" : ticked === keys.length ? "all" : "some"} onChange={tickAll} />
+              </th>
+            )}
             {columns.map((c) => {
               const active = sort?.key === c.key;
               return (
@@ -135,21 +193,33 @@ export function DataTable<Row>({
         <tbody>
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="mu-table__empty" data-m="full">{empty}</td>
+              <td colSpan={columns.length + (selection ? 1 : 0)} className="mu-table__empty" data-m="full">{empty}</td>
             </tr>
           ) : (
             sorted.map((row) => {
               const k = rowKey(row);
+              const on = selection ? selection.selected.has(k) : selectedKey === k;
               return (
                 <tr
                   key={k}
-                  data-selected={selectedKey === k || undefined}
-                  data-clickable={onRowClick ? true : undefined}
+                  data-selected={on || undefined}
+                  data-clickable={open ? true : undefined}
                   // a control in the row (a select, a button) does its own thing, not open the row
-                  onClick={onRowClick ? (e) => { if (!(e.target as Element).closest("button, a, input, select, textarea, label")) onRowClick(row); } : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
+                  onClick={open ? (e) => { if (!(e.target as Element).closest("button, a, input, select, textarea, label")) open(row, e.shiftKey); } : undefined}
+                  tabIndex={open ? 0 : undefined}
+                  onKeyDown={open ? (e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || (selection && e.key === " ")) { e.preventDefault(); open(row); }
+                  } : undefined}
                 >
+                  {selection && (
+                    <td className="mu-td--tick" data-m="tick">
+                      <label className="mu-check mu-table__tick">
+                        <input type="checkbox" checked={on} onChange={(e) => tick(k, (e.nativeEvent as MouseEvent).shiftKey)} tabIndex={-1}
+                          aria-label={selection.label ? `Select ${selection.label(row)}` : "Select row"} />
+                      </label>
+                    </td>
+                  )}
                   {columns.map((c, i) => (
                     <td key={c.key} className={cx(c.numeric && "mu-td--num", c.wrap && "mu-td--wrap", c.className)}
                       data-m={roles[i]} data-label={mobileLabel(c, roles[i]!)}>

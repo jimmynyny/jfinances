@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { cx, formatMoney } from "../lib/format";
 import { seriesColor } from "./theme";
 import { useMeasure } from "./useMeasure";
+import { useMarkSelect } from "./useMarkSelect";
 
 export interface FlowNode {
   key: string;
@@ -9,6 +10,8 @@ export interface FlowNode {
   value: number;
   /** Override colour; uses default to the series palette in order. */
   color?: string;
+  /** Open what this node is made of; its node, ribbon and label become clickable. */
+  onSelect?: () => void;
 }
 
 export interface FlowChartProps {
@@ -23,6 +26,8 @@ export interface FlowChartProps {
   /** Hold the previous render at reduced opacity while data reloads. */
   stale?: boolean;
   ariaLabel?: string;
+  /** Open what the middle node is made of. */
+  onCenterSelect?: () => void;
 }
 
 const NODE_W = 10;
@@ -93,9 +98,12 @@ export function FlowChart({
   formatValue = (v) => formatMoney(v, { cents: false }),
   stale,
   ariaLabel = "Money flow",
+  onCenterSelect,
 }: FlowChartProps) {
   const [ref, width] = useMeasure<HTMLDivElement>();
-  const [hover, setHover] = useState<string | null>(null);
+  // On touch the first tap lights a path and the second opens it.
+  const sel = useMarkSelect<string>(ref);
+  const hover = sel.hover;
 
   const plot = useMemo(() => {
     const left = sources.filter((n) => n.value > 0);
@@ -144,13 +152,13 @@ export function FlowChart({
     const cy = TOP + (usable - centerH) / 2;
     let off = 0;
     const ins = L.map((n) => {
-      const r = { key: n.key, d: ribbon(x0 + NODE_W, n.y, x1, cy + off, n.h), color: n.color };
+      const r = { key: n.key, d: ribbon(x0 + NODE_W, n.y, x1, cy + off, n.h), color: n.color, onSelect: n.onSelect };
       off += n.h;
       return r;
     });
     off = 0;
     const outs = R.map((n) => {
-      const r = { key: n.key, d: ribbon(x1 + NODE_W, cy + off, x2, n.y, n.h), color: n.color };
+      const r = { key: n.key, d: ribbon(x1 + NODE_W, cy + off, x2, n.y, n.h), color: n.color, onSelect: n.onSelect };
       off += n.h;
       return r;
     });
@@ -158,26 +166,44 @@ export function FlowChart({
   }, [sources, uses, width, height, formatValue]);
 
   const dim = (key: string) => hover !== null && hover !== key && hover !== "center";
+  const open = (key: string, fn?: () => void) => (fn ? () => sel.click(key, fn) : undefined);
+  const selectable = !!onCenterSelect || [...sources, ...uses].some((n) => n.onSelect);
+  const keys = (key: string, fn?: () => void) => (fn ? {
+    tabIndex: 0, role: "button",
+    onFocus: () => sel.setHover(key), onBlur: () => sel.setHover(null),
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } },
+  } : {});
 
   return (
-    <div ref={ref} className={cx("mu-chart", "mu-flow", stale && "mu-chart--stale")} role="img" aria-label={ariaLabel}>
+    <div ref={ref} className={cx("mu-chart", "mu-flow", stale && "mu-chart--stale", selectable && "mu-chart--clickable")} {...sel.rootProps}>
       {width > 0 && plot.total > 0 && (
-        <svg viewBox={`0 0 ${width} ${plot.H}`} width={width} height={plot.H} onPointerLeave={() => setHover(null)}>
+        <svg viewBox={`0 0 ${width} ${plot.H}`} width={width} height={plot.H} onPointerLeave={sel.leave}
+          role={selectable ? "group" : "img"} aria-label={ariaLabel}>
           {[...plot.ins, ...plot.outs].map((r) => (
             <path key={`r-${r.key}`} className={cx("mu-flow__ribbon", dim(r.key) && "mu-flow__ribbon--dim")} d={r.d} fill={r.color}
-              onPointerEnter={() => setHover(r.key)} />
+              style={r.onSelect ? undefined : { cursor: "default" }}
+              onPointerEnter={() => sel.enter(r.key)} onClick={open(r.key, r.onSelect)} />
           ))}
           {[...plot.L.map((n) => ({ n, x: plot.x0 })), ...plot.R.map((n) => ({ n, x: plot.x2 }))].map(({ n, x }) => (
             <rect key={`n-${n.key}`} className="mu-flow__node" x={x} y={n.y} width={NODE_W} height={n.h} fill={n.color}
-              onPointerEnter={() => setHover(n.key)} />
+              style={n.onSelect ? undefined : { cursor: "default" }}
+              onPointerEnter={() => sel.enter(n.key)} onClick={open(n.key, n.onSelect)} />
           ))}
           <rect className="mu-flow__node mu-flow__node--center" x={plot.x1} y={plot.cy} width={NODE_W} height={plot.centerH}
-            onPointerEnter={() => setHover("center")} />
-          <text className="mu-flow__label" x={plot.x1 + NODE_W / 2} y={12} textAnchor="middle">{centerLabel}</text>
-          <text className="mu-flow__value" x={plot.x1 + NODE_W / 2} y={25} textAnchor="middle">{formatValue(plot.total)}</text>
+            style={onCenterSelect ? undefined : { cursor: "default" }}
+            onPointerEnter={() => sel.enter("center")} onClick={open("center", onCenterSelect)} />
+          <g {...keys("center", onCenterSelect)} aria-label={onCenterSelect ? `${centerLabel} ${formatValue(plot.total)}` : undefined}
+            onPointerEnter={() => sel.enter("center")} onClick={open("center", onCenterSelect)}>
+            {onCenterSelect && <rect className="mu-flow__pick" x={plot.x1 + NODE_W / 2 - 60} y={0} width={120} height={30} />}
+            <text className="mu-flow__label" x={plot.x1 + NODE_W / 2} y={12} textAnchor="middle">{centerLabel}</text>
+            <text className="mu-flow__value" x={plot.x1 + NODE_W / 2} y={25} textAnchor="middle">{formatValue(plot.total)}</text>
+          </g>
           {plot.L.map((n, i) => (
-            <g key={`l-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")}>
+            <g key={`l-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")} {...keys(n.key, n.onSelect)}
+              aria-label={n.onSelect ? `${n.label} ${formatValue(n.value)}` : undefined}
+              onPointerEnter={() => sel.enter(n.key)} onClick={open(n.key, n.onSelect)}>
               <title>{`${n.label} ${formatValue(n.value)}`}</title>
+              {n.onSelect && <rect className="mu-flow__pick" x={0} y={plot.ly[i]! - 11} width={Math.max(0, plot.x0 - 4)} height={labelH(n) - AIR} />}
               {n.lines.map((line, k) => (
                 <text key={k} className="mu-flow__label" x={plot.x0 - 8} y={plot.ly[i]! + k * LINE} textAnchor="end">{line}</text>
               ))}
@@ -185,8 +211,11 @@ export function FlowChart({
             </g>
           ))}
           {plot.R.map((n, i) => (
-            <g key={`r-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")}>
+            <g key={`r-${n.key}`} className={cx(dim(n.key) && "mu-flow__text--dim")} {...keys(n.key, n.onSelect)}
+              aria-label={n.onSelect ? `${n.label} ${formatValue(n.value)}` : undefined}
+              onPointerEnter={() => sel.enter(n.key)} onClick={open(n.key, n.onSelect)}>
               <title>{`${n.label} ${formatValue(n.value)}`}</title>
+              {n.onSelect && <rect className="mu-flow__pick" x={plot.x2 + NODE_W + 4} y={plot.ry[i]! - 11} width={Math.max(0, width - plot.x2 - NODE_W - 4)} height={labelH(n) - AIR} />}
               {n.lines.map((line, k) => (
                 <text key={k} className="mu-flow__label" x={plot.x2 + NODE_W + 8} y={plot.ry[i]! + k * LINE}>{line}</text>
               ))}

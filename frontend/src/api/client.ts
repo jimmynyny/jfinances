@@ -4,7 +4,7 @@ import type {
   Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
-  Overview, OverviewGroup, Range, Summary, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
+  Overview, OverviewGroup, Range, Summary, SummaryQuery, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
   WebhookEvent, ImportFile, ImportPreview, ImportRecord,
 } from "./types";
 
@@ -389,12 +389,22 @@ export const api = {
 
   transactions: async (q: TransactionQuery): Promise<TransactionsPage> => {
     const r = await request("GET", "/transactions", undefined, q as Record<string, unknown>);
-    return { page: n0(r.page), page_size: n0(r.page_size), total: n0(r.total), transactions: list(r.transactions, transaction) };
+    return { page: n0(r.page), page_size: n0(r.page_size), total: n0(r.total), sum: n0(r.sum), transactions: list(r.transactions, transaction) };
+  },
+  /** Every id the filters match (up to 5,000), to select them all. */
+  transactionIds: async (q: TransactionQuery): Promise<string[]> => {
+    const r = await request("GET", "/transactions/ids", undefined, { ...q, page: undefined, page_size: undefined } as Record<string, unknown>);
+    return Array.isArray(r.ids) ? r.ids.map(String) : [];
+  },
+  /** File several transactions under one category; null puts them back under the bank's. */
+  recategorize: async (ids: string[], user_category: string | null): Promise<{ updated: number }> => {
+    const r = await request("POST", "/transactions/recategorize", { ids, user_category });
+    return { updated: n0(r.updated) };
   },
   updateTransaction: async (id: string, patch: { user_category?: string | null; notes?: string | null }): Promise<Transaction> =>
     transaction(await request("PATCH", `/transactions/${id}`, patch)),
-  transactionSummary: async (q: { from?: string; to?: string; account_id?: string; group_by: Summary["group_by"]; include_transfers?: boolean }): Promise<Summary> => {
-    const r = await request("GET", "/transactions/summary", undefined, q);
+  transactionSummary: async (q: SummaryQuery): Promise<Summary> => {
+    const r = await request("GET", "/transactions/summary", undefined, { ...q });
     return {
       group_by: (r.group_by as Summary["group_by"]) ?? q.group_by,
       rows: list(r.rows, (x) => ({

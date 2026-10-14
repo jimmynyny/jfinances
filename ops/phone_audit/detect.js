@@ -79,6 +79,8 @@
       const b = runs[j];
       if (b.y1 >= a.y2) break;
       if (a.el === b.el) continue;
+      // a floating bar (ActionBar) is opaque: the rows scrolling under it are covered, not colliding
+      if (!!a.el.closest(".mu-actionbar") !== !!b.el.closest(".mu-actionbar")) continue;
       // text inside text of the same line box flows together; a nested block (inline-block, flex item) does not
       if ((a.el.contains(b.el) || b.el.contains(a.el)) && blockOf(a.el) === blockOf(b.el)) continue;
       const ix = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);

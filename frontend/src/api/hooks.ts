@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Account, Grain, InsightSlice, PerfRange, Range, Summary, TermsValues, TransactionQuery } from "./types";
+import type { Account, Grain, InsightSlice, PerfRange, Range, SummaryQuery, TermsValues, TransactionQuery } from "./types";
 
 /** Query keys in one place so invalidation is grep-able. */
 export const qk = {
@@ -25,7 +25,7 @@ export const useHistory = (range: Range) => useQuery({ queryKey: qk.history(rang
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: api.accounts });
 export const useItems = () => useQuery({ queryKey: qk.items, queryFn: api.items });
 export const useTransactions = (q: TransactionQuery) => useQuery({ queryKey: qk.transactions(q), queryFn: () => api.transactions(q), placeholderData: (prev) => prev });
-export const useSummary = (q: { from?: string; to?: string; account_id?: string; group_by: Summary["group_by"] }) =>
+export const useSummary = (q: SummaryQuery) =>
   useQuery({ queryKey: qk.summary(q), queryFn: () => api.transactionSummary(q), placeholderData: (prev) => prev });
 export const useCategories = () => useQuery({ queryKey: qk.categories, queryFn: api.transactionCategories, staleTime: 10 * 60_000 });
 export const useHoldings = () => useQuery({ queryKey: qk.holdings, queryFn: api.holdings });
@@ -175,11 +175,29 @@ export function useRemoveItem() {
   const inv = useInvalidateMoney();
   return useMutation({ mutationFn: api.removeItem, onSuccess: inv });
 }
-export function useUpdateTransaction() {
+/** A category change moves money between groups everywhere they are summed. */
+function useCategoryChanged() {
   const qc = useQueryClient();
+  return useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ["transactions"] });
+    void qc.invalidateQueries({ queryKey: ["insights"] });
+    void qc.invalidateQueries({ queryKey: qk.overview });
+  }, [qc]);
+}
+
+export function useUpdateTransaction() {
+  const changed = useCategoryChanged();
   return useMutation({
     mutationFn: (v: { id: string; patch: Parameters<typeof api.updateTransaction>[1] }) => api.updateTransaction(v.id, v.patch),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["transactions"] }),
+    onSuccess: changed,
+  });
+}
+
+export function useRecategorize() {
+  const changed = useCategoryChanged();
+  return useMutation({
+    mutationFn: (v: { ids: string[]; category: string | null }) => api.recategorize(v.ids, v.category),
+    onSuccess: changed,
   });
 }
 export function useRevokeToken() {

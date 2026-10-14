@@ -838,7 +838,9 @@ def test_money_into_a_card_or_loan_is_a_payment(client):
     assert {t["name"]: t["category"] for t in txs}["income-2"] == "PAYMENT"
 
 
-def test_insights_cash_flow_spending_merchants_and_scope(client):
+def _seed_insight_rows():
+    """Two months of a household's money: paychecks and interest, card spending with a
+    refund, a card payment (a transfer), a business account, and last year's coffee."""
     from datetime import date
     from decimal import Decimal
 
@@ -870,6 +872,12 @@ def test_insights_cash_flow_spending_merchants_and_scope(client):
             sess.add(Transaction(account_id=a.id, plaid_transaction_id=f"ins-{i}", date=d, amount=Decimal(amt),
                                  name=name, merchant_name=merchant, pending=False, category_primary=primary,
                                  category_detailed=detailed))
+
+
+def test_insights_cash_flow_spending_merchants_and_scope(client):
+    from decimal import Decimal
+
+    _seed_insight_rows()
 
     def get(path, **params):
         r = client.get(f"/api/v1/insights/{path}", params={"from": "2026-08-01", "to": "2026-09-30", **params})
@@ -905,6 +913,69 @@ def test_insights_cash_flow_spending_merchants_and_scope(client):
     assert sum(Decimal(w["total"]) for w in pat["weekdays"]) == Decimal("310")
     assert pat["month_days"][12] == {"day": 13, "total": "200.00", "per_day": "100.00"}  # two 13ths in range
     assert client.get("/api/v1/insights/cashflow", params={"from": "2026-09-30", "to": "2026-08-01"}).status_code == 400
+
+
+def test_insight_numbers_open_the_transactions_behind_them(client):
+    """Every Insights number links to a Transactions list (GET /transactions with `flow`
+    and Insights' groupings) that sums to it; several can be recategorized at once."""
+    from datetime import date
+
+    _seed_insight_rows()
+
+    def txs(**params):
+        r = client.get("/api/v1/transactions", params=params)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        return body["total"], body["sum"], sorted(t["name"] for t in body["transactions"])
+
+    sep = {"from": "2026-09-01", "to": "2026-09-30", "scope": "personal"}
+    both = {"from": "2026-08-01", "to": "2026-09-30", "scope": "personal"}
+    # Cash flow: September's spending (210, net of the refund) and income (3012.50); no card payment, no business.
+    assert txs(flow="spending", **sep) == (3, "210.00", ["AMZN 1", "AMZN refund", "SBUX 2"])
+    assert txs(flow="income", **sep)[:2] == (2, "-3012.50")
+    assert txs(flow="all", **sep)[1] == "-2802.50"  # the month's net, in Plaid's sign
+    assert txs(flow="income", **{**sep, "scope": "business"})[1] == "-1000.00"
+    # Income sources: a payer and kind, and "other income" as everything but the named ones.
+    assert txs(flow="income", income_kind="paychecks", merchant="Google Llc", **both)[:2] == (2, "-6000.00")
+    assert txs(flow="income", not_source="paychecks:Google Llc", **both)[1:] == ("-12.50", ["INTEREST PAYMENT"])
+    assert txs(flow="income", income_kind="other income", **both)[0] == 0
+    # Spending: a category, a detailed category inside it, and "other" as the categories not shown.
+    assert txs(flow="spending", category="GENERAL_MERCHANDISE", **both)[1] == "160.00"
+    assert txs(flow="spending", category="GENERAL_MERCHANDISE", detailed="GENERAL_MERCHANDISE_ONLINE_MARKETPLACES",
+               **both)[1] == "160.00"
+    assert txs(flow="spending", not_category="GENERAL_MERCHANDISE", **both)[1] == "150.00"
+    # Merchants count purchases only, so their lists do too.
+    assert txs(flow="spending", merchant="Amazon", direction="out", **both)[:2] == (1, "200.00")
+    assert txs(flow="spending", merchant="Starbucks", direction="out", **both)[:2] == (2, "150.00")
+    # Patterns: a weekday and a day of the month.
+    assert txs(flow="spending", weekday=date(2026, 9, 13).weekday(), **both)[1] == "160.00"  # the refund: a Sunday too
+    assert txs(flow="spending", day=12, **both)[1] == "50.00"
+    # Without `flow` the list is unchanged: transfers and business rows show.
+    assert txs(**{"from": "2026-09-01", "to": "2026-09-30"})[0] == 9
+    assert client.get("/api/v1/transactions", params={"income_kind": "lottery"}).status_code == 400
+
+    summ = client.get("/api/v1/transactions/summary", params={"flow": "spending", "group_by": "category", **sep}).json()
+    assert [(r["key"], r["total"], r["inflow"], r["outflow"]) for r in summ["rows"]] == [
+        ("GENERAL_MERCHANDISE", "160.00", "40.00", "200.00"), ("FOOD_AND_DRINK", "50.00", "0.00", "50.00")]
+    summ = client.get("/api/v1/transactions/summary",
+                      params={"flow": "spending", "merchant": "Amazon", "group_by": "month", **both}).json()
+    assert [(r["key"], r["total"], r["count"]) for r in summ["rows"]] == [("2026-09", "160.00", 2)]
+
+    # Select everything a filter matches, then file two of them somewhere new.
+    ids = client.get("/api/v1/transactions/ids", params={"flow": "spending", **sep}).json()
+    assert ids["total"] == 3
+    picked = [t["id"] for t in client.get("/api/v1/transactions", params={"q": "SBUX", **both}).json()["transactions"]]
+    r = client.post("/api/v1/transactions/recategorize", json={"ids": picked, "user_category": " COFFEE_BEANS "})
+    assert r.status_code == 200 and r.json() == {"updated": 2, "user_category": "COFFEE_BEANS"}, r.text
+    assert txs(category="COFFEE_BEANS")[0] == 2
+    assert "COFFEE_BEANS" in client.get("/api/v1/transactions/categories").json()["categories"]
+    assert client.post("/api/v1/transactions/recategorize", json={"ids": picked, "user_category": None}).json()[
+        "user_category"] is None
+    assert txs(category="COFFEE_BEANS")[0] == 0
+    gone = client.post("/api/v1/transactions/recategorize",
+                       json={"ids": [*picked, "00000000-0000-0000-0000-000000000000"], "user_category": "X"})
+    assert gone.status_code == 404
+    assert client.post("/api/v1/transactions/recategorize", json={"ids": []}).status_code == 422
 
 
 def test_release_boots_older_code_on_a_newer_schema(client):

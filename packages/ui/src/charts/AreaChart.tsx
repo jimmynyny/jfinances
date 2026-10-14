@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { cx, formatDate, formatMoneyCompact, niceTicks, parseISODate } from "../lib/format";
 import { chartTheme, seriesColor } from "./theme";
 import { useMeasure, usePatternId } from "./useMeasure";
-import { Legend } from "./Legend";
+import { Legend, useSeriesToggle } from "./Legend";
 
 export interface AreaSeries {
   key: string;
@@ -76,6 +76,10 @@ export function AreaChart<T extends AreaPoint>({
   const clipId = `${pid}-clip`;
   const maskId = `${pid}-fade`;
   const [hover, setHover] = useState<number | null>(null);
+  // The legend hides and shows series; colours stay with their series.
+  const toggle = useSeriesToggle(series.map((s) => s.key));
+  const shown = useMemo(() => series.filter((s) => !toggle.hidden.has(s.key)), [series, toggle.hidden]);
+  const colorOf = useMemo(() => new Map(series.map((s, si) => [s.key, s.color ?? (series.length === 1 ? chartTheme.accent : seriesColor(si))])), [series]);
 
   const plot = useMemo(() => {
     const w = Math.max(0, width - M.left - M.right - Y_LABEL_W);
@@ -85,7 +89,7 @@ export function AreaChart<T extends AreaPoint>({
     const x1 = Math.max(...xs);
     let lo = Infinity;
     let hi = -Infinity;
-    for (const d of data) for (const s of series) {
+    for (const d of data) for (const s of shown) {
       const v = val(d, s.key);
       if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
@@ -98,11 +102,11 @@ export function AreaChart<T extends AreaPoint>({
     const sx = (t: number) => (x1 === x0 ? w / 2 : ((t - x0) / (x1 - x0)) * w);
     const sy = (v: number) => h - ((v - yMin) / (yMax - yMin || 1)) * h;
     return { w, h, xs, sx, sy, ticks, yMin, yMax, x0, x1 };
-  }, [data, series, width, height, zeroBaseline]);
+  }, [data, shown, width, height, zeroBaseline]);
 
   const paths = useMemo(() => {
-    return series.map((s, si) => {
-      const color = s.color ?? (series.length === 1 ? chartTheme.accent : seriesColor(si));
+    return shown.map((s) => {
+      const color = colorOf.get(s.key)!;
       let line = "";
       const pts: Array<[number, number]> = [];
       data.forEach((d, i) => {
@@ -117,7 +121,7 @@ export function AreaChart<T extends AreaPoint>({
       const area = pts.length ? `${line}L${pts[pts.length - 1]![0].toFixed(1)},${base.toFixed(1)}L${pts[0]![0].toFixed(1)},${base.toFixed(1)}Z` : "";
       return { s, color, line, area, pts };
     });
-  }, [series, data, plot]);
+  }, [shown, colorOf, data, plot]);
 
   // Dot-matrix fill for the first series: per column of cells, light every
   // whole cell from the line down to the baseline. The clip is a staircase on
@@ -193,9 +197,9 @@ export function AreaChart<T extends AreaPoint>({
   const hoverX = hover !== null ? plot.sx(plot.xs[hover]!) : 0;
 
   return (
-    <div ref={ref} className={cx("mu-chart", stale && "mu-chart--stale")} aria-label={ariaLabel} role="img">
+    <div ref={ref} className={cx("mu-chart", stale && "mu-chart--stale")}>
       {width > 0 && (
-        <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height}>
+        <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={ariaLabel}>
           <defs>
             {matrix && (
               <>
@@ -282,7 +286,10 @@ export function AreaChart<T extends AreaPoint>({
       )}
       {(series.length > 1 || foot) && (
         <div className="mu-row" style={{ marginTop: 8, justifyContent: "space-between" }}>
-          {series.length > 1 && <Legend items={paths.map((p) => ({ label: p.s.label, color: p.color, shape: "line" }))} />}
+          {series.length > 1 && (
+            <Legend items={series.map((s) => ({ label: s.label, color: colorOf.get(s.key)!, shape: "line", off: toggle.hidden.has(s.key) }))}
+              onToggle={(i) => toggle.toggle(series[i]!.key)} />
+          )}
           {foot}
         </div>
       )}

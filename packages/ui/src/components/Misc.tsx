@@ -104,3 +104,17 @@ export function Meter({ ratio, label, tone = "accent", color, className }: Meter
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx("mu-page", className)}>{children}</div>;
 }
+
+/**
+ * What can be done with the rows the person ticked: a bar that stays at the
+ * bottom of the screen while they scroll the list it belongs to. `count`
+ * leads ("12 selected"); the actions follow, the main one last.
+ */
+export function ActionBar({ count, children, label = "Selection" }: { count: ReactNode; children: ReactNode; label?: string }) {
+  return (
+    <div className="mu-actionbar" role="region" aria-label={label}>
+      <span className="mu-actionbar__count" aria-live="polite">{count}</span>
+      <div className="mu-actionbar__actions">{children}</div>
+    </div>
+  );
+}

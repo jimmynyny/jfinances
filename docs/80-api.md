@@ -209,9 +209,20 @@ Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (stat
 ## Transactions
 
 ### GET /transactions
-Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount contains), `category`, `pending` (bool), `page` (1-based), `page_size` (≤500, default 50).
+Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount contains), `category` (the user's or the bank's; `UNCATEGORIZED` for neither), `pending` (bool), `page` (1-based), `page_size` (≤500, default 50).
+
+The rows behind an Insights number (every number on Insights links here, `frontend/src/lib/drill.ts`):
+`flow` = `income` | `spending` | `all` applies Insights' rules (posted, not removed, no transfers
+between your accounts or payments into cards and loans, no hidden accounts) and picks the side;
+`scope` (`personal` | `business` | `all`, by `accounts.is_business`); `detailed` (a detailed
+category, or the category itself when the bank gave none); `merchant` (Insights' merchant name,
+`services/insights.merchant_key`); `income_kind` (paychecks, dividends, interest, retirement, tax
+refunds, unemployment, other income); `direction` (`out`: purchases only, as the merchants list
+counts them; `in`); repeatable `not_category`, `not_detailed` and `not_source` (`kind:merchant`):
+what an "other" groups; `weekday` (0 = Monday) and `day` (of the month). The list then sums to
+the number: `sum` is every matching row's amount added up (Plaid's sign).
 ```json
-{"page":1,"page_size":50,"total":1234,"transactions":[
+{"page":1,"page_size":50,"total":1234,"sum":"18523.40","transactions":[
  {"id":"…","account_id":"…","account_name":"Checking","account_mask":"4821","institution_name":"Citi",
   "date":"2026-10-12","authorized_date":"2026-10-11","amount":"64.00","iso_currency":"USD",
   "name":"THE GOOD TABLE","merchant_name":"The Good Table","logo_url":"…","pending":false,
@@ -223,9 +234,21 @@ Query: `from`, `to` (dates), `account_id`, `q` (name/merchant/notes/amount conta
 ### PATCH /transactions/{id}
 Body: `{"user_category"?: str|null, "notes"?: str|null}` → transaction.
 
+### GET /transactions/ids
+The list's filters → `{"ids":["…"],"total":340}`, newest first: every match, to select them all.
+More than 5,000 is a 400 (`too_many`): narrow the filters.
+
+### POST /transactions/recategorize
+Body `{"ids":["…", …] (1–5,000), "user_category": str|null}` → `{"updated":12,"user_category":"HOME_REPAIRS"}`.
+Files every one under that category; `null` (or blank) puts each back under the bank's. A 404 if
+any id is gone (removed since the list loaded): nothing changes. The web app keeps a new name in the
+bank's style (`HOME_REPAIRS`, shown "home repairs") and reuses an existing category that reads the
+same, so names never split.
+
 ### GET /transactions/summary
-Query: `group_by=category|month|account`, optional `from`, `to`, `account_id`,
-`include_transfers` (default `false`). Pending transactions are never counted.
+Query: `group_by=category|month|account`, `include_transfers` (default `false`), and the list's
+filters (`from`, `to`, `account_id`, `category`, `q`, and the Insights ones above: with `flow`, the
+rows are Insights' and `include_transfers` doesn't apply). Pending transactions are never counted.
 ```json
 {"group_by":"month","transfers":"excluded","rows":[
  {"key":"2026-09","label":"2026-09","inflow":"8421.10","outflow":"6776.14","total":"-1644.96","count":131}]}

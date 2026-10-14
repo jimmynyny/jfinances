@@ -33,6 +33,15 @@
 .mu-legend__swatch { width: 10px; height: 10px; flex: none; }
 .mu-legend__swatch--line { height: 2px; }
 .mu-legend__value { color: var(--mu-ink); font-variant-numeric: tabular-nums; margin-left: 2px; }
+/* A legend that toggles its series: each item is a quiet button. */
+.mu-legend__toggle { all: unset; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 24px; }
+.mu-legend__toggle:hover { color: var(--mu-ink); }
+.mu-legend__toggle:focus-visible { box-shadow: var(--mu-focus); }
+.mu-legend__item--off { opacity: 0.45; text-decoration: line-through; }
+@media (pointer: coarse) { .mu-legend__toggle { min-height: 32px; } }
+/* A chart whose marks open what they show. */
+.mu-chart--clickable .mu-chart__hit, .mu-chart--clickable .mu-chart__bar, .mu-chart--clickable .mu-pbars__hit,
+.mu-chart--clickable .mu-flow__node, .mu-chart--clickable .mu-flow__ribbon, .mu-chart--clickable .mu-flow__pick { cursor: pointer; }
 
 .mu-donut { display: grid; grid-template-columns: auto 1fr; gap: var(--mu-s4); align-items: center; }
 .mu-donut__center { font-family: var(--mu-font-sans); fill: var(--mu-ink); font-weight: 600; font-size: 18px; }
@@ -54,3 +63,10 @@
 .mu-flow__label { fill: var(--mu-ink); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
 .mu-flow__value { fill: var(--mu-ink-3); font-size: var(--mu-fs-xs); font-family: var(--mu-font-mono); }
 .mu-flow__text--dim { opacity: 0.35; }
+/* What a click on the hovered mark opens: the picked row, and how to open it. */
+.mu-chart__tip-row--pick > span:first-child { text-decoration: underline; text-underline-offset: 3px; }
+.mu-chart__tip-hint { margin-top: 4px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--mu-panel) 25%, transparent); opacity: 0.75; }
+.mu-flow__pick { fill: transparent; }
+.mu-flow g[role="button"] { cursor: pointer; }
+.mu-flow g[role="button"]:focus { outline: none; }
+.mu-flow g[role="button"]:is(:hover, :focus-visible) .mu-flow__label { text-decoration: underline; }

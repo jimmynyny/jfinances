@@ -88,16 +88,42 @@ def merchant_key(merchant_name: str | None, name: str) -> str:
     return " ".join(words[:4]).title() or (name or "").strip() or "Unknown"
 
 
+UNCATEGORIZED = "UNCATEGORIZED"
+OTHER_INCOME = "other income"
+
+
+def effective_category():
+    """The category Insights group by: the user's, else the bank's, else UNCATEGORIZED."""
+    return func.coalesce(Transaction.user_category, Transaction.category_primary, UNCATEGORIZED)
+
+
+def detail_key():
+    """What a drilled-in category splits by: the detailed category, else the category itself."""
+    return func.coalesce(func.nullif(Transaction.category_detailed, ""), effective_category())
+
+
+def counted_clauses() -> list:
+    """The rows Insights count (the module docstring), for a select joined to Account. The
+    Transactions list uses the same clauses to show the rows behind a number."""
+    return [Transaction.removed_at.is_(None), Transaction.pending.is_(False), Account.is_hidden.is_(False),
+            ~is_transfer_clause(), ~is_liability_payment_clause()]
+
+
+def scope_clause(scope: Scope):
+    return None if scope == "all" else Account.is_business.is_(scope == "business")
+
+
+def income_kind(detailed: str | None) -> str:
+    return INCOME_KINDS.get(detailed or "", OTHER_INCOME)
+
+
 def load_rows(sess: Session, f: Filters) -> list[Row]:
-    cat = func.coalesce(Transaction.user_category, Transaction.category_primary, "UNCATEGORIZED")
-    stmt = (select(Transaction.date, Transaction.amount, cat, Transaction.category_detailed,
+    stmt = (select(Transaction.date, Transaction.amount, effective_category(), Transaction.category_detailed,
                    Transaction.merchant_name, Transaction.name, Transaction.account_id)
             .join(Account, Account.id == Transaction.account_id)
-            .where(Transaction.removed_at.is_(None), Transaction.pending.is_(False),
-                   Account.is_hidden.is_(False), ~is_transfer_clause(), ~is_liability_payment_clause(),
-                   Transaction.date >= f.start, Transaction.date <= f.end))
-    if f.scope != "all":
-        stmt = stmt.where(Account.is_business.is_(f.scope == "business"))
+            .where(*counted_clauses(), Transaction.date >= f.start, Transaction.date <= f.end))
+    if (scoped := scope_clause(f.scope)) is not None:
+        stmt = stmt.where(scoped)
     if f.account_ids:
         stmt = stmt.where(Transaction.account_id.in_(f.account_ids))
     return [Row(d, Decimal(a), c, det, merchant_key(m, n), acct)
@@ -167,7 +193,7 @@ def cashflow(rows: Iterable[Row], f: Filters, grain: Grain, top: int = 8) -> dic
         p = period_start(r.date, grain)
         if is_income(r):
             inc[p] -= r.amount
-            kind = INCOME_KINDS.get(r.detailed or "", "other income")
+            kind = income_kind(r.detailed)
             src = sources.setdefault((kind, r.merchant), [ZERO, 0])
             src[0] -= r.amount
             src[1] += 1

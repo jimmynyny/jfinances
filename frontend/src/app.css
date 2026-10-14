@@ -80,6 +80,11 @@
 .jf-cats__row { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--mu-s2); align-items: center; font-size: var(--mu-fs-sm); }
 .jf-cats__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jf-cats__note { margin-top: var(--mu-s3); font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); }
+/* Insights rows that open their transactions: the whole row (or its amount) is the link. */
+a.jf-cats__row--link, .jf-cats__open { color: inherit; text-decoration: none; }
+.jf-cats__open { display: block; min-width: 0; }
+a.jf-cats__row--link:hover .jf-cats__name, .jf-cats__open:hover .mu-pmeter__val { text-decoration: underline; text-underline-offset: 3px; }
+a.jf-cats__row--link:focus-visible, .jf-cats__open:focus-visible { outline: none; box-shadow: var(--mu-focus); }
 
 /* Phone width: the top bar keeps the title and the one badge that matters. */
 @media (max-width: 560px) { .jf-sync__count { display: none; } }

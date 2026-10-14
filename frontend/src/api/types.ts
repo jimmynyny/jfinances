@@ -162,10 +162,46 @@ export interface TransactionsPage {
   page: number;
   page_size: number;
   total: number;
+  /** Every matching row's amount added up, Plaid's sign (positive = net money out). */
+  sum: number;
   transactions: Transaction[];
 }
 
-export interface TransactionQuery {
+/**
+ * The rows behind an Insights number (docs/80 "GET /transactions"): `flow` applies
+ * Insights' rules (posted, no transfers or card payments, no hidden accounts) and
+ * the rest follow its groupings, so the list adds up to the number clicked.
+ */
+export interface TransactionDrill {
+  flow?: "income" | "spending" | "all";
+  scope?: InsightScope;
+  /** A detailed category (or the category, when the bank gave none). */
+  detailed?: string;
+  /** Insights' merchant name, e.g. "Google Llc". */
+  merchant?: string;
+  /** paychecks, dividends, interest, retirement, tax refunds, unemployment, other income. */
+  income_kind?: string;
+  direction?: "in" | "out";
+  not_category?: string[];
+  not_detailed?: string[];
+  /** "kind:merchant" income sources to leave out. */
+  not_source?: string[];
+  /** 0 = Monday. */
+  weekday?: number;
+  day?: number;
+}
+
+/** GET /transactions/summary: the range and account, plus a drill when the list has one. */
+export interface SummaryQuery extends TransactionDrill {
+  from?: string;
+  to?: string;
+  account_id?: string;
+  category?: string;
+  group_by: "category" | "month" | "account";
+  include_transfers?: boolean;
+}
+
+export interface TransactionQuery extends TransactionDrill {
   from?: string;
   to?: string;
   account_id?: string;

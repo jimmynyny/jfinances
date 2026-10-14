@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Badge, Button, Checkbox, DataTable, Drawer, Filters, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
+  ActionBar, Badge, Button, Checkbox, DataTable, Drawer, Filters, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
 } from "@mooney/ui";
-import { useAccounts, useCategories, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
-import type { Account, Transaction } from "../api/types";
-import { ApiError } from "../api/client";
+import { useAccounts, useCategories, useRecategorize, useSummary, useTransactions, useUpdateTransaction } from "../api/hooks";
+import type { Account, Transaction, TransactionDrill } from "../api/types";
+import { ApiError, api } from "../api/client";
 import { ErrorNote } from "../components/ErrorNote";
 import { accountFilterOptions } from "../lib/accountOptions";
 import { BusinessMark } from "../components/BusinessMark";
+import { BANK, CategoryPicker, categoryWords, resolveCategory, type CategoryChoice } from "../components/CategoryPicker";
+import { describeDrill, readDrill } from "../lib/drill";
 import { GROUP_LABEL, groupOf, monthLabel } from "../lib/groups";
 
 type Preset = "30d" | "90d" | "mtd" | "ytd" | "custom";
@@ -28,34 +30,71 @@ function presetRange(p: Preset): { from: string; to: string } {
 const PAGE_SIZE = 50;
 
 export function TransactionsPage() {
-  const [preset, setPreset] = useState<Preset>("30d");
-  const [custom, setCustom] = useState(presetRange("30d"));
-  // ?account=<id>: an account's "all transactions" link opens the list filtered to it.
-  const [params] = useSearchParams();
-  const [accountId, setAccountId] = useState(() => params.get("account") ?? "");
-  const [category, setCategory] = useState("");
+  // A link may set the filters: ?account=<id> from an account's "all transactions";
+  // dates, a category and an Insights grouping (lib/drill.ts) from a number on Insights.
+  const [params, setParams] = useSearchParams();
+  const linked = useMemo(() => readDrill(params), [params]);
+  const [preset, setPreset] = useState<Preset>(() => (linked.from && linked.to ? "custom" : "30d"));
+  const [custom, setCustom] = useState(() => (linked.from && linked.to ? { from: linked.from, to: linked.to } : presetRange("30d")));
+  const [accountId, setAccountId] = useState(() => linked.account ?? "");
+  const [category, setCategory] = useState(() => linked.category ?? "");
+  const [drill, setDrill] = useState<TransactionDrill | null>(() => linked.drill);
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [page, setPage] = useState(1);
   useEffect(() => {
-    const linked = params.get("account");
-    if (linked) { setAccountId(linked); setPage(1); }
-  }, [params]);
+    if (linked.from && linked.to) { setPreset("custom"); setCustom({ from: linked.from, to: linked.to }); }
+    if (linked.account !== undefined) setAccountId(linked.account);
+    if (linked.drill || linked.category !== undefined) setCategory(linked.category ?? "");
+    if (linked.drill) setDrill(linked.drill);
+    setPage(1);
+  }, [linked]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [summaryBy, setSummaryBy] = useState<"category" | "month">("category");
+  // Ticking rows to recategorize them together.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [recategorizing, setRecategorizing] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   const { toast, error } = useToast();
 
   const range = preset === "custom" ? custom : presetRange(preset);
   const query = useMemo(
-    () => ({ from: range.from, to: range.to, account_id: accountId || undefined, category: category || undefined, q: qDebounced || undefined, pending: pendingOnly || undefined, page, page_size: PAGE_SIZE }),
-    [range.from, range.to, accountId, category, qDebounced, pendingOnly, page],
+    () => ({ from: range.from, to: range.to, account_id: accountId || undefined, category: category || undefined, q: qDebounced || undefined, pending: pendingOnly || undefined, ...drill, page, page_size: PAGE_SIZE }),
+    [range.from, range.to, accountId, category, qDebounced, pendingOnly, drill, page],
   );
+  // A different list: what was ticked in the last one no longer applies.
+  const listKey = JSON.stringify({ ...query, page: undefined });
+  useEffect(() => setSelected(new Set()), [listKey]);
   const tx = useTransactions(query);
   const accounts = useAccounts();
-  const summary = useSummary({ from: range.from, to: range.to, account_id: accountId || undefined, group_by: summaryBy });
+  // With an Insights grouping, the summary sums the same rows the list shows.
+  const summary = useSummary({ from: range.from, to: range.to, account_id: accountId || undefined, group_by: summaryBy, ...(drill ? { ...drill, category: category || undefined } : {}) });
   const cats = useCategories();
   const update = useUpdateTransaction();
+  const recategorize = useRecategorize();
+
+  /** Leave the Insights grouping: the whole list again, with the page's own filters. */
+  function showAll() {
+    setDrill(null);
+    setPreset("30d");
+    setCategory("");
+    setAccountId("");
+    setPage(1);
+    setParams({}, { replace: true });
+  }
+
+  async function selectAllMatching() {
+    setSelectingAll(true);
+    try {
+      setSelected(new Set(await api.transactionIds(query)));
+    } catch (e) {
+      error(e instanceof ApiError ? e.message : "Could not select them all");
+    } finally {
+      setSelectingAll(false);
+    }
+  }
 
   const accountName = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a.name])), [accounts.data]);
   // On a card or loan, money out is charges and money in is payments (the API files them as PAYMENTS).
@@ -89,6 +128,7 @@ export function TransactionsPage() {
 
   const total = tx.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const drillText = drill ? describeDrill({ from: range.from, to: range.to, category: category || undefined, drill }) : "";
 
   // Months: money in and money out are separate sums from the API, so a month
   // shows both columns (a single net total could only ever be one or the other).
@@ -149,8 +189,21 @@ export function TransactionsPage() {
         <Checkbox label="Pending only" checked={pendingOnly} onChange={(e) => { setPendingOnly(e.target.checked); setPage(1); }} style={{ height: 32 }} />
       </Filters>
 
+      {drill && (
+        <Panel caption="from insights" actions={<Button size="sm" variant="quiet" onClick={showAll}>Show all transactions</Button>}>
+          <div className="mu-stack" style={{ gap: 4 }}>
+            <span>{drillText}</span>
+            <span className="mu-caption">
+              {tx.data ? <>{total.toLocaleString()} transaction{total === 1 ? "" : "s"} · {drill.flow === "income" ? "income " : drill.flow === "spending" ? (drill.direction === "out" ? "purchases " : "spending ") : "net "}
+                <Money value={drill.flow === "spending" ? tx.data.sum : -tx.data.sum} signed={drill.flow === "all"} /></> : <Skeleton width={160} />}
+            </span>
+          </div>
+        </Panel>
+      )}
+
       <div className="mu-grid mu-grid--main">
-        <Panel flush caption="activity" foot={tx.isFetching ? "updating…" : `page ${page} of ${pages}`}>
+        <Panel flush caption="activity" foot={tx.isFetching ? "updating…" : `page ${page} of ${pages}`}
+          actions={<Button size="sm" variant="quiet" onClick={() => { setSelecting((s) => !s); setSelected(new Set()); setEditing(null); }}>{selecting ? "Done" : "Select"}</Button>}>
           {tx.error ? (
             <div style={{ padding: 16 }}><ErrorNote error={tx.error} retry={() => tx.refetch()} /></div>
           ) : (
@@ -161,6 +214,7 @@ export function TransactionsPage() {
                 rowKey={(t) => t.id}
                 onRowClick={setEditing}
                 selectedKey={editing?.id ?? null}
+                selection={selecting ? { selected, onChange: setSelected, label: (t) => t.merchant_name ?? t.name } : undefined}
                 stale={tx.isFetching && !!tx.data}
                 empty={tx.isLoading ? <Skeleton lines={4} /> : "No transactions match these filters."}
                 compact
@@ -172,6 +226,17 @@ export function TransactionsPage() {
                   <Button size="sm" variant="quiet" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</Button>
                 </span>
               </div>
+              {selecting && (
+                <ActionBar label="Selected transactions" count={selected.size === 0 ? "Tick transactions to recategorize them" : `${selected.size.toLocaleString()} selected`}>
+                  {selected.size < total && (
+                    <Button size="sm" variant="quiet" loading={selectingAll} onClick={() => void selectAllMatching()}>
+                      Select all {total.toLocaleString()}
+                    </Button>
+                  )}
+                  {selected.size > 0 && <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())}>Clear</Button>}
+                  <Button size="sm" variant="primary" disabled={selected.size === 0} onClick={() => setRecategorizing(true)}>Recategorize</Button>
+                </ActionBar>
+              )}
             </>
           )}
         </Panel>
@@ -210,7 +275,9 @@ export function TransactionsPage() {
           ) : <span className="mu-caption">nothing in range</span>}
           {summary.data && (
             <p className="jf-cats__note">
-              {summary.data.transfers === "included"
+              {drill
+                ? "As Insights counts them: posted only, without transfers between your accounts or card payments."
+                : summary.data.transfers === "included"
                 ? "Includes transfers between your accounts and card payments."
                 : onLiability
                   ? "Payments into this account count as money in; other transfers are excluded."
@@ -219,6 +286,31 @@ export function TransactionsPage() {
           )}
         </Panel>
       </div>
+
+      <Drawer
+        open={recategorizing}
+        onClose={() => setRecategorizing(false)}
+        title={`Recategorize ${selected.size.toLocaleString()} transaction${selected.size === 1 ? "" : "s"}`}
+      >
+        {recategorizing && (
+          <RecategorizeForm
+            categories={categories}
+            count={selected.size}
+            saving={recategorize.isPending}
+            onCancel={() => setRecategorizing(false)}
+            onSave={async (to) => {
+              try {
+                const r = await recategorize.mutateAsync({ ids: [...selected], category: to });
+                toast(`${r.updated.toLocaleString()} moved to ${to ? categoryWords(to) : "their bank categories"}`);
+                setSelected(new Set());
+                setRecategorizing(false);
+              } catch (e) {
+                error(e instanceof ApiError ? e.message : "Could not recategorize");
+              }
+            }}
+          />
+        )}
+      </Drawer>
 
       <Drawer
         open={!!editing}
@@ -230,6 +322,7 @@ export function TransactionsPage() {
           <TxnForm
             key={editing.id}
             t={editing}
+            categories={categories}
             account={(accounts.data ?? []).find((a) => a.id === editing.account_id)}
             onShowAccount={() => { setAccountId(editing.account_id); setPage(1); setEditing(null); }}
             onSave={async (patch) => {
@@ -248,17 +341,43 @@ export function TransactionsPage() {
   );
 }
 
-function TxnForm({ t, account, onShowAccount, onSave }: {
+/** One category for every ticked transaction: one already in use, a new one, or back to each one's bank category. */
+function RecategorizeForm({ categories, count, saving, onCancel, onSave }: {
+  categories: string[];
+  count: number;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (category: string | null) => Promise<void>;
+}) {
+  const [choice, setChoice] = useState<CategoryChoice>({ pick: "", typed: "" });
+  const to = resolveCategory(choice, categories).category;
+  return (
+    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); if (to !== undefined) void onSave(to); }}>
+      <CategoryPicker categories={categories} value={choice} onChange={setChoice} />
+      <p className="mu-caption">Insights and summaries count them under the new category from now on. Choosing each one&apos;s bank category undoes a change.</p>
+      <div className="mu-row">
+        <Button type="submit" variant="primary" disabled={to === undefined} loading={saving}>
+          {to === undefined ? "Choose a category" : `Move ${count.toLocaleString()} to ${to ? categoryWords(to) : "their bank categories"}`}
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
+function TxnForm({ t, categories, account, onShowAccount, onSave }: {
   t: Transaction;
+  categories: string[];
   /** The account it belongs to, when the accounts list has loaded. */
   account?: Account;
   onShowAccount?: () => void;
   onSave: (patch: { user_category?: string | null; notes?: string | null }) => Promise<void>;
 }) {
-  const [cat, setCat] = useState(t.user_category ?? "");
+  const [cat, setCat] = useState<CategoryChoice>({ pick: t.user_category ?? BANK, typed: "" });
   const [notes, setNotes] = useState(t.notes ?? "");
+  const chosen = resolveCategory(cat, categories).category;
   return (
-    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); void onSave({ user_category: cat.trim() || null, notes: notes.trim() || null }); }}>
+    <form className="mu-stack" onSubmit={(e) => { e.preventDefault(); void onSave({ user_category: chosen ?? null, notes: notes.trim() || null }); }}>
       <div>
         <div style={{ fontWeight: 600 }}>{t.merchant_name ?? t.name}{t.is_business && <BusinessMark />}</div>
         <div className="mu-caption">{formatDate(t.date, { year: true })} · {t.account_name ?? ""}{t.pending ? " · pending" : ""}</div>
@@ -281,7 +400,7 @@ function TxnForm({ t, account, onShowAccount, onSave }: {
           {onShowAccount && <div><Button type="button" size="sm" variant="quiet" onClick={onShowAccount}>Show only this account</Button></div>}
         </div>
       )}
-      <Input label="Your category" value={cat} onChange={(e) => setCat(e.target.value)} placeholder={(t.category ?? "").toLowerCase().replace(/_/g, " ")} help="Overrides the bank's category for this transaction. Leave blank to use the bank's." />
+      <CategoryPicker categories={categories} value={cat} onChange={setCat} bankLabel={categoryWords(t.category_primary ?? "uncategorized")} />
       <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       <div><Button type="submit" variant="primary">Save changes</Button></div>
     </form>

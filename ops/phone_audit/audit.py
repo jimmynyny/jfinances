@@ -38,6 +38,11 @@ CLICK_TEXT = """((sel, re) => {
   const el = [...document.querySelectorAll(sel)].find(e => new RegExp(re).test(e.textContent.trim()));
   if (el) { el.click(); return el.textContent.trim().slice(0,40) } return null })"""
 OPEN_MENU = """(() => { const t = document.querySelector('.mu-side__toggle'); t && t.click(); return !!t })()"""
+TICK_TWO = """(() => {
+  const rows = [...document.querySelectorAll('.mu-table--select tbody tr')].slice(0, 2);
+  rows.forEach(r => r.click()); return rows.length })()"""
+#: A list opened from an Insights number (lib/drill.ts).
+FROM_INSIGHTS = "/transactions?from=2026-04-01&to=2026-10-14&scope=personal&flow=spending&category=FOOD_AND_DRINK"
 
 PAGES = [
     ("overview", "/", {}, []),
@@ -46,6 +51,10 @@ PAGES = [
     ("accounts-drawer", "/accounts", {}, [CLICK_FIRST_ACCOUNT]),
     ("transactions", "/transactions", {}, []),
     ("transactions-drawer", "/transactions", {}, [CLICK_FIRST_TXN]),
+    ("transactions-insight", FROM_INSIGHTS, {}, []),
+    ("transactions-select", "/transactions", {}, [CLICK_TEXT + "('button', '^Select$')", TICK_TWO]),
+    ("transactions-recategorize", "/transactions", {}, [CLICK_TEXT + "('button', '^Select$')", TICK_TWO,
+                                                       CLICK_TEXT + "('button', '^Recategorize$')"]),
     ("investments", "/investments", {}, []),
     ("liabilities", "/liabilities", {}, []),
     ("insights-cashflow", "/insights", {"jf.insights.tab": "cashflow"}, []),

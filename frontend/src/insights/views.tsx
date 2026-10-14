@@ -1,4 +1,5 @@
 import { Fragment, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   BarChart, Badge, Button, DataTable, Delta, EmptyState, FlowChart, Money, Panel, PixelBars, PixelMeter, PixelSparkline,
   Skeleton, StatTile, formatDate, formatMoney, seriesColor, type Column, type FlowNode,
@@ -6,13 +7,16 @@ import {
 import { useCashflow, useCompare, useMerchants, usePatterns, useSpending } from "../api/hooks";
 import type { CashflowInsight, CashflowPeriod, Grain, InsightSlice, MerchantInsight } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
+import { periodRange, txLink, type Drill } from "../lib/drill";
 import { categoryLabel, pct, shortPeriod } from "./settings";
 
 /**
  * Insights views. Each takes the slice it shows (dates, scope, account) and
  * renders one Panel, so the Insights page and, later, pinned dashboard cards
  * draw the same thing. `actions` lands in the panel head (a pin button).
+ * Every number opens the transactions behind it (lib/drill.ts).
  */
+const SEE = "see these transactions";
 interface ViewProps {
   slice: InsightSlice;
   actions?: ReactNode;
@@ -38,6 +42,8 @@ function Body({ q, height = 240, children }: {
 export function CashflowView({ slice, grain, actions }: ViewProps & { grain: Grain }) {
   const q = useCashflow(slice, grain);
   const [table, setTable] = useState(false);
+  const navigate = useNavigate();
+  const open = (period: string, flow: Drill["flow"]) => navigate(txLink(slice, { ...periodRange(period, grain, slice), flow }));
   const cols: Column<CashflowPeriod>[] = [
     { key: "period", header: "Period", mobile: "primary", sortValue: (p) => p.period,
       cell: (p) => <><span className="mu-mono">{p.label}</span><span className="mu-caption mu-stacked-only"> · in <Money value={p.income} cents={false} /> · out <Money value={p.spending} cents={false} /></span></> },
@@ -61,13 +67,16 @@ export function CashflowView({ slice, grain, actions }: ViewProps & { grain: Gra
                 <StatTile label="savings rate" value={pct(d.totals.savings_rate)} note="net ÷ income" />
               </div>
               {table ? (
-                <DataTable compact columns={cols} rows={d.periods} rowKey={(p) => p.period} defaultSort={{ key: "period", dir: "asc" }} />
+                <DataTable compact columns={cols} rows={d.periods} rowKey={(p) => p.period} defaultSort={{ key: "period", dir: "asc" }}
+                  onRowClick={(p) => open(p.period, "all")} />
               ) : (
                 <PixelBars
                   data={d.periods.map((p) => ({ label: p.label, short: shortPeriod(p.label, grain), income: p.income, spending: p.spending }))}
                   series={[{ key: "income", label: "Income", color: IN }, { key: "spending", label: "Spending", color: OUT }]}
                   stale={q.isFetching}
                   ariaLabel="Income and spending by period"
+                  onSelect={(i, key) => open(d.periods[i]!.period, key === "income" ? "income" : "spending")}
+                  selectHint={SEE}
                 />
               )}
             </div>
@@ -90,10 +99,11 @@ export function IncomeSourcesView({ slice, grain, actions }: ViewProps & { grain
           return (
             <div className="mu-stack jf-cats">
               {rows.slice(0, 10).map((r) => (
-                <div key={`${r.kind}:${r.label}`} className="jf-cats__row">
+                <Link key={`${r.kind}:${r.label}`} className="jf-cats__row jf-cats__row--link" title="See these transactions"
+                  to={txLink(slice, { flow: "income", income_kind: r.kind, merchant: r.label })}>
                   <span className="jf-cats__name">{r.label} <span className="mu-caption">· {r.kind} · {r.count}</span></span>
                   <PixelMeter size="sm" cells={16} tone="series" color={IN} ratio={total > 0 ? r.amount / total : 0} label={money0(r.amount)} ariaLabel={`${r.label} income`} />
-                </div>
+                </Link>
               ))}
             </div>
           );
@@ -103,30 +113,45 @@ export function IncomeSourcesView({ slice, grain, actions }: ViewProps & { grain
   );
 }
 
-/** Income sources -> income -> spending categories, plus what was saved (or drawn from savings). */
-export function flowNodes(d: CashflowInsight): { sources: FlowNode[]; uses: FlowNode[] } {
+/**
+ * Income sources -> income -> spending categories, plus what was saved (or drawn
+ * from savings). With `open`, each node opens the transactions it is made of.
+ */
+export function flowNodes(d: CashflowInsight, open?: (drill: Drill) => void): { sources: FlowNode[]; uses: FlowNode[] } {
+  const on = (drill: Drill) => (open ? () => open(drill) : undefined);
   const src = d.income_sources;
   const head = src.slice(0, 5);
   const rest = src.slice(5).reduce((t, s) => t + s.amount, 0);
-  const sources: FlowNode[] = head.map((s) => ({ key: `in:${s.kind}:${s.label}`, label: s.label, value: s.amount, color: IN }));
-  if (rest > 0) sources.push({ key: "in:other", label: "other income", value: rest, color: IN });
+  const sources: FlowNode[] = head.map((s) => ({
+    key: `in:${s.kind}:${s.label}`, label: s.label, value: s.amount, color: IN,
+    onSelect: on({ flow: "income", income_kind: s.kind, merchant: s.label }),
+  }));
+  if (rest > 0) {
+    sources.push({ key: "in:other", label: "other income", value: rest, color: IN,
+      onSelect: on({ flow: "income", not_source: head.map((s) => `${s.kind}:${s.label}`) }) });
+  }
+  const named = d.spending_categories.filter((c) => c.key !== "OTHER").map((c) => c.key);
   const uses: FlowNode[] = d.spending_categories.map((c, i) => ({
     key: `out:${c.key}`, label: categoryLabel(c.key), value: c.amount, color: c.key === "OTHER" ? "var(--mu-series-other)" : seriesColor(i),
+    onSelect: on(c.key === "OTHER" ? { flow: "spending", not_category: named } : { flow: "spending", category: c.key }),
   }));
-  if (d.totals.net > 0) uses.push({ key: "saved", label: "saved", value: d.totals.net, color: IN });
+  if (d.totals.net > 0) uses.push({ key: "saved", label: "saved", value: d.totals.net, color: IN, onSelect: on({ flow: "all" }) });
   if (d.totals.net < 0) sources.push({ key: "in:savings", label: "from savings", value: -d.totals.net, color: "var(--mu-ink-3)" });
   return { sources, uses };
 }
 
 export function MoneyFlowView({ slice, grain, actions }: ViewProps & { grain: Grain }) {
   const q = useCashflow(slice, grain);
+  const navigate = useNavigate();
+  const open = (drill: Drill) => navigate(txLink(slice, drill));
   return (
     <Panel caption="money flow" actions={actions}>
       <Body q={q} height={320}>
         {() => {
-          const { sources, uses } = flowNodes(q.data!);
+          const { sources, uses } = flowNodes(q.data!, open);
           if (sources.length === 0 && uses.length === 0) return <span className="mu-caption">nothing in range</span>;
-          return <FlowChart sources={sources} uses={uses} centerLabel="income" stale={q.isFetching} ariaLabel="Money flow from income to spending" />;
+          return <FlowChart sources={sources} uses={uses} centerLabel="income" stale={q.isFetching} ariaLabel="Money flow from income to spending"
+            onCenterSelect={() => open({ flow: "income" })} />;
         }}
       </Body>
     </Panel>
@@ -141,6 +166,7 @@ export function SpendingView({ slice, grain, category, onCategory, actions }: Vi
   onCategory?: (c: string | null) => void;
 }) {
   const q = useSpending(slice, { grain, category, top: 5 });
+  const navigate = useNavigate();
   return (
     <Panel
       caption={category ? <>spending · {categoryLabel(category)}</> : "spending by category"}
@@ -151,6 +177,14 @@ export function SpendingView({ slice, grain, category, onCategory, actions }: Vi
           const d = q.data!;
           if (d.series.length === 0) return <EmptyState glyph="~" title="No spending in range" description="Try a longer range or a different scope." />;
           const color = (key: string, i: number) => (key === "OTHER" ? "var(--mu-series-other)" : seriesColor(i));
+          // A series inside a category is one of its detailed categories; "OTHER" is every one not shown.
+          const named = d.series.filter((s) => s.key !== "OTHER").map((s) => s.key);
+          const of = (key: string | null): Drill => {
+            const base: Drill = { flow: "spending", category: category ?? undefined };
+            if (key === null) return base;
+            if (key === "OTHER") return category ? { ...base, not_detailed: named } : { ...base, not_category: named };
+            return category ? { ...base, detailed: key } : { ...base, category: key };
+          };
           const data = d.periods.map((p, i) => ({
             label: shortPeriod(p.label, grain),
             ...Object.fromEntries(d.series.map((s) => [s.key, s.values[i] ?? 0])),
@@ -163,6 +197,8 @@ export function SpendingView({ slice, grain, category, onCategory, actions }: Vi
                 series={d.series.map((s, i) => ({ key: s.key, label: categoryLabel(s.key, category), color: color(s.key, i) }))}
                 stale={q.isFetching}
                 ariaLabel="Spending by category over time"
+                onSelect={(i, key) => navigate(txLink(slice, { ...of(key), ...periodRange(d.periods[i]!.period, grain, slice) }))}
+                selectHint={SEE}
               />
               <div className="mu-stack jf-cats">
                 <div className="jf-cats__head"><span>{category ? "subcategories" : "categories"}</span><Money value={d.total} cents={false} /></div>
@@ -174,7 +210,9 @@ export function SpendingView({ slice, grain, category, onCategory, actions }: Vi
                         ? <button type="button" className="mu-linkbtn" onClick={() => onCategory(s.key)}>{categoryLabel(s.key)}</button>
                         : categoryLabel(s.key, category)}
                     </span>
-                    <PixelMeter size="sm" cells={16} tone="series" color={color(s.key, i)} ratio={d.total > 0 ? Math.max(0, s.total) / d.total : 0} label={money0(s.total)} ariaLabel={`${categoryLabel(s.key, category)} spending`} />
+                    <Link className="jf-cats__open" to={txLink(slice, of(s.key))} title="See these transactions">
+                      <PixelMeter size="sm" cells={16} tone="series" color={color(s.key, i)} ratio={d.total > 0 ? Math.max(0, s.total) / d.total : 0} label={money0(s.total)} ariaLabel={`${categoryLabel(s.key, category)} spending`} />
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -188,6 +226,7 @@ export function SpendingView({ slice, grain, category, onCategory, actions }: Vi
 
 export function MerchantsView({ slice, category, actions }: ViewProps & { category: string | null }) {
   const q = useMerchants(slice, category);
+  const navigate = useNavigate();
   const cols: Column<MerchantInsight>[] = [
     {
       key: "merchant", header: "Merchant", wrap: true, mobile: "primary",
@@ -210,7 +249,9 @@ export function MerchantsView({ slice, category, actions }: ViewProps & { catego
       <Body q={q}>
         {() => (
           <DataTable compact columns={cols} rows={q.data!} rowKey={(m) => m.label} defaultSort={{ key: "total", dir: "desc" }}
-            empty={<span className="mu-caption">no purchases in range</span>} />
+            empty={<span className="mu-caption">no purchases in range</span>}
+            // A merchant's total counts purchases, not refunds: so does its list.
+            onRowClick={(m) => navigate(txLink(slice, { flow: "spending", merchant: m.label, direction: "out", category: category ?? undefined }))} />
         )}
       </Body>
     </Panel>
@@ -234,7 +275,12 @@ export function CompareView({ slice, category, actions }: ViewProps & { category
               <dl className="mu-kv">
                 {d.rows.slice(0, 10).map((r) => (
                   <Fragment key={r.key}>
-                    <dt>{categoryLabel(r.key, category)}</dt>
+                    <dt>
+                      <Link className="mu-linkbtn" title="See these transactions"
+                        to={txLink(slice, category ? { flow: "spending", category, detailed: r.key } : { flow: "spending", category: r.key })}>
+                        {categoryLabel(r.key, category)}
+                      </Link>
+                    </dt>
                     <dd className="jf-compare">
                       <Money value={r.current} cents={false} />
                       {none ? null : r.previous === 0
@@ -256,6 +302,8 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function PatternsView({ slice, category, actions }: ViewProps & { category: string | null }) {
   const q = usePatterns(slice, category);
+  const navigate = useNavigate();
+  const open = (drill: Drill) => navigate(txLink(slice, { flow: "spending", category: category ?? undefined, ...drill }));
   return (
     <Panel caption={category ? <>when · {categoryLabel(category)}</> : "when the money goes"} actions={actions}>
       <Body q={q} height={180}>
@@ -266,12 +314,14 @@ export function PatternsView({ slice, category, actions }: ViewProps & { categor
               <div className="mu-stack">
                 <span className="mu-caption">average per weekday</span>
                 <BarChart height={170} data={d.weekdays.map((w) => ({ label: WEEKDAYS[w.weekday]!, spend: w.per_day }))}
-                  series={[{ key: "spend", label: "Per day", color: OUT }]} ariaLabel="Average spending per weekday" />
+                  series={[{ key: "spend", label: "Per day", color: OUT }]} ariaLabel="Average spending per weekday"
+                  onSelect={(i) => open({ weekday: d.weekdays[i]!.weekday })} selectHint={SEE} />
               </div>
               <div className="mu-stack">
                 <span className="mu-caption">average per day of the month</span>
                 <BarChart height={170} data={d.month_days.map((m) => ({ label: m.day % 5 === 0 || m.day === 1 ? String(m.day) : "", spend: m.per_day }))}
-                  series={[{ key: "spend", label: "Per day", color: OUT }]} ariaLabel="Average spending per day of the month" />
+                  series={[{ key: "spend", label: "Per day", color: OUT }]} ariaLabel="Average spending per day of the month"
+                  onSelect={(i) => open({ day: d.month_days[i]!.day })} selectHint={SEE} />
               </div>
             </div>
           );

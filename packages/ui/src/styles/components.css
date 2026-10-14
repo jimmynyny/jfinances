@@ -157,6 +157,10 @@
 .mu-table tbody tr:last-child td { border-bottom: 0; }
 .mu-table--compact th, .mu-table--compact td { padding: 6px var(--mu-s2); }
 .mu-table__empty { padding: var(--mu-s8); text-align: center; color: var(--mu-ink-3); }
+/* Ticking rows (DataTable selection): a narrow leading checkbox column. */
+.mu-table th.mu-th--tick, .mu-table td.mu-td--tick { width: 28px; padding-right: 0; }
+.mu-table__tick { padding: 6px; margin: -6px; }
+.mu-table--select tbody tr { cursor: pointer; user-select: none; }
 /* A narrow table (a phone, a slim panel) stacks each row into a card instead of
    scrolling sideways: the primary cell on the left, the figure right-aligned beside
    it with a secondary figure under it, other columns as labelled lines below
@@ -190,6 +194,12 @@
   .mu-table tbody tr:hover td { background: none; }
   .mu-table tbody tr[data-clickable="true"]:hover { background: var(--mu-panel-2); }
   .mu-table tbody tr[data-selected="true"] { background: var(--mu-accent-wash); }
+  /* With checkboxes, the box takes a slim first column and the card shifts right. */
+  .mu-table--select tbody tr { grid-template-columns: 24px minmax(0, 1fr) auto; }
+  .mu-table--select td[data-m="tick"] { grid-column: 1; grid-row: 1 / span 2; align-self: start; padding-top: 2px; }
+  .mu-table--select td[data-m="primary"] { grid-column: 2; }
+  .mu-table--select td[data-m="end"], .mu-table--select td[data-m="sub"] { grid-column: 3; }
+  .mu-table--select td[data-m="meta"], .mu-table--select td[data-m="full"] { grid-column: 2 / -1; }
 }
 
 /* inline bar meter inside a cell */
@@ -353,6 +363,10 @@
   }
 }
 @keyframes mu-topbar-title { from { max-width: 0; opacity: 0; } 60% { opacity: 0; } to { max-width: 100%; opacity: 1; } }
+/* The narrowest phones: the title drops its brackets before it would drop letters ("transactions" fits beside the status). */
+@media (max-width: 400px) {
+  .mu-topbar__title .mu-bracket::before, .mu-topbar__title .mu-bracket::after { content: none; }
+}
 @media (max-width: 900px) {
   .mu-shell { grid-template-columns: 1fr; }
   /* Closed, it slides out by its width plus its hard shadow, or the shadow shows as a line down the left edge. */
@@ -435,3 +449,14 @@
 .mu-dash__handle:focus-visible { box-shadow: var(--mu-focus); }
 .mu-dash__item--dragging { opacity: 0.65; z-index: 2; }
 .mu-dash__settings { font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); color: var(--mu-ink-3); }
+
+/* ---------- ActionBar ---------- */
+.mu-actionbar {
+  position: sticky; bottom: calc(var(--mu-s3) + env(safe-area-inset-bottom, 0px)); z-index: 20;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--mu-s2) var(--mu-s3);
+  margin: var(--mu-s3); padding: var(--mu-s2) var(--mu-s3);
+  background: var(--mu-panel); border: 1px solid var(--mu-ink);
+  box-shadow: var(--mu-shadow-offset) var(--mu-shadow-offset) 0 0 var(--mu-accent);
+}
+.mu-actionbar__count { font-family: var(--mu-font-mono); font-size: var(--mu-fs-sm); margin-right: auto; }
+.mu-actionbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--mu-s2); margin-left: auto; }
