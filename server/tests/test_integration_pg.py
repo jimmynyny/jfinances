@@ -541,3 +541,89 @@ def test_money_into_a_card_or_loan_is_a_payment(client):
     assert cats(account_id=chk_id) == {"INCOME": (1000, 0)}
     txs = client.get("/api/v1/transactions", params={"account_id": card_id}).json()["transactions"]
     assert {t["name"]: t["category"] for t in txs}["income-2"] == "PAYMENT"
+
+
+def test_insights_cash_flow_spending_merchants_and_scope(client):
+    from datetime import date
+    from decimal import Decimal
+
+    from server.app.models import Account, Transaction
+
+    with db.session() as sess:
+        chk = Account(kind="plaid", name="Ins checking", type="depository", subtype="checking")
+        card = Account(kind="plaid", name="Ins card", type="credit", subtype="credit card", is_liability=True)
+        biz = Account(kind="plaid", name="Ins business", type="depository", subtype="checking", is_business=True)
+        sess.add_all([chk, card, biz])
+        sess.flush()
+        rows = [  # (account, date, amount: + = out, primary, detailed, merchant_name, name)
+            (chk, date(2026, 8, 3), "-3000", "INCOME", "INCOME_WAGES", None, "GOOGLE LLC PAYROLL PPD ID: 991"),
+            (chk, date(2026, 9, 3), "-3000", "INCOME", "INCOME_WAGES", None, "GOOGLE LLC PAYROLL PPD ID: 992"),
+            (chk, date(2026, 9, 15), "-12.50", "INCOME", "INCOME_INTEREST_EARNED", None, "INTEREST PAYMENT"),
+            (card, date(2026, 8, 10), "100", "FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", "Starbucks", "SBUX 1"),
+            (card, date(2026, 9, 12), "50", "FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", "Starbucks", "SBUX 2"),
+            (card, date(2026, 9, 13), "200", "GENERAL_MERCHANDISE", "GENERAL_MERCHANDISE_ONLINE_MARKETPLACES",
+             "Amazon", "AMZN 1"),
+            (card, date(2026, 9, 20), "-40", "GENERAL_MERCHANDISE", "GENERAL_MERCHANDISE_ONLINE_MARKETPLACES",
+             "Amazon", "AMZN refund"),
+            (chk, date(2026, 9, 1), "500", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", None, "CARD PMT"),
+            (card, date(2026, 9, 1), "-500", "LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", None, "THANK YOU"),
+            (biz, date(2026, 9, 5), "-1000", "INCOME", "INCOME_OTHER_INCOME", None, "EBAY PAYOUT"),
+            (biz, date(2026, 9, 6), "300", "GENERAL_SERVICES", "GENERAL_SERVICES_OTHER", "Shopify", "SHOPIFY"),
+            (card, date(2025, 8, 10), "80", "FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", "Starbucks", "SBUX 0"),
+        ]
+        for i, (a, d, amt, primary, detailed, merchant, name) in enumerate(rows):
+            sess.add(Transaction(account_id=a.id, plaid_transaction_id=f"ins-{i}", date=d, amount=Decimal(amt),
+                                 name=name, merchant_name=merchant, pending=False, category_primary=primary,
+                                 category_detailed=detailed))
+
+    def get(path, **params):
+        r = client.get(f"/api/v1/insights/{path}", params={"from": "2026-08-01", "to": "2026-09-30", **params})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    cf = get("cashflow")  # personal by default: no business rows, no card payment on either side
+    assert [(p["label"], p["income"], p["spending"], p["net"]) for p in cf["periods"]] == [
+        ("Aug 2026", "3000.00", "100.00", "2900.00"), ("Sep 2026", "3012.50", "210.00", "2802.50")]
+    assert cf["totals"]["net"] == "5702.50" and round(cf["totals"]["savings_rate"], 4) == 0.9484
+    assert cf["averages"] == {"income": "3006.25", "spending": "155.00", "net": "2851.25", "periods": 2}
+    assert [(s["kind"], s["label"], s["amount"], s["count"]) for s in cf["income_sources"]] == [
+        ("paychecks", "Google Llc", "6000.00", 2), ("interest", "Interest", "12.50", 1)]
+    assert cf["spending_categories"] == [{"key": "GENERAL_MERCHANDISE", "amount": "160.00"},
+                                         {"key": "FOOD_AND_DRINK", "amount": "150.00"}]
+    assert get("cashflow", scope="business")["totals"]["income"] == "1000.00"
+    assert get("cashflow", scope="all", grain="quarter")["periods"][0]["label"] == "Q3 2026"
+
+    sp = get("spending")
+    assert [(s["key"], s["values"]) for s in sp["series"]] == [
+        ("GENERAL_MERCHANDISE", ["0.00", "160.00"]), ("FOOD_AND_DRINK", ["100.00", "50.00"])]
+    drill = get("spending", category="GENERAL_MERCHANDISE")
+    assert [s["key"] for s in drill["series"]] == ["GENERAL_MERCHANDISE_ONLINE_MARKETPLACES"]
+
+    ms = get("merchants")["merchants"]
+    assert [(m["label"], m["total"], m["count"], m["is_new"]) for m in ms] == [
+        ("Amazon", "200.00", 1, True), ("Starbucks", "150.00", 2, False)]  # Starbucks first seen in 2025
+
+    cmp = {r["key"]: (r["current"], r["previous"]) for r in get("compare")["rows"]}
+    assert cmp == {"FOOD_AND_DRINK": ("150.00", "80.00"), "GENERAL_MERCHANDISE": ("160.00", "0.00")}
+
+    pat = get("patterns")
+    assert sum(Decimal(w["total"]) for w in pat["weekdays"]) == Decimal("310")
+    assert pat["month_days"][12] == {"day": 13, "total": "200.00", "per_day": "100.00"}  # two 13ths in range
+    assert client.get("/api/v1/insights/cashflow", params={"from": "2026-09-30", "to": "2026-08-01"}).status_code == 400
+
+
+def test_release_boots_older_code_on_a_newer_schema(client):
+    """A newer release migrated past this code; restarting the older one must not fail."""
+    from sqlalchemy import text
+
+    from server.tools import release
+
+    with db.engine().begin() as conn:
+        head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        conn.execute(text("UPDATE alembic_version SET version_num = 'ffffffffffff'"))
+    try:
+        assert release.main() == 0
+    finally:
+        with db.engine().begin() as conn:
+            conn.execute(text("UPDATE alembic_version SET version_num = :h"), {"h": head})
+    assert release.main() == 0  # at head: the normal path

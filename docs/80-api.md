@@ -240,6 +240,41 @@ with the other transfers. Transactions show it as `category: "PAYMENT"`.
 ```
 `detail` is null until the liabilities refresh has run for that item.
 
+## Insights
+Read-only slices of transactions (`services/insights.py`). Every endpoint takes
+`from`, `to` (default: the current month and the eleven before it), `scope`
+(`personal` default, `business`, `all`, by `accounts.is_business`) and
+repeatable `account_id`, and echoes `from`/`to`/`scope`. Same rules as the
+Transactions summary: no pending or removed rows, no transfers between your
+own accounts, no payments into cards and loans, no hidden accounts. Income is
+the `INCOME` category; spending is every other category, net of refunds.
+
+### GET /insights/cashflow?grain=month|quarter|year
+`periods[{period, label, income, spending, net, savings_rate}]`, `totals`,
+`averages` (whole periods only, with `periods` = how many), `income_sources[{kind,
+label, amount, count}]` (`kind`: paychecks, dividends, interest, retirement, tax
+refunds, unemployment, other income; `label`: the payer, ACH noise removed) and
+`spending_categories[{key, amount}]` (top 8 + `OTHER`, for the money-flow diagram).
+
+### GET /insights/spending?grain=…&group=category|merchant&category=…&top=7
+`periods[{period, label}]`, `series[{key, total, values[]}]` (top N + `OTHER`),
+`total`. With `category`, drills into it: series are its detailed categories (or
+merchants).
+
+### GET /insights/compare?category=…
+`previous{from, to}` (the same range a year earlier) and `rows[{key, current,
+previous, change, pct}]` per category (or detailed category within `category`).
+
+### GET /insights/merchants?category=…&top=25
+`merchants[{label, total, count, average, category, first_seen, last_seen,
+is_new, trend[]}]`: purchases only (refunds don't count as visits); `is_new`
+when the first transaction ever with the merchant falls in the range; `trend`
+is one value per month of the range.
+
+### GET /insights/patterns?category=…
+`weekdays[{weekday 0=Mon, total, per_day}]` and `month_days[{day, total,
+per_day}]`; `per_day` divides by how many of that day the range holds.
+
 ## Sync
 
 ### GET /sync/status

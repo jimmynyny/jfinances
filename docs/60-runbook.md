@@ -20,7 +20,10 @@ All three build the same Dockerfile, and each brings the schema to head
 before it starts (`server.tools.release`, under an advisory lock), so any
 order works: whichever starts first migrates, the others find nothing to do.
 `web` also runs it as its pre-deploy command, where a failed migration keeps
-the previous web deployment serving. Watch a deploy with
+the previous web deployment serving. A service whose code is older than the
+database (it restarted, or Railway redeployed it after a variable change)
+logs "database is at …, newer than this release: not migrating" and boots
+anyway; migrations are backward compatible, so that is safe. Watch a deploy with
 `railway logs --service web`. The newest deployment must reach **SUCCESS**
 before you call it done; `--ci` streams and exits non-zero on failure.
 

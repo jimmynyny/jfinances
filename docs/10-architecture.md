@@ -236,6 +236,7 @@ All routes require a principal except `/healthz`. Errors are
 | `GET /transactions/summary?from&to&group_by=category|month|account` | `[{key,label,total,count}]` |
 | `GET /holdings` | accounts → holdings with security and value |
 | `GET /liabilities` | liability details per account |
+| `GET /insights/{cashflow,spending,compare,merchants,patterns}` | Insights slices of transactions (docs/80 "Insights") |
 | `GET /sync/status` | items with last sync, queued/running jobs, last webhook |
 | `GET /healthz` | `{ok:true, service, env, db:"ok"}` (public) |
 

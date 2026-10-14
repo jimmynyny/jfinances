@@ -5,13 +5,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import String, and_, case, cast, func, literal, or_, select
+from sqlalchemy import String, case, cast, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
 from ..models import Account, PlaidItem, Transaction
+from ..services.flows import PAYMENT, display_category, is_liability_payment_clause, is_transfer_clause
 from ._common import ApiError, money, parse_uuid, ts
 
 router = APIRouter()
@@ -89,41 +90,6 @@ def patch_transaction(tx_id: str, body: TxPatch, _: Principal = Depends(current_
         t.notes = (body.notes or "").strip() or None
     sess.flush()
     return _tx_json(t, a, inst)
-
-
-#: Money moving between the household's own accounts. Counting it would double
-#: count: a transfer is an outflow here and an inflow there, and a card payment
-#: repays purchases already counted on the card. Excluded from In/Out unless
-#: include_transfers=true (docs/80 "GET /transactions/summary").
-TRANSFER_PRIMARY = ("TRANSFER_IN", "TRANSFER_OUT")
-CARD_PAYMENT_DETAILED = "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
-
-#: Money into a card or loan is a payment from another account, whatever the
-#: issuer called it (card payments arrive as INCOME or LOAN_DISBURSEMENTS too). It is the second
-#: half of a transfer: left out of household In/Out like card payments, and
-#: shown as PAYMENT on the card or loan itself.
-PAYMENT_PRIMARY = ("INCOME", "TRANSFER_IN", "LOAN_PAYMENTS", "LOAN_DISBURSEMENTS")
-PAYMENT = "PAYMENT"
-
-
-def is_liability_payment_clause():
-    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
-    return and_(Account.is_liability.is_(True), Transaction.amount < 0, effective.in_(PAYMENT_PRIMARY))
-
-
-def display_category(t: Transaction, a: Account | None) -> str | None:
-    """The category a transaction shows: its own, except a payment into a card or loan."""
-    cat = t.user_category or t.category_primary
-    if a is not None and a.is_liability and t.amount < 0 and cat in PAYMENT_PRIMARY:
-        return PAYMENT
-    return cat
-
-
-def is_transfer_clause():
-    """SQL predicate for internal transfers, honouring the user's category."""
-    effective = func.coalesce(Transaction.user_category, Transaction.category_primary)
-    return or_(effective.in_(TRANSFER_PRIMARY),
-               and_(Transaction.user_category.is_(None), Transaction.category_detailed == CARD_PAYMENT_DETAILED))
 
 
 @router.get("/transactions/summary")
