@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AreaChart, Badge, Button, Delta, Drawer, EmptyState, KeyValue, Money, Num, Readout, Segmented, Skeleton,
   formatDate, formatMoney, formatRelative,
 } from "@mooney/ui";
-import { useAccountHistory, useAccounts } from "../api/hooks";
-import type { Account, Range } from "../api/types";
+import { useAccountDetails, useAccountHistory, useAccounts } from "../api/hooks";
+import type { Account, Range, TermsKey } from "../api/types";
 import { itemStatusLabel, itemStatusTone } from "../lib/groups";
+import { DetailSections, RecentActivity, TermsForm } from "./AccountFacts";
 
 const RANGES: Array<{ value: Range; label: string }> = [
   { value: "1m", label: "1m" }, { value: "3m", label: "3m" }, { value: "6m", label: "6m" }, { value: "1y", label: "1y" }, { value: "all", label: "all" },
@@ -13,9 +14,12 @@ const RANGES: Array<{ value: Range; label: string }> = [
 
 /**
  * In-page account detail: balance readout, dot-matrix balance history
- * (GET /accounts/{id}/history), and the facts. Opened from an account row.
+ * (GET /accounts/{id}/history), then everything known about the account
+ * (GET /accounts/{id}/details): the bank's facts, what was entered where the
+ * bank is silent, what follows from both, and recent activity. Anything the
+ * bank doesn't report can be added; opened from an account row.
  */
-export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, onRefresh, refreshing }: {
+export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, onRefresh, refreshing, startEditing }: {
   account: Account | null;
   upIsGood?: boolean;
   onClose: () => void;
@@ -23,9 +27,17 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
   /** Real-time balance refresh (Plaid accounts only). */
   onRefresh?: (a: Account) => void;
   refreshing?: boolean;
+  /** Open on the form for what the bank doesn't report (Liabilities' "Add details"). */
+  startEditing?: boolean;
 }) {
   const [range, setRange] = useState<Range>("1y");
   const hist = useAccountHistory(a?.id ?? null, range);
+  const details = useAccountDetails(a?.id ?? null);
+  // false: reading; true or a field: the form, focused on that field.
+  const [editing, setEditing] = useState<boolean | TermsKey>(false);
+  useEffect(() => { setEditing(startEditing ? true : false); }, [a?.id, startEditing]);
+  const d = details.data;
+  const missing = d ? d.sections.flatMap((s) => s.facts).filter((f) => f.value == null && f.field).length : 0;
   const points = (hist.data ?? []).map((p) => ({ date: p.date, balance: p.balance }));
   const carried = (hist.data ?? []).filter((p) => p.source === "carry").length;
   const derived = (hist.data ?? []).filter((p) => p.source === "derived").length;
@@ -40,7 +52,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
       open={!!a}
       onClose={onClose}
       title={a?.name ?? ""}
-      footer={<>
+      footer={editing ? undefined : <>
         {a && onRefresh && a.kind === "plaid" && <Button variant="quiet" loading={refreshing} onClick={() => onRefresh(a)}>Refresh balance</Button>}
         {a && onEdit && <Button variant="quiet" onClick={() => onEdit(a)}>Edit</Button>}
         <Button variant="quiet" onClick={onClose}>Close</Button>
@@ -69,7 +81,22 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
           ) : (
             <EmptyState glyph="~" title="No history yet" description="A snapshot is taken every morning; the chart fills in after the second one." />
           )}
-          <KeyValue
+          {editing && d ? (
+            <TermsForm accountId={a.id} details={d} focus={typeof editing === "string" ? editing : null} onDone={() => setEditing(false)} />
+          ) : d ? (
+            <>
+              {d.fields.length > 0 && (
+                <div className="mu-row" style={{ justifyContent: "space-between" }}>
+                  <span className="mu-caption">{missing > 0 ? `${missing} detail${missing === 1 ? "" : "s"} the bank doesn't report` : "details"}</span>
+                  <Button size="sm" variant="quiet" onClick={() => setEditing(true)}>{missing > 0 ? "Add details" : "Edit details"}</Button>
+                </div>
+              )}
+              <DetailSections sections={d.sections} onAdd={d.fields.length > 0 ? (field) => setEditing(field) : undefined} />
+              <RecentActivity rows={d.recent} accountId={a.id} />
+            </>
+          ) : details.isLoading ? <Skeleton lines={5} /> : null}
+          {!editing && <span className="mu-caption">account</span>}
+          {!editing && <KeyValue
             items={[
               ...(a.available_balance != null ? [{ key: "available", value: <Money value={a.available_balance} currency={a.iso_currency} /> }] : []),
               ...(a.credit_limit != null ? [{ key: "credit limit", value: <Money value={a.credit_limit} currency={a.iso_currency} cents={false} /> }] : []),
@@ -85,7 +112,7 @@ export function AccountDetail({ account: a, upIsGood = true, onClose, onEdit, on
               ...(derived > 0 ? [{ key: "estimated days", value: `${derived} in range (rebuilt from transactions, before linking)` }] : []),
               ...(a.official_name && a.official_name !== a.name ? [{ key: "official name", value: a.official_name }] : []),
             ]}
-          />
+          />}
         </>
       )}
     </Drawer>

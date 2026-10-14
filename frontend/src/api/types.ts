@@ -240,7 +240,7 @@ export interface InvestmentTransaction {
 }
 
 export interface LiabilityDetail {
-  kind: "credit" | "mortgage" | "student";
+  kind: "credit" | "mortgage" | "student" | "loan";
   interest_rate_pct: number | null;
   interest_rate_type: string | null;
   next_payment_due_date: string | null;
@@ -256,6 +256,13 @@ export interface LiabilityDetail {
   loan_term: string | null;
   maturity_date: string | null;
   updated_at: string | null;
+  /** A card's limit: the bank's, else the one entered. */
+  credit_limit: number | null;
+  /** A loan's monthly principal and interest, and a mortgage's escrow, where known or worked out. */
+  principal_interest: number | null;
+  escrow: number | null;
+  /** Where a value the lender didn't report came from: entered ("you") or worked out ("calc"). */
+  sources: Partial<Record<string, FactSource>>;
 }
 
 export interface LiabilityAccount {
@@ -570,4 +577,54 @@ export interface DashboardWidget {
 export interface Dashboard {
   columns: 1 | 2 | 3;
   widgets: DashboardWidget[];
+}
+
+// ---------------------------------------------------------------------------
+// Account details (GET /accounts/{id}/details)
+// ---------------------------------------------------------------------------
+export type FactFormat = "money" | "money0" | "pct" | "ratio" | "date" | "months" | "day" | "count" | "text" | "bool";
+/** bank: reported by the institution; you: entered; calc: worked out from the others. */
+export type FactSource = "bank" | "you" | "calc";
+export type TermsKey =
+  | "interest_rate_pct" | "rate_type" | "original_principal" | "origination_date" | "term_months"
+  | "payment_amount" | "escrow_amount" | "payment_day" | "statement_day" | "credit_limit" | "minimum_payment";
+export type TermsValues = Partial<Record<TermsKey, number | string | null>>;
+
+export interface DetailFact {
+  key: string;
+  label: string;
+  value: number | string | boolean | null;
+  format: FactFormat;
+  source: FactSource | null;
+  note: string | null;
+  /** The entered field behind this fact: a missing value can be added there. */
+  field: TermsKey | null;
+}
+
+export interface DetailSection {
+  key: string;
+  title: string;
+  note?: string | null;
+  facts: DetailFact[];
+}
+
+export interface TermsField {
+  key: TermsKey;
+  label: string;
+  format: "pct" | "money" | "date" | "months" | "day" | "choice";
+  min: number | null;
+  max: number | null;
+  help: string | null;
+  options: string[] | null;
+  /** The bank's value: shown, not editable. */
+  bank: number | string | null;
+}
+
+export interface AccountDetails {
+  kind: "mortgage" | "student" | "loan" | "credit" | "depository" | "investment" | "asset" | "other";
+  sections: DetailSection[];
+  fields: TermsField[];
+  terms: TermsValues;
+  suggestions: Partial<Record<TermsKey, { value: number | string; why: string }>>;
+  recent: Array<{ id: string; date: string; name: string; amount: number; pending: boolean }>;
 }

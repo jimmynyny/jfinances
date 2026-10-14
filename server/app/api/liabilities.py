@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -7,7 +10,8 @@ from sqlalchemy.orm import Session, selectinload
 from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
-from ..models import Account, Liability
+from ..models import Account
+from ..services import terms
 from ._common import account_json, money, num, ts
 
 router = APIRouter()
@@ -15,25 +19,21 @@ router = APIRouter()
 
 @router.get("/liabilities")
 def liabilities(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Every open liability with its lender's record, gaps filled from what the
+    person entered and what follows from it (services/terms.liability_json)."""
     accts = sess.execute(select(Account).options(selectinload(Account.item))
                          .where(Account.is_liability.is_(True), Account.closed_at.is_(None))
                          .order_by(Account.display_order, Account.name)).scalars().all()
     accts = [a for a in accts if a.item is None or a.item.status != "removed"]
-    detail = {L.account_id: L for L in sess.execute(
-        select(Liability).where(Liability.account_id.in_([a.id for a in accts]))).scalars()}
+    liabs, entered = terms.load(sess, accts)
+    today = datetime.now(UTC).date()
     out = []
     for a in accts:
-        L = detail.get(a.id)
-        out.append({"account": account_json(a), "detail": None if L is None else {
-            "kind": L.kind, "interest_rate_pct": num(L.interest_rate_pct),
-            "interest_rate_type": L.interest_rate_type,
-            "next_payment_due_date": ts(L.next_payment_due_date),
-            "minimum_payment": money(L.minimum_payment), "next_payment_amount": money(L.next_payment_amount),
-            "last_payment_amount": money(L.last_payment_amount), "last_payment_date": ts(L.last_payment_date),
-            "last_statement_balance": money(L.last_statement_balance),
-            "last_statement_date": ts(L.last_statement_date), "is_overdue": L.is_overdue,
-            "origination_date": ts(L.origination_date), "origination_principal": money(L.origination_principal),
-            "loan_term": L.loan_term, "maturity_date": ts(L.maturity_date), "updated_at": ts(L.updated_at),
-        }})
+        d = terms.liability_json(a, liabs.get(a.id), entered.get(a.id), today)
+        if d is not None:
+            d = {**d, "interest_rate_pct": num(d["interest_rate_pct"]), "sources": d["sources"]}
+            d = {k: (money(v) if isinstance(v, Decimal) else ts(v) if isinstance(v, (date, datetime)) else v)
+                 for k, v in d.items()}
+        out.append({"account": account_json(a), "detail": d})
     return {"total_owed": money(sum((a.current_balance or 0) for a in accts if not a.is_hidden)),
             "accounts": out}

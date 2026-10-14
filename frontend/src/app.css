@@ -144,3 +144,25 @@
 }
 /* A phrase that must not break inside ("avg $2,950.12"). */
 .jf-nowrap { white-space: nowrap; }
+
+/* Account details: where a value came from when not the bank, sections, recent
+ * activity, and the form for what the bank doesn't report. */
+.jf-src { display: inline-block; margin-left: 6px; padding: 0 4px; font-family: var(--mu-font-mono); font-size: var(--mu-fs-xs); line-height: 16px; color: var(--mu-ink-3); border: 1px solid var(--mu-line); vertical-align: 1px; white-space: nowrap; }
+.jf-src--you { color: var(--mu-accent); border-color: color-mix(in srgb, var(--mu-accent) 45%, transparent); }
+.jf-src--calc { border-style: dashed; }
+.jf-facts { display: flex; flex-direction: column; gap: 6px; }
+.jf-facts__note { margin: 0; font-size: var(--mu-fs-sm); color: var(--mu-ink-2); }
+.jf-recent { display: flex; flex-direction: column; }
+.jf-recent__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--mu-s3); align-items: baseline; padding: 6px 0; border-bottom: var(--mu-border); font-size: var(--mu-fs-sm); }
+.jf-recent__row:last-child { border-bottom: 0; }
+.jf-recent__date { color: var(--mu-ink-3); font-size: var(--mu-fs-xs); min-width: 46px; }
+.jf-recent__name { overflow-wrap: anywhere; }
+.jf-terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--mu-s3); align-items: start; }
+.jf-terms__wide { grid-column: 1 / -1; }
+.jf-terms__picks { gap: var(--mu-s3); margin-top: 4px; font-size: var(--mu-fs-sm); }
+.jf-terms__tip { margin-top: 4px; font-size: var(--mu-fs-sm); }
+.jf-terms__preview { padding: var(--mu-s3); border: 1px dashed var(--mu-line); display: flex; flex-direction: column; gap: var(--mu-s3); }
+.jf-liab__open { all: unset; cursor: pointer; }
+.jf-liab__open:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--mu-ink-3); }
+.jf-liab__open:focus-visible { box-shadow: var(--mu-focus); }
+.jf-terms .mu-seg { align-self: flex-start; }

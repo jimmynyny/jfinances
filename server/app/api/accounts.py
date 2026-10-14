@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -14,9 +14,18 @@ from ..auth.deps import current_user, dashboard_only
 from ..auth.human import Principal
 from ..config import settings
 from ..db import get_session
-from ..models import MANUAL_CATEGORIES, SECURABLE_CATEGORIES, Account, BalanceSnapshot, PlaidItem, is_liability_for
+from ..models import (
+    MANUAL_CATEGORIES,
+    SECURABLE_CATEGORIES,
+    Account,
+    AccountTerms,
+    BalanceSnapshot,
+    Liability,
+    PlaidItem,
+    is_liability_for,
+)
 from ..plaid_client import PlaidError
-from ..services import plaid_sync
+from ..services import plaid_sync, terms
 from ..services.trends import balance_trends
 from ._common import ApiError, account_json, money, parse_uuid
 
@@ -153,6 +162,76 @@ def set_value(account_id: str, body: ValueIn, _: Principal = Depends(current_use
         snap.current_balance, snap.source, snap.note = body.value, "manual", body.note
     sess.flush()
     return account_json(a, None)
+
+
+@router.get("/accounts/{account_id}/details")
+def account_details(account_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
+    """Everything the detail panel shows: the bank's facts, the person's where the
+    bank is silent, and what follows (services/terms.py)."""
+    return terms.details(sess, _get(sess, account_id), datetime.now(UTC).date())
+
+
+class TermsIn(BaseModel):
+    """What a person can fill in where the bank is silent. Omitted fields keep
+    their value; null clears one."""
+    model_config = ConfigDict(extra="forbid")
+    interest_rate_pct: Decimal | None = Field(default=None, ge=0, le=40)
+    rate_type: Literal["fixed", "variable"] | None = None
+    original_principal: Decimal | None = Field(default=None, gt=0, le=100_000_000)
+    origination_date: date | None = None
+    term_months: int | None = Field(default=None, ge=1, le=600)
+    payment_amount: Decimal | None = Field(default=None, gt=0, le=10_000_000)
+    escrow_amount: Decimal | None = Field(default=None, ge=0, le=1_000_000)
+    payment_day: int | None = Field(default=None, ge=1, le=31)
+    statement_day: int | None = Field(default=None, ge=1, le=31)
+    credit_limit: Decimal | None = Field(default=None, gt=0, le=100_000_000)
+    minimum_payment: Decimal | None = Field(default=None, ge=0, le=10_000_000)
+
+
+def _entered(sess: Session, a: Account, body: TermsIn) -> AccountTerms:
+    """The stored terms with `body` applied, as a detached copy (nothing is written)."""
+    kind = terms.kind_of(a, sess.execute(select(Liability).where(Liability.account_id == a.id)).scalar_one_or_none())
+    allowed = {f.key for f in terms.fields_for(kind)}
+    extra = sorted(body.model_fields_set - allowed)
+    if extra:
+        raise ApiError(400, "bad_request", f"not something to enter for this account: {', '.join(extra)}")
+    if body.origination_date and body.origination_date > datetime.now(UTC).date():
+        raise ApiError(400, "bad_request", "the start date can't be in the future")
+    stored = sess.get(AccountTerms, a.id)
+    out = AccountTerms(account_id=a.id)
+    for key in terms.TERM_KEYS:
+        setattr(out, key, getattr(stored, key) if stored is not None else None)
+    for key in body.model_fields_set:
+        setattr(out, key, getattr(body, key))
+    return out
+
+
+@router.put("/accounts/{account_id}/terms")
+def put_terms(account_id: str, body: TermsIn, p: Principal = Depends(current_user),
+              sess: Session = Depends(get_session)):
+    a = _get(sess, account_id)
+    entered = _entered(sess, a, body)
+    row = sess.get(AccountTerms, a.id)
+    if all(getattr(entered, k) is None for k in terms.TERM_KEYS):
+        if row is not None:
+            sess.delete(row)
+    else:
+        if row is None:
+            row = AccountTerms(account_id=a.id)
+            sess.add(row)
+        for key in terms.TERM_KEYS:
+            setattr(row, key, getattr(entered, key))
+        row.updated_by = p.user_id
+    sess.flush()
+    return terms.details(sess, a, datetime.now(UTC).date())
+
+
+@router.post("/accounts/{account_id}/terms/preview")
+def preview_terms(account_id: str, body: TermsIn, _: Principal = Depends(current_user),
+                  sess: Session = Depends(get_session)):
+    """The panel as it would read with these terms, saving nothing (the form's live preview)."""
+    a = _get(sess, account_id)
+    return terms.details(sess, a, datetime.now(UTC).date(), entered=_entered(sess, a, body))
 
 
 @router.delete("/accounts/{account_id}", status_code=204)

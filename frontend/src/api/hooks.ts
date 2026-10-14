@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Account, Grain, InsightSlice, PerfRange, Range, Summary, TransactionQuery } from "./types";
+import type { Account, Grain, InsightSlice, PerfRange, Range, Summary, TermsValues, TransactionQuery } from "./types";
 
 /** Query keys in one place so invalidation is grep-able. */
 export const qk = {
@@ -88,6 +88,22 @@ export const useInvestmentActivity = () => useQuery({ queryKey: [...qk.holdings,
 export const useAccountHistory = (id: string | null, range: Range) =>
   useQuery({ queryKey: ["accounts", id, "history", range], queryFn: () => api.accountHistory(id!, range), enabled: !!id, placeholderData: (prev) => prev });
 export const useLiabilities = () => useQuery({ queryKey: qk.liabilities, queryFn: api.liabilities });
+/** Under ["accounts"], so anything that changes balances refreshes it too. */
+export const useAccountDetails = (id: string | null) =>
+  useQuery({ queryKey: ["accounts", id, "details"], queryFn: () => api.accountDetails(id!), enabled: !!id });
+/** Entered terms change the liabilities list and the loan and card insights as well. */
+export function useSaveTerms() {
+  const qc = useQueryClient();
+  const inv = useInvalidateMoney();
+  return useMutation({
+    mutationFn: (v: { id: string; terms: TermsValues }) => api.saveTerms(v.id, v.terms),
+    onSuccess: (details, v) => {
+      qc.setQueryData(["accounts", v.id, "details"], details);
+      inv();
+      void qc.invalidateQueries({ queryKey: ["insights"] });
+    },
+  });
+}
 export const useSyncStatus = (pollMs = 30_000) => useQuery({ queryKey: qk.sync, queryFn: api.syncStatus, refetchInterval: pollMs });
 export const useApiTokens = () => useQuery({ queryKey: qk.tokens, queryFn: api.apiTokens });
 

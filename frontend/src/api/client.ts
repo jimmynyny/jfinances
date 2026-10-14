@@ -1,10 +1,11 @@
 import type {
-  Account, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
+  Account, AccountDetails, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
   Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
-  Overview, OverviewGroup, Range, Summary, SyncStatus, Transaction, TransactionQuery, TransactionsPage, WebhookEvent,
+  Overview, OverviewGroup, Range, Summary, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
+  WebhookEvent,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -212,6 +213,10 @@ function liabilityDetail(v: unknown): LiabilityDetail | null {
     last_statement_balance: toNumber(r.last_statement_balance),
     last_statement_date: str(r.last_statement_date),
     is_overdue: typeof r.is_overdue === "boolean" ? r.is_overdue : null,
+    credit_limit: toNumber(r.credit_limit),
+    principal_interest: toNumber(r.principal_interest),
+    escrow: toNumber(r.escrow),
+    sources: (r.sources && typeof r.sources === "object" ? r.sources : {}) as LiabilityDetail["sources"],
     origination_date: str(r.origination_date),
     origination_principal: toNumber(r.origination_principal),
     loan_term: str(r.loan_term),
@@ -405,6 +410,14 @@ export const api = {
   },
   holdingsTransactions: async (q: { account_id?: string; limit?: number } = {}): Promise<InvestmentTransaction[]> =>
     list((await request("GET", "/holdings/transactions", undefined, q)).transactions, investmentTransaction),
+
+  // The detail panel: facts arrive as decimal strings and become numbers; words and dates stay.
+  accountDetails: async (id: string): Promise<AccountDetails> =>
+    numbers(await request("GET", `/accounts/${id}/details`)) as AccountDetails,
+  saveTerms: async (id: string, terms: TermsValues): Promise<AccountDetails> =>
+    numbers(await request("PUT", `/accounts/${id}/terms`, terms)) as AccountDetails,
+  previewTerms: async (id: string, terms: TermsValues): Promise<AccountDetails> =>
+    numbers(await request("POST", `/accounts/${id}/terms/preview`, terms)) as AccountDetails,
 
   liabilities: async (): Promise<Liabilities> => {
     const r = await request("GET", "/liabilities");

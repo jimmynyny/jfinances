@@ -145,7 +145,8 @@ export function DataTable<Row>({
                   key={k}
                   data-selected={selectedKey === k || undefined}
                   data-clickable={onRowClick ? true : undefined}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  // a control in the row (a select, a button) does its own thing, not open the row
+                  onClick={onRowClick ? (e) => { if (!(e.target as Element).closest("button, a, input, select, textarea, label")) onRowClick(row); } : undefined}
                   tabIndex={onRowClick ? 0 : undefined}
                   onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
                 >

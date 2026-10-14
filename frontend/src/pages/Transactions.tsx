@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Badge, Button, Checkbox, DataTable, Drawer, Filters, Input, Money, Num, Page, PageHeader, Panel, PixelBars, PixelMeter, Segmented, Select, Skeleton,
   Textarea, formatDate, formatMoney, toISODate, useToast, type Column,
@@ -28,12 +29,18 @@ const PAGE_SIZE = 50;
 export function TransactionsPage() {
   const [preset, setPreset] = useState<Preset>("30d");
   const [custom, setCustom] = useState(presetRange("30d"));
-  const [accountId, setAccountId] = useState("");
+  // ?account=<id>: an account's "all transactions" link opens the list filtered to it.
+  const [params] = useSearchParams();
+  const [accountId, setAccountId] = useState(() => params.get("account") ?? "");
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [page, setPage] = useState(1);
+  useEffect(() => {
+    const linked = params.get("account");
+    if (linked) { setAccountId(linked); setPage(1); }
+  }, [params]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [summaryBy, setSummaryBy] = useState<"category" | "month">("category");
   const { toast, error } = useToast();

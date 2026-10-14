@@ -178,41 +178,41 @@ def amortize(balance: Decimal, apr_pct: Decimal, months: int, start: date, extra
 
 
 def loans_payoff(sess: Session, today: date, extra: Decimal = ZERO) -> list[dict]:
+    """Each loan's payoff from today's balance, on the lender's terms with the
+    gaps filled from what the person entered (services/terms)."""
+    from . import terms
     loans = [a for a in visible_accounts(sess)
              if a.is_liability and a.type != "credit" and (a.current_balance or 0) > 0]
-    details = {L.account_id: L for L in sess.execute(
-        select(Liability).where(Liability.account_id.in_([a.id for a in loans]))).scalars()}
-    start = date(today.year, today.month, 1)
+    liabs, entered = terms.load(sess, loans)
     out = []
     for a in loans:
-        L = details.get(a.id)
+        L, T = liabs.get(a.id), entered.get(a.id)
+        kind = terms.kind_of(a, L)
         balance = Decimal(a.current_balance or 0)
-        if L is None or L.interest_rate_pct is None:
+        loan = terms.loan_terms(a, L, kind, terms.merge(terms.bank_values(a, L, kind), T, kind), today)
+        if loan.rate is None:
             out.append({"id": str(a.id), "name": a.name, "balance": balance, "rate": None, "schedule": None,
-                        "note": "no rate reported for this loan"})
+                        "note": "no rate reported for this loan: add it in the account's details"})
             continue
-        apr = Decimal(L.interest_rate_pct)
-        months = _months_between(today, L.maturity_date) if L.maturity_date else 0
-        scheduled = Decimal(L.next_payment_amount or L.minimum_payment or 0)
-        if months > 0:
-            base = amortize(balance, apr, months, start)
-        elif scheduled > 0:
-            base = amortize(balance, apr, 0, start, payment=scheduled)
-        else:
+        apr = Decimal(loan.rate)
+        base = terms.payoff(balance, loan, today)
+        if base is None:
             out.append({"id": str(a.id), "name": a.name, "balance": balance, "rate": float(apr), "schedule": None,
-                        "note": "no maturity date or payment reported"})
+                        "note": "no maturity date or payment: add them in the account's details"})
             continue
         what_if = None
         if extra > 0 and base["payoff"]:
-            alt = amortize(balance, apr, 0, start, extra=extra, payment=base["payment"])
+            alt = amortize(balance, apr, 0, date(today.year, today.month, 1), extra=extra, payment=base["payment"])
             if alt["payoff"]:
                 what_if = {"extra": extra, "payoff": alt["payoff"], "months": alt["months"],
                            "interest": alt["interest"], "months_saved": base["months"] - alt["months"],
                            "interest_saved": base["interest"] - alt["interest"]}
-        raw = L.raw or {}
+        raw = (L.raw if L is not None else None) or {}
         ytd = raw.get("ytd_interest_paid")
-        out.append({"id": str(a.id), "name": a.name, "kind": L.kind, "balance": balance, "rate": float(apr),
-                    "scheduled_payment": scheduled or None, "maturity_date": L.maturity_date,
+        scheduled = (L.next_payment_amount or L.minimum_payment) if L is not None else None
+        out.append({"id": str(a.id), "name": a.name, "kind": L.kind if L is not None else kind, "balance": balance,
+                    "rate": float(apr), "rate_source": loan.sources.get("interest_rate_pct"),
+                    "scheduled_payment": scheduled or loan.total or loan.payment, "maturity_date": loan.maturity,
                     "ytd_interest": Decimal(str(ytd)) if ytd is not None else None,
                     "schedule": base, "what_if": what_if})
     return sorted(out, key=lambda x: -x["balance"])
@@ -223,12 +223,14 @@ INTEREST_DETAILED = "BANK_FEES_INTEREST_CHARGE"
 
 
 def cards(sess: Session, start: date, end: date) -> dict:
+    from . import terms
     accounts = [a for a in visible_accounts(sess) if a.type == "credit"]
     days = month_ends(start, end)
     bal = balances_on(sess, accounts, days)
+    _, entered = terms.load(sess, accounts)
     per_card, total_bal, total_limit = [], defaultdict(lambda: ZERO), ZERO
     for a in accounts:
-        limit = Decimal(a.credit_limit or 0)
+        limit = terms.credit_limit(a, entered.get(a.id)) or ZERO  # the bank's, else the one entered
         hist = []
         for d in days:
             b = bal.get(a.id, {}).get(d, ZERO)

@@ -510,6 +510,89 @@ def test_loan_can_be_secured_by_an_offline_asset(client):
     assert rows[mortgage_id]["secured_by_id"] is None  # deleting the asset clears the link
 
 
+def test_account_details_fill_gaps_and_infer_the_rest(client):
+    """A loan the lender says nothing about: the person enters three numbers and
+    the rate, payoff and schedule follow; bank values always win; a card takes an
+    entered limit everywhere utilization is read."""
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+
+    from server.app.models import Account, Liability, RecurringStream
+    from server.app.services import loanmath as lm
+
+    with db.session() as sess:
+        auto = Account(kind="plaid", name="PNC Auto Loan", type="loan", subtype="auto", is_liability=True,
+                       current_balance=Decimal("12792.72"))
+        mortgage = Account(kind="plaid", name="Chase Mortgage", type="loan", subtype="mortgage", is_liability=True,
+                           current_balance=Decimal("407727.00"))
+        card = Account(kind="plaid", name="Amex Gold Card", type="credit", subtype="credit card", is_liability=True,
+                       current_balance=Decimal("2500.00"))
+        sess.add_all([auto, mortgage, card])
+        sess.flush()
+        sess.add(Liability(account_id=mortgage.id, kind="mortgage", interest_rate_pct=Decimal("6.125"),
+                           origination_principal=Decimal("440000"), origination_date=date(2021, 6, 15),
+                           loan_term="30 year", next_payment_amount=Decimal("2950.12")))
+        today = date.today()
+        sess.add(RecurringStream(merchant="Pnc Auto Loan", cadence="monthly", interval_days=30,
+                                 amount=Decimal("541.37"), last_amount=Decimal("541.37"), first_date=date(2026, 1, 15),
+                                 last_date=today, next_date=today, charge_count=9, category="LOAN_PAYMENTS",
+                                 status="detected", seen_at=datetime.now(UTC)))
+        auto_id, mortgage_id, card_id = str(auto.id), str(mortgage.id), str(card.id)
+
+    d = client.get(f"/api/v1/accounts/{auto_id}/details").json()
+    assert d["kind"] == "loan"
+    terms = {f["key"]: f for f in d["sections"][0]["facts"]}
+    assert terms["rate"]["value"] is None and terms["rate"]["field"] == "interest_rate_pct"  # missing: offer to add
+    assert d["suggestions"]["payment_amount"]["value"] == "541.37"  # from the person's own payments
+    assert {f["key"] for f in d["fields"]} >= {"interest_rate_pct", "original_principal", "term_months"}
+
+    body = {"original_principal": "30000", "origination_date": "2023-06-15", "term_months": 72,
+            "payment_amount": "541.37"}
+    d = client.put(f"/api/v1/accounts/{auto_id}/terms", json=body).json()
+    facts = {f["key"]: f for s in d["sections"] for f in s["facts"]}
+    expected = lm.solve_rate(Decimal("30000"), 72, Decimal("541.37"))
+    assert facts["rate"]["value"] == format(expected.normalize(), "f") and facts["rate"]["source"] == "calc"
+    assert facts["original"]["source"] == "you" and facts["maturity"]["value"] == "2029-06-15"
+    assert facts["payoff"]["source"] == "calc" and facts["schedule"]["label"] in (
+        "schedule", "ahead of schedule", "behind schedule")
+
+    preview = client.post(f"/api/v1/accounts/{auto_id}/terms/preview", json={"interest_rate_pct": "5"}).json()
+    assert {f["key"]: f for f in preview["sections"][0]["facts"]}["rate"]["source"] == "you"
+    stored = client.get(f"/api/v1/accounts/{auto_id}/details").json()  # a preview saves nothing
+    assert {f["key"]: f for f in stored["sections"][0]["facts"]}["rate"]["source"] == "calc"
+
+    assert client.put(f"/api/v1/accounts/{auto_id}/terms", json={"interest_rate_pct": "99"}).status_code == 422
+    assert client.put(f"/api/v1/accounts/{auto_id}/terms", json={"credit_limit": "5000"}).status_code == 400
+
+    liab = {x["account"]["id"]: x["detail"] for x in client.get("/api/v1/liabilities").json()["accounts"]}
+    assert liab[auto_id]["sources"]["interest_rate_pct"] == "calc" and liab[auto_id]["maturity_date"] == "2029-06-15"
+    loans = {x["id"]: x for x in client.get("/api/v1/insights/loans").json()["loans"]}
+    assert loans[auto_id]["schedule"] is not None and loans[auto_id]["rate_source"] == "calc"
+
+    # The lender's rate wins over an entered one; escrow follows from the bill.
+    client.put(f"/api/v1/accounts/{mortgage_id}/terms", json={"interest_rate_pct": "4"})
+    m = client.get(f"/api/v1/accounts/{mortgage_id}/details").json()
+    mf = {f["key"]: f for s in m["sections"] for f in s["facts"]}
+    assert mf["rate"]["value"] == "6.125" and mf["rate"]["source"] == "bank"
+    assert mf["payment"]["value"] == "2673.49" and mf["payment"]["source"] == "calc"
+    assert mf["escrow"]["value"] == "276.63" and mf["total"]["value"] == "2950.12"
+
+    client.put(f"/api/v1/accounts/{card_id}/terms", json={"credit_limit": "10000", "interest_rate_pct": "24.99"})
+    c = {f["key"]: f for s in client.get(f"/api/v1/accounts/{card_id}/details").json()["sections"] for f in s["facts"]}
+    assert c["limit"]["source"] == "you" and c["utilization"]["value"] == 0.25 and c["carry"]["source"] == "calc"
+    liab = {x["account"]["id"]: x["detail"] for x in client.get("/api/v1/liabilities").json()["accounts"]}
+    assert liab[card_id]["credit_limit"] == "10000.00" and liab[card_id]["sources"]["credit_limit"] == "you"
+    cards = {x["id"]: x for x in client.get("/api/v1/insights/cards").json()["cards"]}
+    assert cards[card_id]["utilization"] == 0.25
+
+    # Clearing every field removes the row.
+    cleared = {k: None for k in ("credit_limit", "interest_rate_pct")}
+    assert client.put(f"/api/v1/accounts/{card_id}/terms", json=cleared).status_code == 200
+    with db.session() as sess:
+        from server.app.models import AccountTerms
+        assert sess.get(AccountTerms, card.id) is None
+
+
 def test_cash_and_card_history_is_rebuilt_from_transactions(client):
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal

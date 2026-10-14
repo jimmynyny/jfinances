@@ -1,12 +1,15 @@
+import { useState } from "react";
 import {
-  Badge, DataTable, EmptyState, KeyValue, Money, Num, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select, Skeleton,
-  ViewToggle, formatDate, formatPct, useToast, type Column,
+  Badge, Button, DataTable, EmptyState, KeyValue, Money, Num, Page, PageHeader, Panel, PixelMeter, Section, Segmented, Select,
+  Skeleton, ViewToggle, formatDate, formatPct, useToast, type Column,
 } from "@mooney/ui";
 import { useAccounts, useLiabilities, useUpdateAccount } from "../api/hooks";
 import { ApiError } from "../api/client";
 import type { Account, LiabilityDetail } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
 import { ConnectButton } from "../components/ConnectButton";
+import { AccountDetail } from "../components/AccountDetail";
+import { SourceTag } from "../components/AccountFacts";
 import { useStoredChoice, useStoredView } from "../lib/storedView";
 
 interface Row {
@@ -20,20 +23,22 @@ interface Row {
 }
 
 /** Plaid's Liabilities product covers credit cards, mortgages and student loans
- *  only. Other loans (auto, personal, HELOC) never get rate or due-date details. */
+ *  only. Other loans (auto, personal, HELOC) never get rate or due-date details
+ *  from the lender, so they are entered by hand (account details). */
 const PLAID_LIABILITY_KINDS = new Set(["credit", "mortgage", "student"]);
 function noDetailNote(kind: string): string {
   return PLAID_LIABILITY_KINDS.has(kind)
-    ? "Rate and due dates arrive after the first liabilities refresh."
-    : "Your lender doesn't report rates or due dates for this kind of loan.";
+    ? "Rate and due dates arrive after the first liabilities refresh, or add them yourself."
+    : "Your lender doesn't report this loan's rate or terms. Add a few and the rest is worked out.";
 }
 
 function toRow(a: Account, l: LiabilityDetail | null): Row {
   const bal = a.current_balance ?? 0;
   const kind = (l?.kind ?? (a.type === "credit" ? "credit" : a.subtype ?? a.type)).replace(/_/g, " ");
   const isCard = kind === "credit";
+  const limit = l?.credit_limit ?? a.credit_limit; // the bank's, else the one entered
   const ratio = isCard
-    ? (a.credit_limit ? bal / a.credit_limit : null)
+    ? (limit ? bal / limit : null)
     : (l?.origination_principal ? Math.max(0, 1 - bal / l.origination_principal) : null);
   return { a, l, bal, kind, isCard, ratio };
 }
@@ -111,15 +116,20 @@ function SecuredBy({ loan, assets }: { loan: Account; assets: Account[] }) {
   );
 }
 
-function LiabilityCard({ r, assets }: { r: Row; assets: Account[] }) {
+function LiabilityCard({ r, assets, onOpen }: { r: Row; assets: Account[]; onOpen: (a: Account, edit: boolean) => void }) {
   const { a, l } = r;
   const secured = r.isCard ? [] : [{ key: "secured by", value: <SecuredBy loan={a} assets={assets} /> }];
+  const src = (key: string) => <SourceTag source={l?.sources[key]} />;
+  const limit = l?.credit_limit ?? a.credit_limit;
   return (
     <Panel
       stacked
-      title={a.name}
+      title={<button type="button" className="jf-liab__open" onClick={() => onOpen(a, false)}>{a.name}</button>}
       caption={<><span className="mu-bracket">{r.kind}</span>{where(a) ? <span>{where(a)}</span> : null}</>}
-      actions={l?.is_overdue ? <Badge tone="critical">overdue</Badge> : undefined}
+      actions={<>
+        {l?.is_overdue ? <Badge tone="critical">overdue</Badge> : null}
+        <Button size="sm" variant="quiet" onClick={() => onOpen(a, false)}>Details</Button>
+      </>}
     >
       <div className="mu-stack">
         <Money value={r.bal} currency={a.iso_currency} mono={false} style={{ fontSize: "var(--mu-fs-2xl)", fontWeight: 600 }} />
@@ -127,20 +137,25 @@ function LiabilityCard({ r, assets }: { r: Row; assets: Account[] }) {
         {l ? (
           <KeyValue
             items={[
-              { key: "rate", value: l.interest_rate_pct != null ? <>{formatPct(l.interest_rate_pct, 3, false)}{l.interest_rate_type ? <span className="mu-caption"> {l.interest_rate_type}</span> : null}</> : "—" },
-              { key: "next due", value: l.next_payment_due_date ? <>{formatDate(l.next_payment_due_date, { year: true })}{l.next_payment_amount != null ? <span className="mu-caption"> · <Money value={l.next_payment_amount} /></span> : null}</> : "—" },
-              { key: "minimum", value: l.minimum_payment != null ? <Money value={l.minimum_payment} /> : "—" },
+              { key: "rate", value: l.interest_rate_pct != null ? <>{formatPct(l.interest_rate_pct, 3, false)}{l.interest_rate_type ? <span className="mu-caption"> {l.interest_rate_type.replace(/_apr$/, "").replace(/_/g, " ")}</span> : null}{src("interest_rate_pct")}</> : "—" },
+              { key: "next due", value: l.next_payment_due_date ? <>{formatDate(l.next_payment_due_date, { year: true })}{l.next_payment_amount != null ? <span className="mu-caption"> · <Money value={l.next_payment_amount} /></span> : null}{src("next_payment_due_date")}</> : "—" },
+              ...(l.principal_interest != null && l.escrow != null ? [
+                { key: "principal + int.", value: <><Money value={l.principal_interest} />{src("principal_interest")}</> },
+                { key: "escrow", value: <><Money value={l.escrow} />{src("escrow")}</> },
+              ] : []),
+              { key: "minimum", value: l.minimum_payment != null ? <><Money value={l.minimum_payment} />{src("minimum_payment")}</> : "—" },
               { key: "last payment", value: l.last_payment_amount != null ? <><Money value={l.last_payment_amount} />{l.last_payment_date ? <span className="mu-caption"> on {formatDate(l.last_payment_date)}</span> : null}</> : "—" },
               ...(l.last_statement_balance != null ? [{ key: "last statement", value: <><Money value={l.last_statement_balance} />{l.last_statement_date ? <span className="mu-caption"> {formatDate(l.last_statement_date)}</span> : null}</> }] : []),
-              ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} />{l.origination_date ? <span className="mu-caption"> {formatDate(l.origination_date, { year: true })}</span> : null}</> }] : []),
-              ...(l.loan_term ? [{ key: "term", value: <>{l.loan_term}{l.maturity_date ? <span className="mu-caption"> · matures {formatDate(l.maturity_date, { year: true })}</span> : null}</> }] : []),
-              ...(a.credit_limit != null ? [{ key: "limit", value: <Money value={a.credit_limit} cents={false} /> }] : []),
+              ...(l.origination_principal != null ? [{ key: "original", value: <><Money value={l.origination_principal} cents={false} />{l.origination_date ? <span className="mu-caption"> {formatDate(l.origination_date, { year: true })}</span> : null}{src("origination_principal")}</> }] : []),
+              ...(l.loan_term ? [{ key: "term", value: <>{l.loan_term}{l.maturity_date ? <span className="mu-caption"> · matures {formatDate(l.maturity_date, { year: true })}</span> : null}{src("loan_term")}</> }] : []),
+              ...(limit != null ? [{ key: "limit", value: <><Money value={limit} cents={false} />{src("credit_limit")}</> }] : []),
               ...secured,
             ]}
           />
         ) : (
           <>
             <span className="mu-caption">{noDetailNote(r.kind)}</span>
+            <div><Button size="sm" variant="quiet" onClick={() => onOpen(a, true)}>Add details</Button></div>
             {secured.length > 0 && <KeyValue items={secured} />}
           </>
         )}
@@ -152,6 +167,8 @@ function LiabilityCard({ r, assets }: { r: Row; assets: Account[] }) {
 export function LiabilitiesPage() {
   const q = useLiabilities();
   const accts = useAccounts();
+  const [open, setOpen] = useState<{ account: Account; edit: boolean } | null>(null);
+  const onOpen = (account: Account, edit: boolean) => setOpen({ account, edit });
   const [view, setView] = useStoredView("jf.view.liabilities", "cards");
   const [sort, setSort] = useStoredChoice("jf.sort.liabilities", SORT_MODES, "amount");
   if (q.error) return <Page><ErrorNote error={q.error} retry={() => q.refetch()} /></Page>;
@@ -203,16 +220,20 @@ export function LiabilitiesPage() {
           <Panel key={g.key} flush caption={g.label} actions={total(g)}>
             {/* keyed by sort: the header switch resets each table's own column sort */}
             <DataTable key={sort} columns={columnsFor(g.key)} rows={g.rows} rowKey={(r) => r.a.id}
+              onRowClick={(r) => onOpen(r.a, false)}
               defaultSort={sort === "amount" ? { key: "balance", dir: "desc" } : { key: "account", dir: "asc" }} />
           </Panel>
         ))
         : groups.map((g) => (
           <Section key={g.key} caption={g.label} note={g.rows.length} actions={total(g)}>
             <div className="jf-liab">
-              {g.rows.map((r) => <LiabilityCard key={r.a.id} r={r} assets={assets} />)}
+              {g.rows.map((r) => <LiabilityCard key={r.a.id} r={r} assets={assets} onOpen={onOpen} />)}
             </div>
           </Section>
         ))}
+      {/* the freshest copy of the account (balances move while the drawer is open) */}
+      <AccountDetail account={open ? (accts.data ?? []).find((x) => x.id === open.account.id) ?? open.account : null}
+        upIsGood={false} startEditing={open?.edit} onClose={() => setOpen(null)} />
     </Page>
   );
 }

@@ -18,7 +18,8 @@ users ──< plaid_items ──< accounts ──< transactions
                                   ├──< balance_snapshots
                                   ├──< holdings >── securities
                                   ├──< investment_transactions >── securities
-                                  └──1 liabilities
+                                  ├──1 liabilities
+                                  └──1 account_terms
 jobs                 (queue)
 webhook_events       (audit)
 ```
@@ -137,6 +138,19 @@ One row per liability account (unique `account_id`). `kind` is `credit`,
 `mortgage` or `student`. Columns are the useful subset of Plaid's three
 shapes (APR, minimum payment, due dates, origination, maturity); `raw` has the
 rest.
+
+## account_terms
+One row per account (primary key `account_id`, deleted when every field is
+cleared) holding what the person entered where the bank is silent: a loan's
+`interest_rate_pct`, `rate_type`, `original_principal`, `origination_date`,
+`term_months`, `payment_amount` (principal and interest; a mortgage's escrow is
+`escrow_amount`) and `payment_day`; a card's purchase APR (`interest_rate_pct`),
+`credit_limit`, `statement_day`, `payment_day` and `minimum_payment`; a savings
+account's APY (`interest_rate_pct`). `updated_by` is the person. A value the
+bank reports always wins, so an entered one only ever fills a gap; the rest
+(payment, rate, term or original amount from the other three; payoff; schedule)
+is worked out on read by `services/terms.py` and `services/loanmath.py`, never
+stored.
 
 ## jobs
 The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler

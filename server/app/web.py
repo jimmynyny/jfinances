@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -90,8 +91,9 @@ async def http_error(_: Request, e: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(_: Request, e: RequestValidationError):
+    # jsonable_encoder: a bound like Field(le=Decimal("40")) puts a Decimal in the error's context.
     return JSONResponse({"error": {"code": "validation", "message": "invalid request",
-                                   "details": e.errors()}}, status_code=422)
+                                   "details": jsonable_encoder(e.errors())}}, status_code=422)
 
 
 @app.exception_handler(Exception)

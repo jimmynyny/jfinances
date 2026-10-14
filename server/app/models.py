@@ -319,6 +319,30 @@ class Liability(TimestampMixin, Base):
     raw: Mapped[dict | None] = mapped_column(JSONB)
 
 
+class AccountTerms(TimestampMixin, Base):
+    """What the person told us about an account that its bank doesn't report:
+    a loan's rate, original amount, start, term and monthly payment (principal
+    and interest; escrow apart), a card's APR, limit and statement day, a
+    savings rate. Bank-reported values win wherever both exist; these fill the
+    gaps, and the rest follows from them (services/terms.py)."""
+    __tablename__ = "account_terms"
+
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True)
+    #: A loan's rate, a card's purchase APR, a savings account's APY.
+    interest_rate_pct: Mapped[Decimal | None] = mapped_column(RATE)
+    rate_type: Mapped[str | None] = mapped_column(String(20))  # fixed | variable
+    original_principal: Mapped[Decimal | None] = mapped_column(MONEY)
+    origination_date: Mapped[date | None] = mapped_column(Date)
+    term_months: Mapped[int | None] = mapped_column(Integer)
+    payment_amount: Mapped[Decimal | None] = mapped_column(MONEY)
+    escrow_amount: Mapped[Decimal | None] = mapped_column(MONEY)
+    payment_day: Mapped[int | None] = mapped_column(Integer)
+    statement_day: Mapped[int | None] = mapped_column(Integer)
+    credit_limit: Mapped[Decimal | None] = mapped_column(MONEY)
+    minimum_payment: Mapped[Decimal | None] = mapped_column(MONEY)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
 # ---------------------------------------------------------------------------
 # Subscriptions and alerts (services/recurring.py, services/alerts.py)
 # ---------------------------------------------------------------------------

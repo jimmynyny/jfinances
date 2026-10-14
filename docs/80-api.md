@@ -110,6 +110,39 @@ Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts onl
 ### POST /accounts/{id}/refresh
 The latest balances Plaid has for the whole item (`/accounts/get`, free). 429 if the item was refreshed within 10 minutes. → account.
 
+### GET /accounts/{id}/details
+Everything the detail panel shows, by kind (`mortgage|student|loan|credit|depository|investment|asset|other`):
+```json
+{"kind":"loan",
+ "sections":[{"key":"terms","title":"the loan","note":null,"facts":[
+   {"key":"rate","label":"rate","value":"9.041","format":"pct","source":"calc","note":null,"field":"interest_rate_pct"},
+   {"key":"original","label":"original amount","value":"30000.00","format":"money0","source":"you","note":null,"field":"original_principal"},
+   {"key":"next_due","label":"next due","value":null,"format":"date","source":null,"note":null,"field":"payment_day"}]},
+  {"key":"payoff","title":"where it stands","note":"worked out from …","facts":[…]}],
+ "fields":[{"key":"interest_rate_pct","label":"rate","format":"pct","min":0,"max":40,"help":"…","options":null,"bank":null}, …],
+ "terms":{"interest_rate_pct":null,"original_principal":"30000.00", …},
+ "suggestions":{"payment_amount":{"value":"541.37","why":"Pnc Auto Loan: $541.37 monthly, last on Sep 15"}},
+ "recent":[{"id":"…","date":"2026-10-13","name":"Amazon","amount":"76.02","pending":true}]}
+```
+`source` is `bank` (reported), `you` (entered, `account_terms`) or `calc` (worked out). A fact
+with `value: null` and a `field` is missing and can be entered. `fields` are what can be
+entered for this kind; one with `bank` set is reported and shown, not edited. Loans fill the
+fourth of principal, rate, term and payment from the other three, then payoff, interest left,
+ahead/behind schedule (from the start date) and lifetime interest; a mortgage's escrow is its
+bill less principal and interest. Cards add utilization and a month's interest; savings a
+year's interest and interest earned. `suggestions` come from a recurring payment that matches
+the loan's name. Never includes account numbers from the lender's record.
+
+### PUT /accounts/{id}/terms
+Body: any of `interest_rate_pct` (0–40), `rate_type` (`fixed|variable`), `original_principal`,
+`origination_date` (not future), `term_months` (1–600), `payment_amount`, `escrow_amount`,
+`payment_day`, `statement_day` (1–31), `credit_limit`, `minimum_payment`; omitted fields keep
+their value, null clears. A field the account's kind doesn't take → 400; out of range → 422.
+Returns the details.
+
+### POST /accounts/{id}/terms/preview
+Same body; returns the details as they would read, saving nothing (the form's live preview).
+
 ### GET /accounts/{id}/history?range=1y
 `{"account_id":"…","points":[{"date":"…","balance":"…","source":"plaid|manual|carry|derived"}]}`
 (`derived`: rebuilt from transactions for the days before the account was linked)
@@ -260,7 +293,11 @@ Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queue
    "last_statement_date":null,"is_overdue":false,"origination_date":"2021-03-15","origination_principal":"320000.00",
    "loan_term":"30 year","maturity_date":"2051-03-15","updated_at":"…"}}]}
 ```
-`detail` is null until the liabilities refresh has run for that item.
+`detail` is null until the liabilities refresh has run for that item and nothing was
+entered. Gaps are filled from `account_terms` and what follows from it (`GET
+/accounts/{id}/details`), adding `principal_interest`, `escrow`, a card's `credit_limit`, and
+`sources: {"interest_rate_pct":"calc","origination_principal":"you", …}` for every value the
+lender didn't report.
 
 ## Insights
 Read-only slices of transactions (`services/insights.py`). Every endpoint takes
@@ -311,7 +348,8 @@ loan linked by `secured_by_id`), month ends for two years.
 ytd_interest, schedule{payment, payoff, months, interest, per_year[{year, interest,
 principal}]}, what_if{extra, payoff, months, interest, months_saved, interest_saved}}]}`.
 `payment` is principal and interest from an amortization to the maturity date (the bill
-may include escrow); `ytd_interest` is the lender's figure when reported.
+may include escrow); `ytd_interest` is the lender's figure when reported. Rate, payment and
+maturity fall back to what was entered or worked out (`rate_source`: `bank|you|calc`).
 
 ### GET /insights/cards?range=1y
 `{cards[{id, name, mask, limit, balance, utilization, history[…]}], overall[{date,
