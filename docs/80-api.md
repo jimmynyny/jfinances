@@ -410,6 +410,16 @@ after 20 bad attempts a minute from one address.
 ### POST /mobile/unlink (API hostname only, bearer)
 Revokes the presenting token → `{"revoked":true,"id"}`.
 
+### GET /glance
+Everything a widget draws, in one read: `{"as_of",
+"net_worth":{"net","assets","liabilities","change_1m","as_of","points":[{"date","net"}]}` (30 days),
+`"month":{"from","to","income","spending","net","savings_rate","categories":[{"key","amount"}]}`
+(this month, personal accounts, as `/insights/cashflow`),
+`"upcoming":{"from","to","total","count","items":[…]}` (14 days, at most 12 items, as `/recurring/upcoming`),
+`"accounts":[{…account fields,"group","group_label","trend"}]` (visible accounts),
+`"groups":[{"key","label","is_liability","total"}]`, `"alerts":{"count"}`, `"attention":[…]}`.
+Works with either credential; the phone's widgets use it.
+
 ### GET /tokens (dashboard_only) → `{"tokens":[{"id","name","created_at","last_used_at","revoked_at"}]}`
 ### DELETE /tokens/{id} (dashboard_only) → 204: unlinks that phone.
 

@@ -188,6 +188,12 @@ def test_phone_link_flow(client, monkeypatch):
                        json={"code": code, "nonce": "nonce-1234"}).status_code == 400
 
     phone = {**api, "authorization": f"Bearer {body['token']}"}
+    g = client.get("/api/v1/glance", headers=phone)
+    assert g.status_code == 200, g.text
+    g = g.json()
+    assert set(g) >= {"net_worth", "month", "upcoming", "accounts", "groups", "alerts", "attention"}
+    assert {"net", "points", "change_1m"} <= set(g["net_worth"])
+    assert {"income", "spending", "categories"} <= set(g["month"])
     me = client.get("/api/v1/me", headers=phone).json()
     assert me["via"] == "token" and me["email"] == "jimmy@example.com"
     assert client.get("/api/v1/overview", headers=phone).status_code == 200

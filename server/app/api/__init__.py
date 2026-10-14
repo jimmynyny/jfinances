@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from . import (
     accounts,
     dashboard,
+    glance,
     holdings,
     insights,
     items,
@@ -21,5 +22,5 @@ from . import (
 
 router = APIRouter(prefix="/api/v1")
 for mod in (me, overview, networth, accounts, items, link, transactions, holdings, performance, liabilities, insights,
-            recurring, dashboard, sync, tokens, mobile):
+            recurring, dashboard, glance, sync, tokens, mobile):
     router.include_router(mod.router)
