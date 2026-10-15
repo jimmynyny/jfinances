@@ -197,15 +197,17 @@ def reserve(sess: Session, a: Account, provider: str, kind: str, today: date, in
 
 
 def _record_value(sess: Session, a: Account, value: Decimal, today: date) -> None:
-    """The asset is worth this now: its balance, and today's point in its history
-    (a value the person typed today stands)."""
+    """The asset is worth this now: its balance, and today's point in its history.
+    The market value wins over a value typed earlier the same day (the one typed
+    when the asset was added); one typed after it wins in turn (PUT .../value).
+    Balance and history always move together, or the headline and the charts disagree."""
     a.current_balance = value
     a.balance_updated_at = datetime.now(UTC)
     snap = sess.execute(select(BalanceSnapshot).where(BalanceSnapshot.account_id == a.id,
                                                       BalanceSnapshot.as_of == today)).scalar_one_or_none()
     if snap is None:
         sess.add(BalanceSnapshot(account_id=a.id, as_of=today, current_balance=value, source="valuation"))
-    elif snap.source != "manual":
+    else:
         snap.current_balance, snap.source = value, "valuation"
 
 

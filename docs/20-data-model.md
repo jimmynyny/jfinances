@@ -216,7 +216,9 @@ asset is asked about twice in a calendar month, whatever reruns or crashes.
 `status`: pending, ok, no_value, error (a status code only: a URL could carry a
 key), skipped (over the provider's monthly ceiling: 40 RentCast, 400 MarketCheck,
 under their free tiers). A value becomes the account's balance and that day's
-`valuation` snapshot (a value typed the same day stands).
+`valuation` snapshot, replacing a value typed earlier that day (the one typed
+when the asset was added); one typed after it wins in turn. Balance and
+snapshot always change together.
 
 ## jobs
 The work queue (docs/10 §5, `jobs/queue.py`). `kind` is a registered handler
@@ -270,3 +272,5 @@ assets = Σ `current_balance` of visible, open, non-liability accounts;
 liabilities = Σ of visible, open liability accounts; net = assets − liabilities.
 History uses, for each day, each account's most recent snapshot on or before
 that day, so a missed snapshot carries forward rather than dropping to zero.
+Today's point is the live balances (the sum above), so every chart ends on
+the headline.

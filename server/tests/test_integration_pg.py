@@ -1059,6 +1059,50 @@ def test_homes_and_cars_are_valued_once_a_month_within_budget(client, monkeypatc
     assert calls == [] and "SECRET" not in stored
 
 
+def test_a_market_value_on_the_day_an_asset_is_added_reaches_the_charts(client):
+    """A home added with a typed value and valued by the market the same day: the
+    market value is both its balance and that day's history point, and every chart
+    (net worth line, the widgets' glance, Insights by kind) ends on the headline."""
+    import uuid
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    import httpx
+    from sqlalchemy import select
+
+    from server.app.config import settings
+    from server.app.models import Account, BalanceSnapshot
+    from server.app.services import valuations
+
+    s = settings().model_copy(update={"rentcast_api_key": "rc-key"})
+    http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={
+        "price": 393000, "priceRangeLow": 380000, "priceRangeHigh": 410000})))
+    home = client.post("/api/v1/accounts/manual", json={
+        "name": "Condo", "manual_category": "real_estate", "value": 356100,
+        "asset": {"address_line": "1 Main St", "city": "Kew Gardens", "state": "NY", "zip": "11415",
+                  "property_type": "Condo"}}).json()
+    today = datetime.now(UTC).date()
+    with db.session() as sess:
+        assert valuations.run(sess, today=today, client=http, s=s) == {"valued": 1}
+        snap = sess.execute(select(BalanceSnapshot).where(BalanceSnapshot.account_id == uuid.UUID(home["id"]),
+                                                          BalanceSnapshot.as_of == today)).scalar_one()
+        assert (snap.current_balance, snap.source) == (Decimal("393000.00"), "valuation")
+        # A balance that moved without a history point still ends every chart on the headline.
+        sess.get(Account, uuid.UUID(home["id"])).current_balance = Decimal("400000")
+        sess.commit()
+
+    net = client.get("/api/v1/overview").json()["net_worth"]
+    assert client.get("/api/v1/networth/history", params={"range": "1m"}).json()["points"][-1]["net"] == net
+    assert client.get("/api/v1/glance").json()["net_worth"]["points"][-1]["net"] == net
+    by_kind = client.get("/api/v1/insights/networth", params={"range": "1y"}).json()["points"][-1]
+    assert Decimal(by_kind["net"]) == Decimal(net) and Decimal(by_kind["real_estate"]) == Decimal("400000")
+
+    # A value typed afterwards wins in turn, in the balance and the history alike.
+    assert client.put(f"/api/v1/accounts/{home['id']}/value", json={"value": 380000}).status_code == 200
+    assert client.get("/api/v1/networth/history", params={"range": "1m"}).json()["points"][-1]["net"] == \
+        client.get("/api/v1/overview").json()["net_worth"]
+
+
 def test_categories_are_learned_per_merchant_account_and_direction(client):
     """Filing a merchant's charge teaches its next charges on that account; the
     latest filing wins; a refund (money in) and another account don't follow;

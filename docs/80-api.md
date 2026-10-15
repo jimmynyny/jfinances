@@ -62,7 +62,9 @@ One point per day; each account contributes its latest snapshot on or before tha
 first snapshot's value on days before it (held flat, so linking an account doesn't make the line
 jump). Cash and card accounts reach back past linking through `derived` snapshots
 (docs/20 "Derived history"). `estimated_before` is the first day with a real snapshot when the
-range starts earlier: the line before it is an estimate.
+range starts earlier: the line before it is an estimate. Today's point is the
+live balances, the same sum as `/overview`'s `net_worth` (so is the last point of
+`/insights/networth`).
 
 ## Accounts
 

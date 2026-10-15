@@ -20,7 +20,7 @@ from __future__ import annotations
 import calendar
 import uuid
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, literal_column, select
@@ -57,7 +57,9 @@ def visible_accounts(sess: Session) -> list[Account]:
 
 def balances_on(sess: Session, accounts: list[Account], days: list[date]) -> dict[uuid.UUID, dict[date, Decimal]]:
     """Each account's balance on each day: its latest snapshot on or before the
-    day, or its first snapshot for days before it (as the net worth chart)."""
+    day, or its first snapshot for days before it (as the net worth chart).
+    Today is the live balance, so a chart ends on the net worth printed beside it."""
+    today = datetime.now(UTC).date()
     ids = [a.id for a in accounts]
     rows = sess.execute(select(BalanceSnapshot.account_id, BalanceSnapshot.as_of, BalanceSnapshot.current_balance)
                         .where(BalanceSnapshot.account_id.in_(ids), BalanceSnapshot.current_balance.is_not(None),
@@ -78,7 +80,7 @@ def balances_on(sess: Session, accounts: list[Account], days: list[date]) -> dic
             while i < len(pts) and pts[i][0] <= d:
                 last = pts[i][1]
                 i += 1
-            vals[d] = last
+            vals[d] = Decimal(a.current_balance) if d == today and a.current_balance is not None else last
         out[a.id] = vals
     return out
 

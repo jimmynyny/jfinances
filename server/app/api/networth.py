@@ -28,7 +28,8 @@ def history(range: str = "6m", _: Principal = Depends(current_user), sess: Sessi
     Cash and card accounts reach back past linking through snapshots rebuilt
     from transactions (source="derived", services/history.py); everything
     else is held flat there. `estimated_before` is the first day with a real
-    snapshot when the range starts earlier, so the chart can say so."""
+    snapshot when the range starts earlier, so the chart can say so. Today's
+    point is the live balances (the overview's net worth)."""
     days = RANGES.get(range, 183)
     since = datetime.now(UTC).date() - timedelta(days=days)
     q = (select(BalanceSnapshot.account_id, BalanceSnapshot.as_of, BalanceSnapshot.current_balance,
@@ -57,12 +58,17 @@ def history(range: str = "6m", _: Principal = Depends(current_user), sess: Sessi
             by_day.setdefault(d, []).append((aid, Decimal(bal or 0), liab))
     start = max(since, min(by_day) if by_day else since)
     today = datetime.now(UTC).date()
+    # Today is each account's live balance (a closed account counts nothing), as the
+    # headline adds it up, so the line ends on the net worth printed above it.
+    live = {aid: (Decimal(bal or 0) if closed is None else Decimal(0), liab) for aid, bal, liab, closed in sess.execute(
+        select(Account.id, Account.current_balance, Account.is_liability, Account.closed_at)
+        .where(Account.id.in_(list(first)))).all()}
     points = []
     d = start
     while d <= today:
         for aid, bal, liab in by_day.get(d, []):
             last[aid] = (bal, liab)
-        values = [last.get(aid, v) for aid, v in first.items()]
+        values = [live.get(aid, v) if d == today else last.get(aid, v) for aid, v in first.items()]
         assets = sum((b for b, L in values if not L), Decimal(0))
         liabs = sum((b for b, L in values if L), Decimal(0))
         points.append({"date": d.isoformat(), "assets": money(assets), "liabilities": money(liabs),
