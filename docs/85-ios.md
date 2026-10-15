@@ -107,12 +107,13 @@ phones"). For iOS to open that in the app, the app carries the Associated
 Domains entitlement (`applinks:` for both API hostnames, project.yml) and the
 API hostname serves Apple's association file. That entitlement needs an App ID
 of its own with Associated Domains enabled and a provisioning profile for it
-(the team's wildcard profile cannot carry it): `deploy-ota.sh` signs with that
-profile when it is in the profiles folder, and without one drops the
-entitlement with a warning, in which case an OAuth bank lands on the API
-hostname's page, which bounces to the app by custom scheme and Link carries on.
-The redirect URIs and the Android package must also be registered in the Plaid
-dashboard (docs/30 "What to register").
+(the team's wildcard profile cannot carry it): the account has both, kept by
+`Scripts/asc-profile.py` (§4), and `deploy-ota.sh` signs with that profile when
+it is in the profiles folder. Without one it drops the entitlement with a
+warning, in which case an OAuth bank lands on the API hostname's page, which
+bounces to the app by custom scheme and Link carries on. The redirect URIs and
+the Android package must also be registered in the Plaid dashboard (docs/30
+"What to register").
 
 ## 3. Layout
 
@@ -134,6 +135,7 @@ ios/
   UITests/               a screenshot tour for the simulator (not shipped)
   Scripts/
     deploy-ota.sh          build, sign, serve an itms-services link on the tailnet
+    asc-profile.py         the App ID (Associated Domains) and its development profile, via App Store Connect
     sim-tour.sh            screenshots of every screen on a simulator, against a local server
     make-fonts.py          woff2 -> ttf from node_modules (Doto pinned to wght 800, ROND 0)
     make-icon.py           the app icon: a PixelSparkline on the dark panel
@@ -163,6 +165,24 @@ with it the OAuth return of a bank link goes through the web page (§2b);
 an explicit profile from an App ID with Associated Domains makes it open the
 app directly. A phone must be in the profile's device list. Build numbers
 are minutes since 2026-01-01, so every build installs over the last.
+
+The app has that App ID (`jFinances`, `com.daedalustcg.jfinances`, Associated
+Domains enabled) and a development profile for it, **jfinances development**,
+naming every enabled iPhone and iPad on the account and the development
+certificate in this Mac's keychain. `Scripts/asc-profile.py` made them through
+the App Store Connect API and keeps them: run it again when the profile
+expires (a year from 2026-10-15), a phone is added, or the certificate is
+renewed, and it replaces the profile and saves the new one where
+`deploy-ota.sh` looks.
+
+```
+ASC_KEY_PATH=~/path/AuthKey_XXXXXXXXXX.p8 uv run python ios/Scripts/asc-profile.py   # repo root
+```
+
+The key is an App Store Connect API key with the Developer role, kept outside
+the repo; its issuer id is in the script (an identifier, not a secret) and its
+key id comes from the file name. The widgets keep the wildcard profile: they
+need only the keychain access group.
 
 Xcode: `xcodegen generate` then open `JFinances.xcodeproj`. Debug builds add a
 `local` server (http://127.0.0.1:8001) for the simulator; release builds
