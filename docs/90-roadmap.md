@@ -5,13 +5,12 @@ do not require a redesign.
 
 ## Phone apps: next steps
 
-The link flow and read-only phone tokens are built for iPhone and Android
-(docs/40 §5, docs/85, docs/86). Reserved:
+The link flow and phone tokens are built for iPhone and Android (docs/40 §5,
+docs/85, docs/86), and since 2026-10-15 a phone edits as the dashboard does.
+Reserved:
 
-- Writes from the phone (sync now, dismiss an alert, confirm a
-  subscription). Each one is a deliberate decision: today `current_user`
-  refuses every non-GET from a token.
 - Push notifications for alerts (needs APNs keys, FCM for Android, and a sender in `worker`).
+- Statement imports from the phone (the API allows them; the apps have no file picker for them yet).
 
 ## Google login in Access
 

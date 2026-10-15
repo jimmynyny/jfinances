@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     hooks_base_url: str = "http://localhost:8001"
     api_host: str = ""
 
+    # --- phone apps (docs/30 "Link on the phones") -------------------------
+    #: The iPhone app, as Apple names it (team id + bundle id): what the
+    #: apple-app-site-association on the API hostname lets open /plaid/oauth.
+    ios_app_id: str = "TH5WXDPTS8.com.daedalustcg.jfinances"
+    #: The Android app: Plaid returns an OAuth bank's login to it by package name.
+    android_package_name: str = "com.daedalustcg.jfinances"
+
     # --- frontend ----------------------------------------------------------
     spa_dir: str = "frontend/dist"
     about_page: str = "index.html"
@@ -116,7 +123,24 @@ class Settings(BaseSettings):
 
     @property
     def plaid_redirect_uri(self) -> str:
+        """Where an OAuth bank sends the browser back: the SPA's return page."""
         return self.public_base_url.rstrip("/") + "/link/oauth"
+
+    @property
+    def plaid_mobile_redirect_uri(self) -> str | None:
+        """Where an OAuth bank sends the iPhone back: a universal link on the
+        API hostname (no Access in front, so Apple can read the association
+        file there). None until API_HOST is set."""
+        return f"https://{self.api_host}/plaid/oauth" if self.api_host else None
+
+    def plaid_redirect_for(self, platform: str) -> str | None:
+        """The redirect URI Link is created with for a platform; Android has
+        none (Plaid returns to the app by package name)."""
+        if platform == "web":
+            return self.plaid_redirect_uri
+        if platform == "ios":
+            return self.plaid_mobile_redirect_uri
+        return None
 
     @property
     def encryption_key_bytes(self) -> bytes:

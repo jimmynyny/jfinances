@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..config import settings
 from ..db import get_session
@@ -353,7 +353,7 @@ def preview_terms(account_id: str, body: TermsIn, _: Principal = Depends(current
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
-def delete_manual(account_id: str, _: Principal = Depends(dashboard_only),
+def delete_manual(account_id: str, _: Principal = Depends(current_user),
                   sess: Session = Depends(get_session)):
     a = _get(sess, account_id)
     if a.kind != "manual":

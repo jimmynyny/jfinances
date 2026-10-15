@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..config import settings
 from ..db import get_session
@@ -38,10 +38,12 @@ class TokenIn(BaseModel):
     item_id: str | None = None
     #: Which Connect button was pressed. Ignored in update mode (item_id set).
     kind: Literal["banking", "investments"] = "banking"
+    #: Where Link runs (docs/30 "Link on the phones"): decides the OAuth return.
+    platform: Literal["web", "ios", "android"] = "web"
 
 
 @router.post("/link/token")
-def create_token(body: TokenIn | None = None, p: Principal = Depends(dashboard_only),
+def create_token(body: TokenIn | None = None, p: Principal = Depends(current_user),
                  sess: Session = Depends(get_session)):
     body = body or TokenIn()
     item = None
@@ -52,7 +54,8 @@ def create_token(body: TokenIn | None = None, p: Principal = Depends(dashboard_o
             raise ApiError(404, "not_found", "item not found")
         access_token = plaid_sync.access_token_for(item)
     try:
-        data = plaid().link_token_create(user_id=str(p.user_id), access_token=access_token, kind=body.kind)
+        data = plaid().link_token_create(user_id=str(p.user_id), access_token=access_token, kind=body.kind,
+                                         platform=body.platform)
     except ValueError as e:
         raise ApiError(400, "bad_request", str(e)) from e
     except PlaidError as e:
@@ -60,11 +63,11 @@ def create_token(body: TokenIn | None = None, p: Principal = Depends(dashboard_o
     ls = _new_link_session(sess, p.user_id, data, item=item)
     return {"link_token": data["link_token"], "expiration": data.get("expiration"),
             "link_session_id": str(ls.id), "mode": ls.mode, "kind": None if item else body.kind,
-            "redirect_uri": settings().plaid_redirect_uri}
+            "redirect_uri": settings().plaid_redirect_for(body.platform)}
 
 
 @router.get("/link/session")
-def latest_session(p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def latest_session(p: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     """The OAuth return page needs the same link token it started with."""
     ls = sess.execute(select(LinkSession).where(LinkSession.user_id == p.user_id,
                                                 LinkSession.consumed_at.is_(None),
@@ -87,7 +90,7 @@ class ExchangeIn(BaseModel):
 
 
 @router.post("/link/exchange", status_code=201)
-def exchange(body: ExchangeIn, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def exchange(body: ExchangeIn, p: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     """Exchange only when the duplicate guard allows it: a public token that is
     never exchanged never becomes a billed Item."""
     check = link_guard.check_new_link(sess, body.metadata)
@@ -110,7 +113,7 @@ def exchange(body: ExchangeIn, p: Principal = Depends(dashboard_only), sess: Ses
 
 
 @router.post("/link/update-complete")
-def update_complete(body: ExchangeIn | None = None, p: Principal = Depends(dashboard_only),
+def update_complete(body: ExchangeIn | None = None, p: Principal = Depends(current_user),
                     sess: Session = Depends(get_session)):
     """After update-mode Link finishes there is no new public token; the
     existing access token is simply valid again. Clear the error and resync."""
@@ -141,5 +144,6 @@ def link_config(_: Principal = Depends(current_user)):
         except ValueError:
             continue
         kinds[k] = {"products": req, "required_if_supported_products": extra}
-    return {"redirect_uri": s.plaid_redirect_uri, "webhook_url": s.plaid_webhook_url,
+    return {"redirect_uri": s.plaid_redirect_uri, "mobile_redirect_uri": s.plaid_mobile_redirect_uri,
+            "android_package_name": s.android_package_name, "webhook_url": s.plaid_webhook_url,
             "products": s.plaid_products, "kinds": kinds, "plaid_env": s.plaid_env}

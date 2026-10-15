@@ -1,9 +1,10 @@
 # 85 — The iPhone app and widgets
 
 `ios/` holds a native SwiftUI app, **jfinances**, and a WidgetKit extension.
-It shows what the dashboard shows, in the design system's dress, and changes
-nothing: a phone's token is read-only on the server (docs/40 §5). The Android
-app (`android/`, docs/86) is its twin: a change to one belongs in the other.
+It shows what the dashboard shows, in the design system's dress, with a token
+that may edit as the dashboard does (docs/40 §5); which screens edit what is in
+§1. The Android app (`android/`, docs/86) is its twin: a change to one belongs
+in the other.
 
 ## 1. What is in it
 

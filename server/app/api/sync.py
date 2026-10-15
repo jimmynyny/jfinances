@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
 from ..jobs.queue import enqueue
@@ -33,7 +33,7 @@ def status(_: Principal = Depends(current_user), sess: Session = Depends(get_ses
 
 
 @router.post("/sync/all", status_code=202)
-def sync_all(_: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def sync_all(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     enqueue(sess, "sync_all", {})
     enqueue(sess, "refresh_investments_all", {})
     enqueue(sess, "refresh_liabilities_all", {})
@@ -41,6 +41,6 @@ def sync_all(_: Principal = Depends(dashboard_only), sess: Session = Depends(get
 
 
 @router.post("/sync/snapshot", status_code=202)
-def snapshot(_: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def snapshot(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     enqueue(sess, "snapshot_balances", {})
     return {"queued": True}

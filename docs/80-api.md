@@ -14,11 +14,13 @@ Errors:
 
 Codes you will see: `auth.missing_credential` 401, `auth.bad_access_jwt` 401,
 `auth.bad_token` 401/429, `auth.bad_link_code` 400, `auth.not_allowed` 403,
-`auth.forbidden` 403, `auth.read_only` 403,
+`auth.forbidden` 403,
 `not_found` 404, `bad_request` 400, `validation` 422, `conflict` 409,
 `rate_limited` 429, `plaid_error` 502, `internal` 500.
 
-`dashboard_only` below means a device token is refused (interactive session required).
+Either credential may call any route, writes included (a phone edits as the
+dashboard does, docs/40 §5). `dashboard_only` below marks the exceptions: a
+phone token is refused there (managing phones needs an interactive session).
 
 ## Identity
 
@@ -131,7 +133,7 @@ There is no endpoint to ask sooner.
 ### PUT /accounts/{id}/value
 Body: `{"value":"29000","as_of":"2026-10-01","note":"KBB"}` (manual accounts only). Writes/overwrites the snapshot for that date; updates the current balance if the date is the latest.
 
-### DELETE /accounts/{id} → 204 (manual only, dashboard_only)
+### DELETE /accounts/{id} → 204 (manual only)
 
 ### POST /accounts/{id}/refresh
 The latest balances Plaid has for the whole item (`/accounts/get`, free). 429 if the item was refreshed within 10 minutes. → account.
@@ -188,29 +190,34 @@ Same body; returns the details as they would read, saving nothing (the form's li
 ### POST /items/{id}/sync → 202
 Queues `sync_item`, `refresh_investments`, `refresh_liabilities`. `{"queued":true,"item":item}`
 
-### POST /items/{id}/relink (dashboard_only)
+### POST /items/{id}/relink
 Update mode with account selection: Re-link (re-auth, consent) and Add accounts. Same Item, nothing new billed.
-`{"link_token":"link-…","expiration":"…","link_session_id":"…","mode":"update"}`
+Body (optional): `{"platform"?: "web"|"ios"|"android"}`, as for `POST /link/token`.
+`{"link_token":"link-…","expiration":"…","link_session_id":"…","mode":"update","redirect_uri":"…|null"}`
 
-### DELETE /items/{id} (dashboard_only)
+### DELETE /items/{id}
 Calls `/item/remove`; returns the item with `status:"removed"`.
 
 ## Link
 
-### POST /link/token (dashboard_only)
-Body: `{"kind"?: "banking"|"investments", "item_id"?: "…"}`. `kind` (default `banking`)
-picks the product plan (docs/30 "Products"); `item_id` present = update mode, `kind` ignored.
+### POST /link/token
+Body: `{"kind"?: "banking"|"investments", "item_id"?: "…", "platform"?: "web"|"ios"|"android"}`.
+`kind` (default `banking`) picks the product plan (docs/30 "Products"); `item_id` present = update
+mode, `kind` ignored. `platform` (default `web`) decides the OAuth return (docs/30 "Link on the
+phones"): the web's redirect page, the iPhone's universal link on the API hostname
+(`https://{API_HOST}/plaid/oauth`), or on Android the app by package name (`redirect_uri` null).
 ```json
 {"link_token":"link-production-…","expiration":"…","link_session_id":"…","mode":"create",
  "kind":"banking","redirect_uri":"https://jfinances.sellingtcg.com/link/oauth"}
 ```
-`400 bad_request` for an unknown kind or one whose required product `PLAID_PRODUCTS` disables.
+`400 bad_request` for an unknown kind or one whose required product `PLAID_PRODUCTS` disables, or
+`platform: ios` with no `API_HOST`.
 
-### GET /link/session (dashboard_only)
+### GET /link/session
 The newest unconsumed, unexpired link session for this user, for the OAuth return page:
 `{"link_token":"…","link_session_id":"…","mode":"create|update","item_id":null}`
 
-### POST /link/exchange → 201 (dashboard_only)
+### POST /link/exchange → 201
 Body: `{"public_token":"public-…","metadata":{…from Link onSuccess…},"link_session_id":"…","confirm"?:"new_login"|"overlap"}` → item. Queues `sync_item`, plus `refresh_investments` / `refresh_liabilities` only if the Item has those products.
 
 The duplicate guard runs first (docs/30 "Never paying twice"). `409` with
@@ -226,11 +233,12 @@ it through, or null). Nothing was exchanged, so nothing is billed.
 If the first `/accounts/get` fails after the exchange, the item is still
 saved and returned (its queued sync retries).
 
-### POST /link/update-complete (dashboard_only)
+### POST /link/update-complete
 Body: `{"link_session_id":"…"}` after update-mode Link finishes → item (status `active`, `new_accounts_at` cleared).
 
 ### GET /link/config
-`{"redirect_uri":"…","webhook_url":"…","products":[…],"kinds":{"banking":{"products":["transactions"],"required_if_supported_products":["liabilities","investments"]},"investments":{…}},"plaid_env":"production"}`
+`{"redirect_uri":"…","mobile_redirect_uri":"…|null","android_package_name":"…","webhook_url":"…","products":[…],"kinds":{"banking":{"products":["transactions"],"required_if_supported_products":["liabilities","investments"]},"investments":{…}},"plaid_env":"production"}`:
+everything the Plaid dashboard must have registered (docs/30 "What to register").
 
 ## Transactions
 
@@ -348,7 +356,7 @@ Benchmarks: `sp500`, `dow`, `nasdaq100`, `bitcoin`, `world`,
 `bonds`, `gold`, `sixty_forty`, `inflation`; `source` is null when no stored
 prices cover the range.
 
-### POST /prices/refresh → 202 (dashboard_only)
+### POST /prices/refresh → 202
 Queues `refresh_prices` now: `{"queued": bool}` (false when one is already queued).
 
 ## Imports
@@ -364,7 +372,7 @@ its history walks back from there like a bank account's. Its transactions count 
 (Insights, subscriptions) like a connected account's. The file
 travels as base64 in JSON (≤5 MB) and is never stored; only its name and SHA-256 are.
 
-### POST /imports/preview (dashboard_only)
+### POST /imports/preview
 Body `{filename, content_b64, account_id?, mapping?}`. Writes nothing. Returns how the file is
 read and what importing it would do:
 ```json
@@ -416,7 +424,7 @@ Venmo's transaction ID is the fingerprint. Balances run from the statement's ope
 are set only if they land on its closing balance. The account is suggested by "venmo" in a linked
 account's name or institution.
 
-### POST /imports → 201 (dashboard_only)
+### POST /imports → 201
 Body: the preview's plus `account_id` and `include` (the `index` of each ticked review row).
 Adds the rows, records every added and matched row in the ledger, writes the running balance as
 `import` balance snapshots on days before tracking began, rebuilds derived history, queues
@@ -426,7 +434,7 @@ date_from, date_to, rows_total, rows_added, rows_matched, rows_skipped, balances
 ### GET /imports?account_id=
 `{"imports":[import, …]}` newest first.
 
-### DELETE /imports/{id} (dashboard_only)
+### DELETE /imports/{id}
 Undo: removes the transactions, balances and ledger rows it added; returns the import with
 `status:"undone"` and `removed`.
 
@@ -587,13 +595,13 @@ default sections again.
               "received_at":"…","processed_at":"…","error":null}]}
 ```
 
-### POST /sync/all → 202 (dashboard_only) — queue sync/investments/liabilities for every item.
-### POST /sync/snapshot → 202 (dashboard_only) — queue today's balance snapshot.
+### POST /sync/all → 202 — queue sync/investments/liabilities for every item.
+### POST /sync/snapshot → 202 — queue today's balance snapshot.
 
 ## Phones
 
-A token is read-only: anything but GET/HEAD/OPTIONS with a token is 403
-`auth.read_only`. docs/40 §5 has the whole flow.
+A phone's token does what an Access session does, except manage phones: the
+three `dashboard_only` routes below refuse it. docs/40 §5 has the whole flow.
 
 ### GET /mobile/link?nonce=N&name=…[&method=S256] (dashboard hostname, dashboard_only)
 Opened by the app in a system web sheet. Mints a one-time code (120 s) and
@@ -629,6 +637,12 @@ Works with either credential; the phone's widgets use it.
 
 ### GET /healthz → `{"ok":true,"service":"web","env":"production","db":"ok"}` (503 if the DB is down)
 ### GET /about → the privacy page (`index.html`)
+### GET /.well-known/apple-app-site-association (API hostname only)
+`{"applinks":{"details":[{"appIDs":["TH5WXDPTS8.com.daedalustcg.jfinances"],"components":[{"/":"/plaid/oauth*"}]}]}}`:
+lets iOS open the iPhone app for the Plaid OAuth return (docs/30 "Link on the phones"). 404 on any other hostname.
+### GET /plaid/oauth?oauth_state_id=… (API hostname only)
+The universal link's page, seen only when iOS did not open the app for it: bounces to
+`jfinances://plaid/oauth?<same query>`. 404 on any other hostname.
 
 ## Hooks service (separate hostname)
 

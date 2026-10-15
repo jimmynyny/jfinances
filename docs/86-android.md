@@ -2,8 +2,8 @@
 
 `android/` holds a native Jetpack Compose app, **jfinances**, and four
 home-screen widgets drawn with Glance. It is the iPhone app (docs/85) on
-Android: the same screens, the same reads, the same design-system dress, and it
-changes nothing: a phone's token is read-only on the server (docs/40 §5).
+Android: the same screens, the same reads and edits, the same design-system
+dress, with a token that may edit as the dashboard does (docs/40 §5).
 
 ## 1. What is in it
 

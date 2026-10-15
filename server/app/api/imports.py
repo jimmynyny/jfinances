@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
 from ..models import Account, Import
@@ -89,7 +89,7 @@ def _read(sess: Session, body: FileIn, a: Account | None) -> tuple[bytes, st.Par
 
 
 @router.post("/imports/preview")
-def preview(body: FileIn, _: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def preview(body: FileIn, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     """What importing this file would do. Writes nothing."""
     raw, parsed, a = _read(sess, body, _account(sess, body.account_id))
     if isinstance(parsed, inv.InvParsed):
@@ -110,7 +110,7 @@ def preview(body: FileIn, _: Principal = Depends(dashboard_only), sess: Session 
 
 
 @router.post("/imports", status_code=201)
-def apply(body: ApplyIn, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def apply(body: ApplyIn, p: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     a = _account(sess, body.account_id)
     raw, parsed, a = _read(sess, body, a)
     if isinstance(parsed, inv.InvParsed):
@@ -134,7 +134,7 @@ def list_imports(account_id: str | None = Query(default=None), _: Principal = De
 
 
 @router.delete("/imports/{import_id}")
-def undo(import_id: str, _: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def undo(import_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     imp = sess.get(Import, parse_uuid(import_id))
     if imp is None:
         raise ApiError(404, "not_found", "import not found")

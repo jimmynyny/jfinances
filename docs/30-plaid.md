@@ -41,14 +41,44 @@ also printed by `GET /api/v1/link/config`.
 
 | Dashboard field | Production | Sandbox |
 |---|---|---|
-| Allowed redirect URIs (Team Settings → API) | `https://jfinances.sellingtcg.com/link/oauth` | `https://jfinances-sandbox.sellingtcg.com/link/oauth` |
+| Allowed redirect URIs (Team Settings → API), the dashboard's | `https://jfinances.sellingtcg.com/link/oauth` | `https://jfinances-sandbox.sellingtcg.com/link/oauth` |
+| Allowed redirect URIs, the iPhone's (a universal link on the API hostname) | `https://jfinances-api.sellingtcg.com/plaid/oauth` | `https://jfinances-sandbox-api.sellingtcg.com/plaid/oauth` |
+| Allowed Android package names (Team Settings → API) | `com.daedalustcg.jfinances` | same |
 | Webhook URL (set per item by us at link time) | `https://jfinances-hooks.sellingtcg.com/plaid/webhook` | `https://jfinances-sandbox-hooks.sellingtcg.com/plaid/webhook` |
 | App website / privacy (compliance) | `https://jimmynyny.github.io/jfinances/` (also `/about` on the app) | same |
 
 Redirect URIs must be exact, https, no query string, no `#`. The webhook URL
 is not a dashboard setting: it is passed in every `/link/token/create` and
 can be changed for an existing item with `/item/webhook/update`
-(`PlaidClient.item_webhook_update`).
+(`PlaidClient.item_webhook_update`). The allowed list is one list for both
+environments (sandbox and production share the team), so all four URIs and the
+package name go in once.
+
+## Link on the phones
+
+The phone apps run Plaid Link natively (LinkKit on iOS, the Link SDK on
+Android) against the same endpoints as the web: `POST /link/token` with
+`platform: ios | android`, Link in the app, then `POST /link/exchange` (or
+`/link/update-complete` for a re-link) with the phone's own token. The server
+does the exchange; the phone never sees an access token. The duplicate guard
+and its 409 questions work the same, so the app asks the same questions.
+
+What differs is only the OAuth return, which an OAuth bank performs in the
+system browser:
+
+- **iPhone**: the link token carries `redirect_uri = https://{API_HOST}/plaid/oauth`.
+  iOS opens that URL in the app (a universal link) because
+  `https://{API_HOST}/.well-known/apple-app-site-association` names the app
+  (`IOS_APP_ID`), and the app hands it to LinkKit (`continue(from:)`). The
+  association file must be reachable without a login, which is why it is on
+  the API hostname and not the dashboard's. Should iOS open the page in Safari
+  instead (the association not yet verified after an install), the page itself
+  bounces to `jfinances://plaid/oauth?oauth_state_id=…` and the app rebuilds
+  the https URL for LinkKit. The app's provisioning must allow Associated
+  Domains (`applinks:jfinances-api.sellingtcg.com`, docs/85 §4).
+- **Android**: the link token carries `android_package_name` and no redirect
+  URI; Plaid returns to the app itself. The package must be in "Allowed Android
+  package names".
 
 ## Link flow
 
@@ -255,8 +285,8 @@ the relink path.
 ## Going to production
 
 Plaid's production checklist for an app like this: webhooks implemented (yes),
-update mode implemented (yes), `/item/remove` on unlink (yes), redirect URI
-registered (do it), privacy page public (yes). Before the first production
+update mode implemented (yes), `/item/remove` on unlink (yes), redirect URIs
+and the Android package registered (the table above), privacy page public (yes). Before the first production
 link: daily backups on and `TOKEN_ENCRYPTION_KEY` in the password manager;
 then follow the linking-day checklist in docs/60 §2. Production secrets go only in
 Railway variables; `PLAID_ENV` must equal `production` and `APP_ENV` must

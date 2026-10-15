@@ -13,7 +13,7 @@ database each refuse on their own.
 | Forged Plaid webhook | ES256 signature + body hash + 5-minute freshness, before anything is read |
 | Database dump leaks | Plaid access tokens are AES-256-GCM encrypted with a key that lives only in `web`/`worker` env |
 | Token in logs | redaction regexes in the log formatter; tokens are never in log calls to begin with |
-| Device token stolen | only the hash is stored; tokens are read-only; unlink from Settings by name; a disabled user disables all their tokens |
+| Device token stolen | only the hash is stored; the phone can be unlinked from the dashboard by name, and nothing a token can do stops that (it cannot list or revoke tokens, or link another phone); a disabled user disables all their tokens; the app itself can be locked behind Face ID / fingerprint (docs/85, docs/86) |
 | Config mistake ships | boot validation refuses placeholders, env mismatches and dev bypasses in deployed environments |
 | Browser-side attacks | same-origin only (no CORS), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Cache-Control: no-store` on API responses |
 
@@ -66,8 +66,9 @@ by Cloudflare, so the WAF and rate limiting apply.
 `crypto.py`. AES-256-GCM via `cryptography`, random 96-bit nonce per value,
 stored as `version(1) || nonce(12) || ciphertext+tag`. Key is
 `TOKEN_ENCRYPTION_KEY` (32 bytes, urlsafe-base64). Only `web` (exchange,
-relink, unlink, refresh button) and `worker` (sync) have the key; `hooks`
-does not. The version byte allows a second key during rotation
+relink, unlink, refresh button, from the dashboard or a phone) and `worker`
+(sync) have the key; `hooks` does not. A phone never sees an access token:
+Link hands it a public token, and the exchange happens on the server. The version byte allows a second key during rotation
 (docs/60 §4).
 
 ## 5. Phones: the API hostname
@@ -100,6 +101,13 @@ web  --> {token, id, name, email}                    (a new api_tokens row; only
 - `mobile/link` needs an Access session (`dashboard_only`): a phone cannot
   mint codes for another phone.
 - `mobile/redeem` and `mobile/unlink` answer on the API hostname only.
+- The API hostname also serves two things without a credential, for the
+  iPhone's Plaid OAuth return (docs/30 "Link on the phones"):
+  `/.well-known/apple-app-site-association` (names the app that may open
+  `/plaid/oauth` as a universal link; Apple's CDN fetches it, which is why it
+  cannot live behind Access) and `GET /plaid/oauth` (a page that hands the
+  bank's `oauth_state_id` to the app by custom scheme when the universal link
+  did not open it). Neither reads or writes anything.
 
 Requests: `auth/tokens.py` hashes the token, finds the `api_tokens` row,
 rejects revoked ones, throttles an address (`CF-Connecting-IP`) after 20 bad
@@ -107,14 +115,24 @@ tokens or codes a minute, and resolves the user through the same
 `principal_for_email` as Access. `last_used_at` is written at most every 5
 minutes (widgets poll).
 
-**Read-only.** `current_user` refuses any method but GET/HEAD/OPTIONS from a
-token with 403 `auth.read_only`, for every route, including ones added later.
-Endpoints marked `dashboard_only` refuse a token even for GET. The only write
-a phone makes is `POST /mobile/unlink`, which revokes its own token.
+**What a phone may do.** The same as the dashboard: a token resolves to the
+same `users` row and `current_user` treats both credentials alike, so a phone
+edits transactions and accounts, keeps offline assets, connects, re-links and
+unlinks banks (Link runs in the app; docs/30 "Link on the phones"), imports
+statements, syncs and refreshes prices. This was a deliberate decision
+(2026-10-15): the phones are the household's own devices, the apps lock behind
+Face ID / fingerprint, and a read-only phone kept sending its owner to a laptop
+for every edit.
 
-Settings → phones lists each person's linked phones by name with last-seen,
-and unlinks one (it stops on its next request). Tokens are never minted by
-hand.
+**What a phone may not do: manage phones.** Endpoints marked `dashboard_only`
+refuse a token: `GET /mobile/link` (minting a link code), `GET /tokens` and
+`DELETE /tokens/{id}`. So a stolen phone cannot link another phone, cannot see
+which phones exist, and cannot stop its owner unlinking it from the dashboard.
+The one token a phone can revoke is its own (`POST /mobile/unlink`).
+
+Settings → phones on the dashboard lists each person's linked phones by name
+with last-seen, and unlinks one (it stops on its next request). Tokens are
+never minted by hand.
 
 ## 6. Secrets hygiene
 

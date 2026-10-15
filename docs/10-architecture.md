@@ -87,7 +87,9 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `ALLOWED_USERS` | ✓ |  |  | Comma-separated emails that may use the app, **in order**: the first is `owner`, the rest `member`. Reconciled into `users` at every web boot (lock-serialised across uvicorn workers) |
 | `PUBLIC_BASE_URL` | ✓ |  |  | `https://jfinances.sellingtcg.com` — builds the OAuth redirect URI |
 | `HOOKS_BASE_URL` | ✓ | ✓ | ✓ | `https://jfinances-hooks.sellingtcg.com` — Plaid webhook base |
-| `API_HOST` | ✓ |  |  | `jfinances-api.sellingtcg.com` (sandbox: `jfinances-sandbox-api.sellingtcg.com`). The hostname where phones use bearer tokens instead of Access; it serves `/api/*` only. Unset = no phone access |
+| `API_HOST` | ✓ |  |  | `jfinances-api.sellingtcg.com` (sandbox: `jfinances-sandbox-api.sellingtcg.com`). The hostname where phones use bearer tokens instead of Access; it serves `/api/*`, the iPhone's OAuth return (`/plaid/oauth`) and Apple's association file. Unset = no phone access |
+| `IOS_APP_ID` | ✓ |  |  | Default `TH5WXDPTS8.com.daedalustcg.jfinances`: the team id and bundle id Apple's association file names, so the iPhone app may open `/plaid/oauth` (docs/30 "Link on the phones"). Only set it if the app is re-signed under another team |
+| `ANDROID_PACKAGE_NAME` | ✓ |  |  | Default `com.daedalustcg.jfinances`: passed to Plaid as `android_package_name` on a phone's link token; must match "Allowed Android package names" in the Plaid dashboard |
 | `PORT` | ✓ | ✓ |  | `8080`, set explicitly to match the custom domains' target port |
 | `FRED_API_KEY` | ✓ | ✓ | ✓ | St. Louis Fed market data (benchmark indexes, Bitcoin, CPI); only the worker calls it. Optional: without it those benchmarks are off. docs/30 "Market data" |
 | `TIINGO_API_KEY` | ✓ | ✓ | ✓ | Tiingo daily prices (dividend-adjusted fund benchmarks, holdings history); only the worker calls it. Optional |
@@ -124,10 +126,13 @@ once through Access (`GET /api/v1/mobile/link` on the dashboard hostname),
 trades the two-minute code it is handed for an app-issued 256-bit token, and
 sends `Authorization: Bearer` on the API hostname. Only SHA-256 hashes are
 stored (`mobile_link_codes`, `api_tokens`). The token resolves to a `users`
-row, so disabling the user stops the phone, and it is **read-only**:
-`current_user` refuses anything but GET/HEAD/OPTIONS from a token. The iPhone
-app (docs/85) and the Android app (docs/86) link this way; Android adds PKCE,
-because another app can claim its redirect. Details in docs/40 §5.
+row, so disabling the user stops the phone. A phone does what the dashboard
+does, editing and connecting banks included; what it cannot do is **manage
+phones**: `dashboard_only` endpoints (minting a link code, listing and revoking
+tokens) refuse a token, so a stolen phone can neither link another phone nor
+stop its owner unlinking it. The iPhone app (docs/85) and the Android app
+(docs/86) link this way; Android adds PKCE, because another app can claim its
+redirect. Details in docs/40 §5.
 
 **Principals.** `auth/deps.py` exposes `current_user()` which resolves a
 `Principal(email, user_id, via="access"|"token")`. Routers depend on it and
@@ -150,9 +155,12 @@ Jobs only call a product's endpoints when the Item reports that product
 product makes Plaid add it and start billing.
 
 Link requests `days_requested=730`. `webhook` on every link token is
-`{HOOKS_BASE_URL}/plaid/webhook`. `redirect_uri` is
-`{PUBLIC_BASE_URL}/link/oauth` and must be registered in the Plaid dashboard
-(Team Settings → API → Allowed redirect URIs) for both hostnames.
+`{HOOKS_BASE_URL}/plaid/webhook`. The OAuth return depends on where Link runs
+(`platform` on `POST /link/token`): the web's `redirect_uri` is
+`{PUBLIC_BASE_URL}/link/oauth`, the iPhone's is `https://{API_HOST}/plaid/oauth`
+(a universal link), and Android passes `android_package_name` instead. The
+redirect URIs and the package name must be registered in the Plaid dashboard
+(docs/30 "What to register").
 
 Flow:
 1. `POST /api/v1/link/token` → server creates a link token (update mode when
@@ -221,7 +229,9 @@ Plaid gives them (positive owed) and subtracted.
 ## 7. HTTP API (web service, prefix `/api/v1`, JSON)
 
 All routes require a principal except `/healthz`. Errors are
-`{"error": {"code": "...", "message": "..."}}`.
+`{"error": {"code": "...", "message": "..."}}`. Either credential (Access
+session or phone token) may call any of them, except that managing phones
+(`/mobile/link`, `/tokens`) needs an Access session (docs/40 §5).
 
 | Method & path | Purpose |
 |---|---|
@@ -236,9 +246,9 @@ All routes require a principal except `/healthz`. Errors are
 | `POST /accounts/{id}/refresh` | latest balances Plaid has (`/accounts/get`), rate limited |
 | `GET /items` | items with status, institution, account count, last sync |
 | `POST /items/{id}/sync` | enqueue `sync_item` |
-| `POST /items/{id}/relink` | `{link_token}` in update mode (Re-link, Add accounts) |
+| `POST /items/{id}/relink` | `{platform?}` → `{link_token}` in update mode (Re-link, Add accounts) |
 | `DELETE /items/{id}` | `/item/remove` and mark removed |
-| `POST /link/token` | `{kind?: banking|investments, item_id?}` → `{link_token, expiration, link_session_id, mode, kind}` |
+| `POST /link/token` | `{kind?: banking|investments, item_id?, platform?: web|ios|android}` → `{link_token, expiration, link_session_id, mode, kind, redirect_uri}` |
 | `POST /link/exchange` | `{public_token, metadata?}` → item summary |
 | `GET /transactions?from&to&account_id&q&category&pending&page&page_size` | paged list, newest first, with `sum`; `flow` and Insights' groupings list the rows behind an Insights number (docs/80) |
 | `PATCH /transactions/{id}` | `{user_category?, notes?, business?}` |

@@ -136,9 +136,9 @@ export function SettingsPage() {
         <DataTable columns={jobCols} rows={(sync.data?.jobs ?? []).slice(0, 20)} rowKey={(j) => j.id} compact empty="No recent jobs." />
       </Panel>
 
-      <Panel flush caption="phones" foot="A linked phone can read everything here and change nothing. Unlinking stops it on its next request.">
+      <Panel flush caption="phones" foot="A linked phone does what this page does, editing and connecting banks included; only this list is the dashboard's alone. Unlinking stops a phone on its next request.">
         <DataTable columns={tokenCols} rows={(tokens.data ?? []).filter((t) => !t.revoked_at)} rowKey={(t) => t.id} compact
-          empty="No phones linked. Open the jfinances app on your iPhone and tap Sign in." />
+          empty="No phones linked. Open the jFinances app on your iPhone or Android phone and tap Sign in." />
       </Panel>
 
       <Drawer

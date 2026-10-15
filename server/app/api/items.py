@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
+from ..config import settings
 from ..db import get_session
 from ..jobs.sync_item import enqueue_item_refresh
 from ..models import PlaidItem
@@ -40,26 +44,37 @@ def sync(item_id: str, _: Principal = Depends(current_user), sess: Session = Dep
     return {"queued": queued is not None, "item": item_json(it)}
 
 
+class RelinkIn(BaseModel):
+    #: Where Link runs (docs/30 "Link on the phones"): decides the OAuth return.
+    platform: Literal["web", "ios", "android"] = "web"
+
+
 @router.post("/items/{item_id}/relink")
-def relink(item_id: str, p: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def relink(item_id: str, body: RelinkIn | None = None, p: Principal = Depends(current_user),
+           sess: Session = Depends(get_session)):
     """Link token in update mode, with account selection: re-auth after
     ITEM_LOGIN_REQUIRED or expiring consent, and "Add accounts" on a healthy
     connection. Same Item, same access token, so nothing new is billed."""
     from .link import _new_link_session
+    body = body or RelinkIn()
     it = _get(sess, item_id)
     if it.status == "removed":
         raise ApiError(409, "conflict", "item was unlinked; link it again instead")
     try:
-        data = plaid().link_token_create(user_id=str(p.user_id), access_token=plaid_sync.access_token_for(it))
+        data = plaid().link_token_create(user_id=str(p.user_id), access_token=plaid_sync.access_token_for(it),
+                                         platform=body.platform)
+    except ValueError as e:
+        raise ApiError(400, "bad_request", str(e)) from e
     except PlaidError as e:
         raise ApiError(502, "plaid_error", f"{e.error_code}: {e.body.get('error_message')}") from e
     ls = _new_link_session(sess, p.user_id, data, item=it)
     return {"link_token": data["link_token"], "expiration": data.get("expiration"),
-            "link_session_id": str(ls.id), "mode": "update"}
+            "link_session_id": str(ls.id), "mode": "update",
+            "redirect_uri": settings().plaid_redirect_for(body.platform)}
 
 
 @router.delete("/items/{item_id}")
-def remove(item_id: str, _: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def remove(item_id: str, _: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     it = _get(sess, item_id)
     if it.status == "removed":
         return item_json(it)

@@ -69,6 +69,37 @@ def test_update_mode_sends_no_products():
     assert "products" not in body and "required_if_supported_products" not in body
 
 
+def test_phone_platforms_get_their_own_oauth_return(monkeypatch):
+    """The iPhone returns from an OAuth bank by universal link on the API
+    hostname; Android by package name, with no redirect URI at all."""
+    from server.app.config import reset_settings_cache
+
+    monkeypatch.setenv("API_HOST", "api.example.com")
+    reset_settings_cache()
+    seen: list[dict] = []
+    c = _capture_client(seen)
+    c.link_token_create(user_id="u1", platform="ios")
+    assert seen[-1]["body"]["redirect_uri"] == "https://api.example.com/plaid/oauth"
+    assert "android_package_name" not in seen[-1]["body"]
+    c.link_token_create(user_id="u1", platform="android", access_token="access-sandbox-abc")
+    assert seen[-1]["body"]["android_package_name"] == "com.daedalustcg.jfinances"
+    assert "redirect_uri" not in seen[-1]["body"]
+    c.link_token_create(user_id="u1", platform="web")
+    assert seen[-1]["body"]["redirect_uri"] == "https://fin.example.com/link/oauth"
+    with pytest.raises(ValueError):
+        c.link_token_create(user_id="u1", platform="windows")
+
+
+def test_ios_link_needs_an_api_host(monkeypatch):
+    """Without API_HOST there is no hostname for the universal link: refuse
+    rather than mint a token whose OAuth return goes nowhere."""
+    monkeypatch.delenv("API_HOST", raising=False)
+    from server.app.config import reset_settings_cache
+    reset_settings_cache()
+    with pytest.raises(ValueError):
+        _capture_client([]).link_token_create(user_id="u1", platform="ios")
+
+
 @pytest.mark.parametrize("products,expected", [
     (["transactions"], ["sync_item"]),
     (["transactions", "liabilities"], ["sync_item", "refresh_liabilities"]),

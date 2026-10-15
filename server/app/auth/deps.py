@@ -32,16 +32,12 @@ def client_ip(request: Request) -> str:
     return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
 
 
-#: A phone reads. Enforced here rather than per handler, so a write endpoint
-#: added later is refused to phones unless someone decides otherwise.
-_READS = ("GET", "HEAD", "OPTIONS")
-
-
 def current_user(request: Request, sess: Session = Depends(get_session)) -> Principal:
+    """Either credential resolves to the same `users` row and may do the same
+    things: a linked phone edits, connects and unlinks banks as the dashboard
+    does (docs/40 §5). What a phone may NOT do is in `dashboard_only`."""
     if on_api_host(request):
         principal = authenticate_bearer(request.headers, sess, client_ip(request))
-        if request.method not in _READS:
-            raise AuthError(Code.READ_ONLY, "a linked phone can read, not change", status=403)
     else:
         principal = authenticate_human(request.headers, request.cookies, sess)
     request.state.principal = principal
@@ -49,8 +45,10 @@ def current_user(request: Request, sess: Session = Depends(get_session)) -> Prin
 
 
 def dashboard_only(request: Request, principal: Principal = Depends(current_user)) -> Principal:
-    """Some endpoints (token issuing, unlinking) must not be reachable with a
-    device token, only through an interactive Access session."""
+    """Managing linked phones (minting a link code, listing and revoking
+    tokens) needs an interactive Access session, never a phone's token: a
+    stolen phone cannot link another phone, and cannot stop its owner
+    unlinking it from the dashboard."""
     if principal.via == "token":
         raise AuthError(Code.FORBIDDEN, "this endpoint requires an interactive session", status=403)
     return principal

@@ -112,17 +112,30 @@ class PlaidClient:
         return data
 
     # --- link ---------------------------------------------------------------
+    #: Where Link runs. Each needs its own OAuth return (docs/30 "Link on the
+    #: phones"): the web's redirect page, the iPhone's universal link on the API
+    #: hostname, or, on Android, the app named by its package (no redirect URI).
+    PLATFORMS = ("web", "ios", "android")
+
     def link_token_create(self, *, user_id: str, access_token: str | None = None,
-                          kind: str = "banking") -> dict[str, Any]:
+                          kind: str = "banking", platform: str = "web") -> dict[str, Any]:
         s = settings()
+        if platform not in self.PLATFORMS:
+            raise ValueError(f"unknown platform {platform!r}; expected one of {self.PLATFORMS}")
         body: dict[str, Any] = {
             "user": {"client_user_id": user_id},
             "client_name": "Mooney Household Ledger",
             "language": "en",
             "country_codes": s.plaid_country_codes,
             "webhook": s.plaid_webhook_url,
-            "redirect_uri": s.plaid_redirect_uri,
         }
+        if platform == "android":
+            body["android_package_name"] = s.android_package_name
+        else:
+            redirect = s.plaid_redirect_for(platform)
+            if not redirect:
+                raise ValueError("the phone's OAuth return needs API_HOST set")
+            body["redirect_uri"] = redirect
         if access_token:
             body["access_token"] = access_token          # update mode
             body["update"] = {"account_selection_enabled": True}

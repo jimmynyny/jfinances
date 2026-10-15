@@ -4,6 +4,7 @@ API hostname (docs/10-architecture.md §4).
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
 import time
@@ -119,6 +120,43 @@ def about():
     if page.exists():
         return FileResponse(page, media_type="text/html")
     return HTMLResponse("<h1>Mooney Household Ledger</h1>", status_code=200)
+
+
+# --- the iPhone's OAuth return (API hostname only; docs/30 "Link on the phones")
+# An OAuth bank sends the iPhone back to https://{API_HOST}/plaid/oauth?oauth_state_id=…
+# as a universal link. iOS opens the app for it only if this file, fetched by
+# Apple's CDN (so it must sit on a hostname without Access), names the app.
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+@app.get("/apple-app-site-association", include_in_schema=False)
+def apple_app_site_association(request: Request):
+    if not on_api_host(request):
+        return JSONResponse({"error": {"code": "not_found", "message": "no such route"}}, status_code=404)
+    app_id = settings().ios_app_id
+    return JSONResponse({"applinks": {"details": [{"appIDs": [app_id], "components": [{"/": "/plaid/oauth*"}]}]}},
+                        media_type="application/json", headers={"Cache-Control": "public, max-age=3600"})
+
+
+_OAUTH_RETURN = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>jFinances</title>
+<body style="font:16px -apple-system,ui-sans-serif,sans-serif;padding:2rem;max-width:30rem;margin:auto;color:#1a1a1a">
+<h1 style="font-size:22px">Back to jFinances</h1>
+<p>Your bank sent you back. If the app didn't open on its own, tap below to finish connecting.</p>
+<p><a id=open href="{app_url}"
+ style="display:inline-block;padding:12px 18px;background:#1a1a1a;color:#fff">Open jFinances</a></p>
+<script>location.replace(document.getElementById('open').href)</script>
+</body>"""
+
+
+@app.get("/plaid/oauth", include_in_schema=False)
+def plaid_oauth_return(request: Request):
+    """The universal link's page. When the association is in place iOS never
+    shows it; otherwise it hands the same query to the app by custom scheme."""
+    if not on_api_host(request):
+        return JSONResponse({"error": {"code": "not_found", "message": "no such route"}}, status_code=404)
+    query = request.url.query
+    app_url = "jfinances://plaid/oauth" + (f"?{query}" if query else "")
+    return HTMLResponse(_OAUTH_RETURN.replace("{app_url}", html.escape(app_url, quote=True)),
+                        headers={"Cache-Control": "no-store"})
 
 
 # --- SPA ---------------------------------------------------------------------

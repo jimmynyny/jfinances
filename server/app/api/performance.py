@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..auth.deps import current_user, dashboard_only
+from ..auth.deps import current_user
 from ..auth.human import Principal
 from ..db import get_session
 from ..jobs.queue import enqueue
@@ -48,6 +48,6 @@ def get_performance(range: str = "1y", account_id: str | None = None, benchmark:
 
 
 @router.post("/prices/refresh", status_code=202)
-def refresh_prices(_: Principal = Depends(dashboard_only), sess: Session = Depends(get_session)):
+def refresh_prices(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
     """Fetch market data now instead of after tonight's close."""
     return {"queued": enqueue(sess, "refresh_prices", {}) is not None}

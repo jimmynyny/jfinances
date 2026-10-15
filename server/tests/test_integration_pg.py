@@ -197,15 +197,31 @@ def test_phone_link_flow(client, monkeypatch):
     me = client.get("/api/v1/me", headers=phone).json()
     assert me["via"] == "token" and me["email"] == "jimmy@example.com"
     assert client.get("/api/v1/overview", headers=phone).status_code == 200
-    # read-only, whatever the endpoint
-    r = client.post("/api/v1/alerts/dismiss-all", headers=phone)
-    assert r.status_code == 403 and r.json()["error"]["code"] == "auth.read_only"
-    assert client.post("/api/v1/sync/all", headers=phone).status_code == 403
-    # a phone cannot mint codes for another phone
+    # a phone edits as the dashboard does: alerts, sync, offline accounts, a bank link
+    assert client.post("/api/v1/alerts/dismiss-all", headers=phone).status_code == 200
+    assert client.post("/api/v1/sync/all", headers=phone).status_code == 202
+    r = client.post("/api/v1/accounts/manual", headers=phone,
+                    json={"name": "Phone bike", "manual_category": "other_asset", "value": "400"})
+    assert r.status_code == 201, r.text
+    assert client.delete(f"/api/v1/accounts/{r.json()['id']}", headers=phone).status_code == 204
+    r = client.post("/api/v1/link/token", headers=phone, json={"platform": "ios"})
+    assert r.status_code == 200 and r.json()["redirect_uri"] == "https://api.example.com/plaid/oauth", r.text
+    # what a phone may NOT do: manage phones. It cannot mint a code for another
+    # phone, list the household's phones, or stop the dashboard unlinking it.
     assert client.get("/api/v1/mobile/link?nonce=nonce-5678", headers=phone, follow_redirects=False).status_code == 403
+    assert client.get("/api/v1/tokens", headers=phone).status_code == 403
+    assert client.delete(f"/api/v1/tokens/{body['id']}", headers=phone).status_code == 403
     # the dashboard bundle is not served on the API host
     assert client.get("/", headers=api).status_code == 404
     assert client.get("/insights", headers=api).status_code == 404
+    # the iPhone's OAuth return lives on the API host: Apple's association file and the fallback page
+    aasa = client.get("/.well-known/apple-app-site-association", headers=api)
+    assert aasa.status_code == 200 and aasa.headers["content-type"].startswith("application/json")
+    assert aasa.json()["applinks"]["details"][0]["appIDs"] == ["TH5WXDPTS8.com.daedalustcg.jfinances"]
+    assert client.get("/.well-known/apple-app-site-association").status_code == 404
+    page = client.get("/plaid/oauth?oauth_state_id=abc&x=%3Cb%3E", headers=api)
+    assert page.status_code == 200 and "jfinances://plaid/oauth?oauth_state_id=abc&amp;x=%3Cb%3E" in page.text
+    assert client.get("/plaid/oauth").status_code != 200 or "Back to jFinances" not in client.get("/plaid/oauth").text
     # the dashboard lists the phone
     listed = client.get("/api/v1/tokens").json()["tokens"]
     assert [t["name"] for t in listed] == ["Test iPhone"] and listed[0]["last_used_at"]
