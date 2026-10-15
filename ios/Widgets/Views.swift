@@ -381,3 +381,68 @@ struct AccountView: View {
         .panelBackground()
     }
 }
+
+// MARK: - several accounts
+
+/// Up to four accounts side by side: the ones picked, in order, else the
+/// first four. Each opens its own account.
+struct AccountsView: View {
+    let entry: GlanceEntry<AccountsIntent>
+
+    private var accounts: [Account] {
+        guard let g = entry.glance else { return [] }
+        let picked = entry.configuration.picked.compactMap { id in g.accounts.first { $0.id == id } }
+        return picked.isEmpty ? Array(g.accounts.prefix(4)) : picked
+    }
+
+    var body: some View {
+        let show = entry.configuration.showAmounts
+        let list = accounts
+        Group {
+            if list.isEmpty {
+                WidgetEmpty(linked: entry.status != .notLinked)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        WidgetCaption(text: "accounts")
+                        Spacer()
+                        WidgetFoot(fetchedAt: entry.fetchedAt, stale: entry.status == .stale)
+                    }
+                    if list.count == 4 {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 14) { cell(list[0], show, compact: true); cell(list[1], show, compact: true) }
+                            Rule()
+                            HStack(spacing: 14) { cell(list[2], show, compact: true); cell(list[3], show, compact: true) }
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: 14) {
+                            ForEach(list) { a in cell(a, show, compact: false, size: list.count == 1 ? 30 : list.count == 2 ? 22 : 17) }
+                        }
+                    }
+                }
+            }
+        }
+        .panelBackground()
+    }
+
+    private func cell(_ a: Account, _ show: Bool, compact: Bool, size: CGFloat = 17) -> some View {
+        Link(destination: URL(string: "jfinances://account/\(a.id)")!) {
+            VStack(alignment: .leading, spacing: compact ? 3 : 2) {
+                HStack(spacing: 4) {
+                    Text(a.name).font(JFFont.sans(compact ? 11 : 12, .semibold)).foregroundStyle(JF.ink).lineLimit(1)
+                    if a.is_business == true { BusinessMark() }
+                }
+                if !compact {
+                    Text(a.is_liability ? "owed" : a.subtitle).font(JFFont.mono(9)).foregroundStyle(JF.ink3).lineLimit(1)
+                    Spacer(minLength: 2)
+                }
+                Figure(text: Fmt.money(a.balance, cents: false, currency: a.currency), show: show, font: JFFont.pixel(compact ? 18 : size))
+                    .widgetAccentable()
+                if !compact, a.trendValues.count >= 2 {
+                    PixelSparkline(a.trendValues, cell: 3, gap: 1).frame(height: 18)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}

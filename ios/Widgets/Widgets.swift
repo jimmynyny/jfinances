@@ -11,6 +11,7 @@ struct JFinancesWidgets: WidgetBundle {
         MonthWidget()
         UpcomingWidget()
         AccountWidget()
+        AccountsWidget()
     }
 }
 
@@ -56,5 +57,16 @@ struct AccountWidget: Widget {
         .configurationDisplayName("Account")
         .description("One account's balance and trend.")
         .supportedFamilies([.systemSmall, .accessoryRectangular, .accessoryInline, .accessoryCircular])
+    }
+}
+
+struct AccountsWidget: Widget {
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: "AccountsWidget", intent: AccountsIntent.self, provider: GlanceProvider<AccountsIntent>()) { e in
+            AccountsView(entry: e).widgetURL(URL(string: "jfinances://accounts"))
+        }
+        .configurationDisplayName("Accounts")
+        .description("Up to four accounts' balances side by side.")
+        .supportedFamilies([.systemMedium])
     }
 }

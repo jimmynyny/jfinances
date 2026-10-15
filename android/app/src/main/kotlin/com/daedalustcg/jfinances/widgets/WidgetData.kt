@@ -1,5 +1,6 @@
 package com.daedalustcg.jfinances.widgets
 
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.daedalustcg.jfinances.kit.models.Change
@@ -51,10 +52,15 @@ object WidgetData {
     }
 }
 
-/** A widget's own options (iOS's widget intents): every widget can hide amounts; the account widget picks one. */
+/** A widget's own options (iOS's widget intents): every widget can hide amounts; the account widget picks one, the accounts widget up to four. */
 object WidgetPrefs {
     val SHOW_AMOUNTS = booleanPreferencesKey("show_amounts")
     val ACCOUNT_ID = stringPreferencesKey("account_id")
+    val ACCOUNT_IDS = stringPreferencesKey("account_ids")
+
+    /** The accounts widget's picks, in order. */
+    fun accountIds(prefs: Preferences): List<String> =
+        prefs[ACCOUNT_IDS]?.split(',')?.filter { it.isNotEmpty() } ?: emptyList()
 }
 
 /** "▲ $5.6k 1.4%", green or red, for a 30-day change. */

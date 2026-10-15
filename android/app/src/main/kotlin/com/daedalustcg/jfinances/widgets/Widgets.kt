@@ -17,11 +17,11 @@ import com.daedalustcg.jfinances.kit.storage.Prefs
 import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
 
-/** The four widgets, refreshed together. */
+/** The five widgets, refreshed together. */
 object Widgets {
-    private val widgets = listOf(NetWorthWidget(), MonthWidget(), UpcomingWidget(), AccountWidget())
+    private val widgets = listOf(NetWorthWidget(), MonthWidget(), UpcomingWidget(), AccountWidget(), AccountsWidget())
     private val receivers: List<KClass<out GlanceAppWidgetReceiver>> =
-        listOf(NetWorthReceiver::class, MonthReceiver::class, UpcomingReceiver::class, AccountReceiver::class)
+        listOf(NetWorthReceiver::class, MonthReceiver::class, UpcomingReceiver::class, AccountReceiver::class, AccountsReceiver::class)
 
     /** The app refreshed (or signed in or out): redraw every widget from the cache, and keep them refreshing. */
     suspend fun updateAll(context: Context) {

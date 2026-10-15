@@ -35,12 +35,14 @@ network) and whenever the app refreshes:
 | This month | small, medium, large (4 × 4: waffle of categories) | show amounts |
 | Coming up | small, medium, large | show amounts |
 | Account | small, fixed | account, show amounts |
+| Accounts | medium (4 × 2), fixed: one to four balances side by side | up to four accounts, in the order tapped (none picked: the first four), show amounts |
 
 A widget draws small, medium or large from the size the launcher gives it, so
 resizing one changes its layout. "Show amounts" off replaces figures with dots
 for a home screen others see; touch and hold a widget, then the pencil, for its
 options. Tapping a widget opens the matching screen (`jfinances://overview`,
-`://insights/cashflow`, `://insights/subscriptions`, `://account/<id>`). The
+`://insights/cashflow`, `://insights/subscriptions`, `://account/<id>`); on
+Accounts, each balance opens its own account. The
 widget picker (Android 15+) previews each widget with made-up figures, as the
 iPhone's gallery does.
 
@@ -90,7 +92,7 @@ android/
     app/                   AppModel, LinkService (Custom Tab + PKCE), tabs and stacks, the floating tab bar
     components/            the screen scaffold (large titles, glass buttons, loader), rows, charts
     screens/               Overview, Accounts, Activity, Insights, Settings, sign-in
-    widgets/               the four Glance widgets, their options screen, the 30-minute refresh
+    widgets/               the five Glance widgets, their options screen, the 30-minute refresh
   app/src/main/res/        fonts (the iOS app's files), colours (light and dark), icon, widget declarations
   app/src/debug/           127.0.0.1 over plain HTTP, and the widget gallery: debug builds only
   app/src/test/            unit tests for the kit (decoding, formatting, cells, axes)

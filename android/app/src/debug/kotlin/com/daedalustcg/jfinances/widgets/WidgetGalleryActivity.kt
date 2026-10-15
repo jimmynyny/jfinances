@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.glance.appwidget.ExperimentalGlanceRemoteViewsApi
 import androidx.glance.appwidget.GlanceRemoteViews
@@ -26,7 +25,8 @@ import kotlinx.coroutines.launch
 /**
  * Debug builds only. Every widget at small, medium and large, drawn by Glance
  * into RemoteViews and applied here the way a launcher would, from the last
- * glance (or the sample one). `--es pin net_worth|month|upcoming|account` asks
+ * glance (or the sample one); `--ei pick N` gives the accounts widget the
+ * first N accounts. `--es pin net_worth|month|upcoming|account|accounts` asks
  * the launcher to add that widget to the home screen instead.
  */
 @OptIn(ExperimentalGlanceRemoteViewsApi::class)
@@ -48,13 +48,16 @@ class WidgetGalleryActivity : ComponentActivity() {
         val entry = WidgetEntry(cached?.glance ?: SampleGlance.glance, cached?.fetchedAt ?: System.currentTimeMillis(), WidgetEntry.Status.Live)
         val only = intent.getStringExtra("only")
         val hidden = intent.getBooleanExtra("hide_amounts", false)
+        val pick = intent.getIntExtra("pick", 0)
         val sizes = listOf("small" to DpSize(170.dp, 170.dp), "medium" to DpSize(360.dp, 170.dp), "large" to DpSize(360.dp, 370.dp))
-        val widgets = listOf("net_worth" to NetWorthWidget(), "month" to MonthWidget(), "upcoming" to UpcomingWidget(), "account" to AccountWidget())
+        val widgets = listOf("net_worth" to NetWorthWidget(), "month" to MonthWidget(), "upcoming" to UpcomingWidget(), "account" to AccountWidget(), "accounts" to AccountsWidget())
         lifecycleScope.launch {
             for ((name, widget) in widgets) {
                 if (only != null && only != name) continue
                 for ((label, size) in sizes) {
-                    val prefs = if (hidden) mutablePreferencesOf(WidgetPrefs.SHOW_AMOUNTS to false) else emptyPreferences()
+                    val prefs = mutablePreferencesOf()
+                    if (hidden) prefs[WidgetPrefs.SHOW_AMOUNTS] = false
+                    if (pick > 0) prefs[WidgetPrefs.ACCOUNT_IDS] = entry.glance?.accounts.orEmpty().take(pick).joinToString(",") { it.id }
                     val result = GlanceRemoteViews().compose(this@WidgetGalleryActivity, size) { widget.Render(entry, prefs) }
                     column.addView(TextView(this@WidgetGalleryActivity).apply {
                         text = "$name · $label"
@@ -75,6 +78,7 @@ class WidgetGalleryActivity : ComponentActivity() {
             "month" -> MonthReceiver::class.java
             "upcoming" -> UpcomingReceiver::class.java
             "account" -> AccountReceiver::class.java
+            "accounts" -> AccountsReceiver::class.java
             else -> NetWorthReceiver::class.java
         }
         AppWidgetManager.getInstance(this).requestPinAppWidget(ComponentName(this, receiver), null, null)

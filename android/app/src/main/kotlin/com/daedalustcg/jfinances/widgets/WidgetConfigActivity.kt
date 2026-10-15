@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.Preferences
 import androidx.glance.appwidget.GlanceAppWidget
@@ -56,8 +57,9 @@ import kotlinx.coroutines.launch
 
 /**
  * A widget's options, as iOS's Edit Widget: hide amounts for a home screen
- * others can see, and, for the account widget, which account. The account
- * list comes from the last glance, so it works offline.
+ * others can see; for the account widget, which account; for the accounts
+ * widget, up to four, in the order tapped. The account list comes from the
+ * last glance, so it works offline.
  */
 class WidgetConfigActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,26 +77,30 @@ class WidgetConfigActivity : ComponentActivity() {
             MonthReceiver::class.java.name -> "This month" to MonthWidget()
             UpcomingReceiver::class.java.name -> "Coming up" to UpcomingWidget()
             AccountReceiver::class.java.name -> "Account" to AccountWidget()
+            AccountsReceiver::class.java.name -> "Accounts" to AccountsWidget()
             else -> "Net worth" to NetWorthWidget()
         }
         setContent {
             JFTheme {
-                Options(appWidgetId, title, widget, pickAccount = widget is AccountWidget)
+                Options(appWidgetId, title, widget, pickAccount = widget is AccountWidget, pickAccounts = widget is AccountsWidget)
             }
         }
     }
 
     @Composable
-    private fun Options(appWidgetId: Int, title: String, widget: GlanceAppWidget, pickAccount: Boolean) {
+    private fun Options(appWidgetId: Int, title: String, widget: GlanceAppWidget, pickAccount: Boolean, pickAccounts: Boolean) {
         val scope = rememberCoroutineScope()
         val glanceId = remember { GlanceAppWidgetManager(this).getGlanceIdBy(appWidgetId) }
         var show by remember { mutableStateOf(true) }
         var accountId by remember { mutableStateOf<String?>(null) }
+        var accountIds by remember { mutableStateOf<List<String>>(emptyList()) }
         val accounts: List<Account> = remember { GlanceCache.load()?.glance?.accounts ?: emptyList() }
         LaunchedEffect(glanceId) {
             val prefs: Preferences = getAppWidgetState(this@WidgetConfigActivity, PreferencesGlanceStateDefinition, glanceId)
             show = prefs[WidgetPrefs.SHOW_AMOUNTS] ?: true
             accountId = prefs[WidgetPrefs.ACCOUNT_ID] ?: accounts.firstOrNull()?.id
+            accountIds = WidgetPrefs.accountIds(prefs).filter { id -> accounts.any { it.id == id } }
+                .ifEmpty { accounts.take(4).map { it.id } }
         }
         Column(
             Modifier
@@ -155,12 +161,46 @@ class WidgetConfigActivity : ComponentActivity() {
                     }
                 }
             }
-            Caption("tap the widget to open jFinances")
+            if (pickAccounts) {
+                Panel("accounts · up to four", flush = true) {
+                    if (accounts.isEmpty()) Fine("Open jFinances and sign in first: the accounts come from it.", Modifier.padding(16.dp))
+                    accounts.forEachIndexed { i, a ->
+                        val at = accountIds.indexOf(a.id)
+                        val full = at < 0 && accountIds.size >= 4
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !full) { accountIds = if (at >= 0) accountIds - a.id else accountIds + a.id }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(20.dp)
+                                    .border(1.5.dp, if (at >= 0) JF.accent else JF.ink3, RectangleShape)
+                                    .background(if (at >= 0) JF.accent else Color.Transparent),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (at >= 0) Text("${at + 1}", style = JFFont.mono(11f, JFFont.Weight.Semibold), color = JF.accentInk)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(a.name, style = JFFont.sans(15f, JFFont.Weight.Medium), color = if (full) JF.ink3 else JF.ink, maxLines = 1)
+                                Text(a.subtitle, style = JFFont.mono(11f), color = JF.ink3, maxLines = 1)
+                            }
+                        }
+                        if (i < accounts.size - 1) Rule(Modifier.padding(start = 16.dp))
+                    }
+                }
+                Fine("Shown in the order you pick them. None picked: the first four.")
+            }
+            Caption(if (pickAccounts) "tap an account on the widget to open it" else "tap the widget to open jFinances")
             PrimaryButton("Done", onClick = {
                 scope.launch {
                     updateAppWidgetState(this@WidgetConfigActivity, glanceId) { prefs ->
                         prefs[WidgetPrefs.SHOW_AMOUNTS] = show
                         accountId?.let { prefs[WidgetPrefs.ACCOUNT_ID] = it }
+                        if (pickAccounts) prefs[WidgetPrefs.ACCOUNT_IDS] = accountIds.joinToString(",")
                     }
                     widget.update(this@WidgetConfigActivity, glanceId)
                     setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId))

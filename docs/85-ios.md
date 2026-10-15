@@ -33,11 +33,13 @@ cached for five minutes so several widgets make one request; refreshed every
 | This month | small, medium, large (waffle of categories), Lock Screen rectangular | show amounts |
 | Coming up | small, medium, large, Lock Screen rectangular | show amounts |
 | Account | small, Lock Screen rectangular / inline / circular | account, show amounts |
+| Accounts | medium: one to four balances side by side (two by two for four) | up to four accounts, in order (none picked: the first four), show amounts |
 
 Every widget figure is `privacySensitive`: a locked phone shows it redacted.
 "Show amounts" off replaces figures with dots for a Home Screen others see.
 Tapping a widget opens the matching screen (`jfinances://overview`,
-`://insights/cashflow`, `://insights/subscriptions`, `://account/<id>`).
+`://insights/cashflow`, `://insights/subscriptions`, `://account/<id>`); on
+Accounts, each balance opens its own account.
 
 ## 2. Signing in
 
@@ -68,7 +70,7 @@ ios/
     UI/                    tokens (colours, Plex + Doto faces), Readout, Panel, Delta, MoneyText,
                            pixel sparkline / meter / bars / waffle, blur
   App/                   the app: AppModel, LinkService, screens, components, charts; Fonts/
-  Widgets/               the extension: four widgets, one provider, intents
+  Widgets/               the extension: five widgets, one provider, intents
   UITests/               a screenshot tour for the simulator (not shipped)
   Scripts/
     deploy-ota.sh          build, sign, serve an itms-services link on the tailnet

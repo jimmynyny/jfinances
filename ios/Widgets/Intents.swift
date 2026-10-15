@@ -70,3 +70,30 @@ struct AccountIntent: AmountsIntent {
     @Parameter(title: "Show amounts", default: true)
     var showAmounts: Bool
 }
+
+/// Up to four accounts side by side, in the order picked.
+struct AccountsIntent: AmountsIntent {
+    static var title: LocalizedStringResource { "Accounts" }
+    static var description: IntentDescription { IntentDescription("Up to four accounts' balances side by side.") }
+
+    @Parameter(title: "First account")
+    var first: AccountEntity?
+
+    @Parameter(title: "Second account")
+    var second: AccountEntity?
+
+    @Parameter(title: "Third account")
+    var third: AccountEntity?
+
+    @Parameter(title: "Fourth account")
+    var fourth: AccountEntity?
+
+    @Parameter(title: "Show amounts", default: true)
+    var showAmounts: Bool
+
+    /// The picked accounts' ids, in order, without repeats.
+    var picked: [String] {
+        var seen = Set<String>()
+        return [first, second, third, fourth].compactMap { $0?.id }.filter { seen.insert($0).inserted }
+    }
+}

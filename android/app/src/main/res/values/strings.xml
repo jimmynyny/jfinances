@@ -9,4 +9,6 @@
     <string name="widget_upcoming_description">Subscriptions and bills expected in the next two weeks.</string>
     <string name="widget_account">Account</string>
     <string name="widget_account_description">One account\'s balance and trend.</string>
+    <string name="widget_accounts">Accounts</string>
+    <string name="widget_accounts_description">Up to four accounts\' balances side by side.</string>
 </resources>

@@ -16,9 +16,9 @@ final class WidgetTests: XCTestCase {
         sleep(2)
 
         // Every preview in the gallery, in order: net worth S M, this month
-        // S M L, coming up S M L, account S.
+        // S M L, coming up S M L, account S, accounts M.
         openGallery()
-        for page in 0..<9 {
+        for page in 0..<10 {
             snap("g-\(page)")
             springboard.swipeLeft()
             sleep(1)
@@ -27,7 +27,7 @@ final class WidgetTests: XCTestCase {
 
         // Then real ones, fed by the server through the shared Keychain.
         add(page: 4)   // this month, large
-        add(page: 6)   // coming up, medium
+        add(page: 9)   // accounts, medium
         add(page: 8)   // account, small
         add(page: 0)   // net worth, small
         let done = springboard.buttons["Done"]
