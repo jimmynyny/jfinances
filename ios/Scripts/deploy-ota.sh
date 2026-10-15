@@ -38,6 +38,15 @@ PLATFORM_VERSION=(-Xlinker -platform_version -Xlinker ios -Xlinker "$MIN_IOS" -X
 
 MARKETING=$(sed -n 's/.*MARKETING_VERSION: *"\(.*\)".*/\1/p' project.yml | head -1)
 MARKETING=${MARKETING:-0.1.0}
+
+# Plaid Link (docs/30 "Link on the phones") is a binary xcframework. Xcode
+# resolves it as the LinkKit package in project.yml; here it is the same zip
+# that package pins, fetched once and checked against the checksum in its
+# manifest (https://github.com/plaid/plaid-link-ios-spm, tag LINKKIT_VERSION).
+LINKKIT_VERSION=$(sed -n '/url: https:\/\/github.com\/plaid\/plaid-link-ios-spm/{n;s/.*from: *//p;}' project.yml)
+LINKKIT_VERSION=${LINKKIT_VERSION:-7.2.2}
+LINKKIT_SHA256=d02ece9d8a621f3ed34f02e19ec1ebfc982071b299f748d94d5719b88029ab8b
+LINKKIT_URL="https://github.com/plaid/plaid-link-ios/releases/download/$LINKKIT_VERSION/LinkKit.xcframework.zip"
 # The build number must climb or the phone keeps the old binary. Minutes
 # since 2026-01-01: monotonic, short, nothing stored between runs.
 BUILD_NUM=$(( ($(date +%s) - 1767225600) / 60 ))
@@ -65,10 +74,28 @@ $SWIFTC -emit-module -emit-library -static -module-name "$KIT" -sdk "$SDK" -targ
 $SWIFTC -emit-module -emit-library -static -module-name "$KIT" -sdk "$SDK" -target "$TRIPLE" -O -wmo \
   -application-extension -emit-module-path "$B/ext/$KIT.swiftmodule" -o "$B/ext/lib$KIT.a" $KIT_SRC
 
+# ------------------------------------------------------------ 1b. LinkKit
+echo "==> LinkKit $LINKKIT_VERSION"
+LK_CACHE="$HOME/Library/Caches/jfinances"
+LK_ZIP="$LK_CACHE/LinkKit-$LINKKIT_VERSION.xcframework.zip"
+mkdir -p "$LK_CACHE"
+if [ ! -f "$LK_ZIP" ]; then
+  echo "    fetching $LINKKIT_URL"
+  curl -fsSL -o "$LK_ZIP.part" "$LINKKIT_URL" && mv "$LK_ZIP.part" "$LK_ZIP"
+fi
+[ "$(shasum -a 256 "$LK_ZIP" | cut -d' ' -f1)" = "$LINKKIT_SHA256" ] \
+  || { echo "LinkKit zip does not match the checksum in the package manifest; refusing it"; rm -f "$LK_ZIP"; exit 1; }
+(cd "$B" && unzip -q "$LK_ZIP")
+LK="$B/LinkKit.xcframework/ios-arm64"
+[ -d "$LK/LinkKit.framework" ] || { echo "LinkKit.xcframework has no ios-arm64 slice"; exit 1; }
+
 # ------------------------------------------------------------ 2. the binaries
 echo "==> Compiling $APP_NAME"
+# LinkKit is a dynamic framework, embedded below: the app looks for it at
+# @executable_path/Frameworks (xcodebuild's LD_RUNPATH_SEARCH_PATHS; here ours to pass).
 $SWIFTC -sdk "$SDK" -target "$TRIPLE" -O -wmo -module-name "$APP_NAME" \
-  -I "$B/app" -L "$B/app" -l"$KIT" "${PLATFORM_VERSION[@]}" \
+  -I "$B/app" -L "$B/app" -l"$KIT" -F "$LK" "${PLATFORM_VERSION[@]}" \
+  -Xlinker -rpath -Xlinker @executable_path/Frameworks \
   -o "$B/$APP_NAME" $(find App -name '*.swift')
 
 echo "==> Compiling $EXT_NAME"
@@ -177,6 +204,9 @@ cp "$B/extassets/Assets.car" "$APPEX/Assets.car" 2>/dev/null || true
 cp App/Fonts/*.ttf "$APP/"
 cp App/Fonts/*.ttf "$APPEX/"
 chmod +x "$APP/$APP_NAME" "$APPEX/$EXT_NAME"
+# LinkKit, embedded; re-signed with the app below.
+mkdir -p "$APP/Frameworks"
+cp -R "$LK/LinkKit.framework" "$APP/Frameworks/"
 
 ls -d "$PWD"/Widgets/*.swift > "$B/ext-sources.txt"
 echo "$PWD/$B/$EXT_NAME.swiftconstvalues" > "$B/ext-constvals.txt"
@@ -232,24 +262,39 @@ sign() {  # $1 bundle, $2 bundle id, $3 authored entitlements
   ENT=$(mktemp).plist
   security cms -D -i "$PROF" | plutil -extract Entitlements xml1 -o "$ENT" -
   # The profile lists what MAY be claimed, wildcards included. Claim our own
-  # values: the exact app id, our keychain group; never a wildcard.
+  # values: the exact app id, our keychain group; never a wildcard. A
+  # capability the profile does not carry (Associated Domains, for the OAuth
+  # return of a bank link: it needs an App ID of its own, docs/85 §4) is left
+  # out rather than fail on the phone; an OAuth bank then returns through the
+  # API hostname's page instead of straight into the app.
   AUTHORED="$3" ENTS="$ENT" TEAM="$TEAM" BID="$2" python3 - <<'MERGE'
 import os, plistlib
 team, bid = os.environ["TEAM"], os.environ["BID"]
 ents = plistlib.load(open(os.environ["ENTS"], "rb"))
+allowed = set(ents)
 def fix(v):
     if isinstance(v, str):
         return v.replace("$(AppIdentifierPrefix)", team + ".")
     if isinstance(v, list):
         return [fix(x) for x in v]
     return v
-ents.update({k: fix(v) for k, v in plistlib.load(open(os.environ["AUTHORED"], "rb")).items()})
+for k, v in plistlib.load(open(os.environ["AUTHORED"], "rb")).items():
+    if k == "com.apple.developer.associated-domains" and k not in allowed:
+        print("    ⚠ the profile has no Associated Domains: OAuth banks return through the web page, not straight into the app")
+        continue
+    ents[k] = fix(v)
 ents["application-identifier"] = f"{team}.{bid}"
 for k in [k for k, v in ents.items() if v == "*" or (isinstance(v, str) and v.endswith(".*"))]:
     del ents[k]
 plistlib.dump(ents, open(os.environ["ENTS"], "wb"))
 print("    " + bid + ": " + ", ".join(f"{k}={v}" for k, v in sorted(ents.items()) if k != "get-task-allow"))
 MERGE
+  # Embedded frameworks first, with the same identity, so the app's seal covers them.
+  for fw in "$1"/Frameworks/*.framework; do
+    [ -d "$fw" ] || continue
+    codesign --force --sign "$CERT" --timestamp=none "$fw"
+    echo "    signed $(basename "$fw")"
+  done
   codesign --force --sign "$CERT" --entitlements "$ENT" --timestamp=none --generate-entitlement-der "$1"
   rm -f "$ENT"
   echo "    signed $(basename "$1")  <-  $(basename "$PROF")"

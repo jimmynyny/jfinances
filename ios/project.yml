@@ -27,6 +27,11 @@ settings:
 packages:
   JFinancesKit:
     path: JFinancesKit
+  # Plaid Link, native (docs/30 "Link on the phones"). A binary xcframework;
+  # Scripts/deploy-ota.sh resolves and embeds it too.
+  LinkKit:
+    url: https://github.com/plaid/plaid-link-ios-spm
+    from: 7.2.2
 targets:
   JFinances:
     type: application
@@ -35,6 +40,7 @@ targets:
       - path: App
     dependencies:
       - package: JFinancesKit
+      - package: LinkKit
       - target: JFinancesWidgets
         embed: true
         codeSign: true
@@ -73,6 +79,13 @@ targets:
       path: Config/JFinances.entitlements
       properties:
         keychain-access-groups: [$(AppIdentifierPrefix)com.daedalustcg.jfinances]
+        # An OAuth bank sends the phone back to https://<API host>/plaid/oauth
+        # (docs/30 "Link on the phones"); iOS opens it in the app only with this.
+        # Needs an App ID with Associated Domains; deploy-ota.sh drops it when the
+        # provisioning profile cannot carry it (OAuth banks then use the page).
+        com.apple.developer.associated-domains:
+          - applinks:jfinances-api.sellingtcg.com
+          - applinks:jfinances-sandbox-api.sellingtcg.com
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.daedalustcg.jfinances

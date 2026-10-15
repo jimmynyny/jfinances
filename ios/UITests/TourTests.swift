@@ -270,6 +270,26 @@ final class TourTests: XCTestCase {
         }
     }
 
+    /// Settings → Connections → Connect a bank: the kind question, then Link
+    /// (against a local server without Plaid credentials, the error it shows).
+    func testConnect() {
+        sleep(4)
+        tab("Settings")
+        let connections = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Connections'")).firstMatch
+        guard connections.waitForExistence(timeout: 3) else { return }
+        connections.tap()
+        sleep(3)
+        app.buttons["Connect a bank"].firstMatch.tap()
+        sleep(1)
+        snap("30-connect-kind")
+        let kind = app.buttons["Bank, card or loan"].firstMatch
+        if kind.waitForExistence(timeout: 2) {
+            kind.tap()
+            sleep(5)
+            snap("31-connect-result")
+        }
+    }
+
     private func tab(_ name: String) {
         app.tabBars.buttons[name].tap()
         sleep(3)

@@ -153,6 +153,10 @@ final class AppModel {
         case "settings":
             if parts.first == "connections" { showConnections = true }
             tab = .settings
+        case "plaid":
+            // The OAuth return page's fallback (docs/30 "Link on the phones"): it
+            // brought the app forward, and Link, still open, carries on by itself.
+            break
         default: break
         }
     }

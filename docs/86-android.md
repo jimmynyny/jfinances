@@ -81,6 +81,19 @@ token signs the phone out. The name the dashboard's Settings → phones shows is
 Production's API hostname is `jfinances-api.sellingtcg.com` (docs/55); the
 sign-in screen offers production first (`DEFAULT_SERVER` in `app/build.gradle.kts`).
 
+### 2b. Connecting a bank
+
+As the iPhone's (docs/85 §2b): Settings → Connections → Connect a bank asks the
+kind, fetches a link token (`POST /link/token`, `platform: android`) and opens
+Plaid Link in the app (`com.plaid.link:sdk-core`, `app/PlaidLink.kt`, through
+the `OpenPlaidLink` activity-result contract); the server exchanges the public
+token, the duplicate guard's question is asked in a dialog, Re-link and Add
+accounts run update mode. An OAuth bank returns to the app by package name:
+the server passes `android_package_name` (no redirect URI) and
+`com.daedalustcg.jfinances` must be in the Plaid dashboard's "Allowed Android
+package names" (docs/30 "What to register"). Nothing else is needed on the
+phone.
+
 ## 3. Layout
 
 ```

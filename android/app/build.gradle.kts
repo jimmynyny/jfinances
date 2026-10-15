@@ -100,6 +100,8 @@ dependencies {
     implementation(libs.glance.appwidget)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    // Plaid Link, native (docs/30 "Link on the phones").
+    implementation(libs.plaid.link)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
 }

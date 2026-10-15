@@ -36,6 +36,7 @@ struct ConnectionsScreen: View {
                 .buttonStyle(QuietButtonStyle())
                 .disabled(busy != nil)
             }
+            ConnectBankButton { toast = $0 }
             Loader(height: 240) {
                 try await APIClient.shared.items()
             } content: { items in
@@ -92,6 +93,7 @@ struct ConnectionsScreen: View {
                     Task { await run("sync-\(item.id)") { try await APIClient.shared.syncItem(id: item.id) ? "Sync queued" : "Sync already queued" } }
                 }
                 .buttonStyle(SmallButtonStyle())
+                RelinkButton(item: item) { toast = $0 }
                 Spacer()
                 Button("Unlink") { removing = item }
                     .buttonStyle(SmallButtonStyle(destructive: true))

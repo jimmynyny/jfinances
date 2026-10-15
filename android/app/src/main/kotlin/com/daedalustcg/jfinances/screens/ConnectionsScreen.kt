@@ -22,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.daedalustcg.jfinances.app.ConnectBankButton
 import com.daedalustcg.jfinances.app.LocalAppModel
+import com.daedalustcg.jfinances.app.RelinkButton
 import com.daedalustcg.jfinances.components.Fine
 import com.daedalustcg.jfinances.components.Loader
 import com.daedalustcg.jfinances.components.QuietButton
@@ -84,6 +86,7 @@ fun ConnectionsScreen(onBack: () -> Unit) {
                 if (busy == null) run("prices") { if (ApiClient.refreshPrices()) "Market prices refreshing" else "Prices already refreshing" }
             }, Modifier.weight(1f))
         }
+        ConnectBankButton(onLinked = { model.toast(it) })
         Loader(height = 240.dp, load = { ApiClient.items() }) { items ->
             val live = items.filter { it.status != "removed" }
             Panel("connections", flush = true, actions = { Fine("${live.size} linked") }) {
@@ -130,6 +133,7 @@ private fun tone(status: String) = when (status) {
 
 @Composable
 private fun ConnectionRow(item: Item, busy: String?, onSync: () -> Unit, onUnlink: () -> Unit) {
+    val model = LocalAppModel.current
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -153,6 +157,7 @@ private fun ConnectionRow(item: Item, busy: String?, onSync: () -> Unit, onUnlin
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SmallButton("Sync now", onSync, enabled = busy == null)
+            RelinkButton(item, onDone = { model.toast(it) })
             Spacer(Modifier.weight(1f))
             SmallButton("Unlink", onUnlink, destructive = true, enabled = busy == null)
         }

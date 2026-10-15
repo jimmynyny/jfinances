@@ -75,6 +75,31 @@ out. Settings → phones on the dashboard lists and unlinks phones.
 Production's API hostname is `jfinances-api.sellingtcg.com` (docs/55); the
 sign-in screen offers production first (`JFDefaultServer` in project.yml).
 
+### 2b. Connecting a bank
+
+Settings → Connections → Connect a bank asks what kind (bank, card or loan;
+investment or retirement: the product plan, docs/30 "Products"), fetches a
+link token (`POST /link/token`, `platform: ios`) and opens Plaid Link in the
+app (LinkKit, the `LinkKit` package in project.yml; `App/App/PlaidLink.swift`).
+Link hands back a public token; the server exchanges it (`POST /link/exchange`),
+so the phone never sees an access token. The duplicate guard's 409 is asked as
+an alert with the same words as the web's dialog, and its yes retries with the
+answer. Re-link and Add accounts on a connection open Link in update mode and
+finish with `POST /link/update-complete`.
+
+An OAuth bank does its login in the system browser and returns to
+`https://<API host>/plaid/oauth`, a universal link (docs/30 "Link on the
+phones"). For iOS to open that in the app, the app carries the Associated
+Domains entitlement (`applinks:` for both API hostnames, project.yml) and the
+API hostname serves Apple's association file. That entitlement needs an App ID
+of its own with Associated Domains enabled and a provisioning profile for it
+(the team's wildcard profile cannot carry it): `deploy-ota.sh` signs with that
+profile when it is in the profiles folder, and without one drops the
+entitlement with a warning, in which case an OAuth bank lands on the API
+hostname's page, which bounces to the app by custom scheme and Link carries on.
+The redirect URIs and the Android package must also be registered in the Plaid
+dashboard (docs/30 "What to register").
+
 ## 3. Layout
 
 ```
@@ -108,17 +133,21 @@ Scripts/deploy-ota.sh          # prints an itms-services:// link; open it in Saf
 ```
 
 It compiles with `swiftc` (the kit twice: for the app and extension-safe for
-the widgets), runs `actool`, writes the Info.plists, extracts the widgets'
-AppIntents metadata, signs with the team's development certificate and a
-provisioning profile, zips the IPA and serves it at
+the widgets), fetches Plaid's LinkKit xcframework (the zip the `LinkKit`
+package pins, checked against its checksum, cached in
+`~/Library/Caches/jfinances`) and embeds it, runs `actool`, writes the
+Info.plists, extracts the widgets' AppIntents metadata, signs with the team's
+development certificate and a provisioning profile, zips the IPA and serves it at
 `https://<this mac>.ts.net/jfinances` through `tailscale serve`, beside
 vending's `/vendingtcg`. The phone needs Tailscale on; the Mac must stay
 awake while installing. Stop serving with `tailscale serve --set-path /jfinances off`.
 
 Signing uses an explicit profile for `com.daedalustcg.jfinances(.widgets)`
 when one exists, else the team's wildcard development profile (`TH5WXDPTS8.*`):
-the app needs no capability beyond a keychain access group, which the
-wildcard allows. A phone must be in the profile's device list. Build numbers
+the wildcard allows the keychain access group but not Associated Domains, so
+with it the OAuth return of a bank link goes through the web page (§2b);
+an explicit profile from an App ID with Associated Domains makes it open the
+app directly. A phone must be in the profile's device list. Build numbers
 are minutes since 2026-01-01, so every build installs over the last.
 
 Xcode: `xcodegen generate` then open `JFinances.xcodeproj`. Debug builds add a
