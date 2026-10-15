@@ -15,7 +15,14 @@ The five tabs read what the iPhone's read, field for field:
 | Accounts | every visible account by kind with its dot-matrix trend; an account shows its balance line, credit use, everything known about it (the bank's facts, what was entered on the dashboard tagged "entered", what follows tagged "calc": loan terms and payoff, card APR and limit, savings APY, holdings), a home's or car's monthly market value, performance and holdings (investments), and its transactions. Where it counts (its group) decides which: an offline account counted as an investment shows performance, one with imported statements its transactions | `/overview`, `/accounts/{id}/history`, `/accounts/{id}/details`, `/accounts/{id}/asset`, `/investments/performance`, `/holdings`, `/transactions` |
 | Activity | all transactions by day, or largest first; search, account (by group, offline accounts with imported transactions included) and category filters; tap for the full record, its account and whether it counts as business | `/transactions`, `/transactions/categories`, `/accounts` |
 | Insights | cash flow with the money-flow diagram (income → spending, saved or from savings), spending (by category, a category's kinds, merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks (offline investments "kept by hand"). Every number opens the transactions behind it, adding up to it: a row with one tap; a bar or a money-flow node with two (the first shows its numbers or lights its path). Chart legends hide and show their series | `/insights/*`, `/transactions` (Insights' `flow` and groupings), `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
-| Settings | who and which server, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
+| Settings | who and which server, Connections, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
+
+**Editing.** The iPhone app's editing table (docs/85 §1), screen for screen:
+the same sheets with Cancel and Save (`components/Forms.kt`, `screens/edit/`),
+the same menus (a tap on a subscription or an alert opens its menu; the account
+screen's Edit pill opens Edit account…, Update value… or Refresh balance), the
+same Connections screen under Settings. A confirmation shows at the bottom of
+the screen after each save (`AppModel.toast`), as iOS's does.
 
 **Blur**: the switch in Settings blurs every figure, radius scaled to the
 text, as on the web: for screenshots. A tab's large title sits in the top
@@ -90,8 +97,8 @@ android/
       ui/                    tokens (colours, Plex + Doto faces), Readout, Panel, Delta, MoneyText,
                              pixel sparkline / meter / bars / waffle, blur, Fmt (iOS's rounding)
     app/                   AppModel, LinkService (Custom Tab + PKCE), tabs and stacks, the floating tab bar
-    components/            the screen scaffold (large titles, glass buttons, loader), rows, charts
-    screens/               Overview, Accounts, Activity, Insights, Settings, sign-in
+    components/            the screen scaffold (large titles, glass buttons, loader), rows, charts, the form kit (Forms.kt), alerts
+    screens/               Overview, Accounts, Activity, Insights, Settings, Connections, sign-in; edit/ holds the edit sheets
     widgets/               the five Glance widgets, their options screen, the 30-minute refresh
   app/src/main/res/        fonts (the iOS app's files), colours (light and dark), icon, widget declarations
   app/src/debug/           127.0.0.1 over plain HTTP, and the widget gallery: debug builds only
@@ -134,8 +141,12 @@ with; `JAVA_HOME` and `ANDROID_HOME` default to the Homebrew JDK and
 
 ```
 API_HOST=127.0.0.1 uv run uvicorn server.app.web:app --port 8001   # repo root, local DB
-JF_DEBUG_TOKEN=<token> android/Scripts/emu-tour.sh /tmp/tour [dark|light]
+JF_DEBUG_TOKEN=<token> android/Scripts/emu-tour.sh /tmp/tour [dark|light] [screens|edit]
 ```
+
+`edit` walks the edit sheets instead of the screens, finding buttons by their
+text through uiautomator; it wants the demo household (`server/tools/demo_seed.py`)
+for its account names, as the iPhone's `testEditing` does.
 
 Debug builds add a `local` server (the dashboard on 127.0.0.1:8000, the API on
 :8001, reached from the emulator over `adb reverse`; plain HTTP to 127.0.0.1 is

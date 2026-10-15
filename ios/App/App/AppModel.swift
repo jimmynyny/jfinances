@@ -35,6 +35,8 @@ final class AppModel {
     var insightsSection: InsightsSection = .cashflow
     /// An account a deep link asked for; the Accounts tab pushes it and clears it.
     var pendingAccountId: String?
+    /// Settings → Connections is wanted (a bank needs re-linking); Settings pushes it.
+    var showConnections = false
     /// Bumped by pull-to-refresh; every loader on screen reloads.
     var refreshToken = UUID()
     var blur: Bool {
@@ -77,6 +79,18 @@ final class AppModel {
     func pullToRefresh() async {
         refreshToken = UUID()
         await refreshGlance(force: true)
+    }
+
+    /// Something was edited on this phone: every loader reloads, the glance and
+    /// the widgets with it.
+    func changed() {
+        refreshToken = UUID()
+        Task { await refreshGlance(force: true) }
+    }
+
+    func openConnections() {
+        tab = .settings
+        showConnections = true
     }
 
     /// Every screen funnels API errors here, so a dead token is handled once:
@@ -136,7 +150,9 @@ final class AppModel {
         case "insights":
             if let s = parts.first.flatMap(InsightsSection.init(rawValue:)) { insightsSection = s }
             tab = .insights
-        case "settings": tab = .settings
+        case "settings":
+            if parts.first == "connections" { showConnections = true }
+            tab = .settings
         default: break
         }
     }

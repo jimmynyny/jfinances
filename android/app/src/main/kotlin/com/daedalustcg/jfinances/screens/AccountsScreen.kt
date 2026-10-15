@@ -1,12 +1,16 @@
 package com.daedalustcg.jfinances.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,18 +33,28 @@ import com.daedalustcg.jfinances.components.AccountRow
 import com.daedalustcg.jfinances.components.Chips
 import com.daedalustcg.jfinances.components.DatedValue
 import com.daedalustcg.jfinances.components.Fine
+import com.daedalustcg.jfinances.components.GlassPill
 import com.daedalustcg.jfinances.components.LinkText
 import com.daedalustcg.jfinances.components.Loader
 import com.daedalustcg.jfinances.components.MarketValuePanel
+import com.daedalustcg.jfinances.components.QuietButton
 import com.daedalustcg.jfinances.components.RuledList
 import com.daedalustcg.jfinances.components.Screen
 import com.daedalustcg.jfinances.components.TrendChart
 import com.daedalustcg.jfinances.components.TxnRow
 import com.daedalustcg.jfinances.kit.api.ApiClient
+import com.daedalustcg.jfinances.kit.api.ApiError
 import com.daedalustcg.jfinances.kit.api.TxnQuery
 import com.daedalustcg.jfinances.kit.models.Account
+import com.daedalustcg.jfinances.kit.models.AccountDetails
+import com.daedalustcg.jfinances.kit.models.AssetInfo
 import com.daedalustcg.jfinances.kit.models.Holding
 import com.daedalustcg.jfinances.kit.models.Txn
+import com.daedalustcg.jfinances.screens.edit.AccountEditSheet
+import com.daedalustcg.jfinances.screens.edit.AddOfflineSheet
+import com.daedalustcg.jfinances.screens.edit.AssetSheet
+import com.daedalustcg.jfinances.screens.edit.TermsSheet
+import com.daedalustcg.jfinances.screens.edit.ValueSheet
 import com.daedalustcg.jfinances.kit.ui.BusinessMark
 import com.daedalustcg.jfinances.kit.ui.Delta
 import com.daedalustcg.jfinances.kit.ui.Fmt
@@ -57,10 +71,11 @@ import kotlinx.coroutines.launch
 
 private val RANGES = listOf("1m" to "1m", "3m" to "3m", "6m" to "6m", "1y" to "1y", "all" to "all")
 
-/** Every visible account by kind, with each group's total, as the dashboard's Accounts page. */
+/** Every visible account by kind, with each group's total, as the dashboard's Accounts page. Offline accounts are added at the bottom. */
 @Composable
 fun AccountsScreen() {
     val model = LocalAppModel.current
+    var adding by remember { mutableStateOf(false) }
     Screen("Accounts") {
         Loader(height = 400.dp, load = { ApiClient.overview() }) { ov ->
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -75,7 +90,9 @@ fun AccountsScreen() {
                 ov.as_of?.let { Fine("balances as of ${Fmt.relative(it)}", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
             }
         }
+        QuietButton("Add an offline account", { adding = true })
     }
+    if (adding) AddOfflineSheet(onDismiss = { adding = false }, onAdded = { model.toast("Added ${it.name}") })
 }
 
 /**
@@ -83,14 +100,51 @@ fun AccountsScreen() {
  * known about it (the bank's facts, what was entered, what follows), its
  * holdings or its latest activity. Where it counts (its group), not its type,
  * decides which: an offline account counted as an investment shows performance,
- * one with imported statements its transactions.
+ * one with imported statements its transactions. The Edit menu changes what
+ * the dashboard's account drawer changes.
  */
 @Composable
-fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
+fun AccountDetailScreen(initial: Account, onBack: () -> Unit) {
+    val model = LocalAppModel.current
+    val scope = rememberCoroutineScope()
+    var account by remember { mutableStateOf(initial) }
     var range by remember { mutableStateOf("6m") }
+    var menu by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var valuing by remember { mutableStateOf(false) }
+    var terms by remember { mutableStateOf<AccountDetails?>(null) }
+    var asset by remember { mutableStateOf<Pair<AssetInfo?, Boolean>?>(null) }
+    var refreshing by remember { mutableStateOf(false) }
     val isInvestment = account.countsAsInvestment
     val isCredit = account.countsAsCard
-    Screen(account.name, inline = true, onBack = onBack) {
+    Screen(account.name, inline = true, onBack = onBack, actions = {
+        Box {
+            GlassPill("Edit", { menu = true }, working = refreshing)
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = JF.panel, shape = RoundedCornerShape(8.dp)) {
+                DropdownMenuItem(text = { Text("Edit account…", style = JFFont.sans(15f), color = JF.ink) }, onClick = { menu = false; editing = true })
+                if (account.isManual) {
+                    DropdownMenuItem(text = { Text("Update value…", style = JFFont.sans(15f), color = JF.ink) }, onClick = { menu = false; valuing = true })
+                } else {
+                    DropdownMenuItem(text = { Text("Refresh balance", style = JFFont.sans(15f), color = JF.ink) }, onClick = {
+                        menu = false
+                        scope.launch {
+                            refreshing = true
+                            try {
+                                account = ApiClient.refreshAccount(account.id)
+                                model.changed()
+                                model.toast("Balance refreshed")
+                            } catch (e: ApiError) {
+                                model.handle(e)
+                                model.toast(e.description)
+                            } finally {
+                                refreshing = false
+                            }
+                        }
+                    })
+                }
+            }
+        }
+    }) {
         Panel(account.subtitle.ifEmpty { "balance" }.lowercase(), actions = { Chips(RANGES, range, { range = it }) }) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Readout(
@@ -128,8 +182,8 @@ fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
                 }
             }
         }
-        if (account.isValuedAsset) MarketValuePanel(account)
-        AccountDetailsPanels(account.id)
+        if (account.isValuedAsset) MarketValuePanel(account, onEdit = { asset = it to true })
+        AccountDetailsPanels(account.id, onEdit = { terms = it })
         if (isInvestment) {
             PerformancePanel(account.id)
             HoldingsPanel(account.id)
@@ -159,6 +213,12 @@ fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
             KeyValueRow("updated") { Text(Fmt.relative(account.balance_updated_at), style = JFFont.mono(13f)) }
         }
     }
+    if (editing) {
+        AccountEditSheet(account, onDismiss = { editing = false }, onSaved = { account = it; model.toast("Saved") }, onRemoved = onBack)
+    }
+    if (valuing) ValueSheet(account, onDismiss = { valuing = false }, onSaved = { account = it; model.toast("Value updated") })
+    terms?.let { d -> TermsSheet(account, d, onDismiss = { terms = null }, onSaved = { model.toast("Details saved") }) }
+    asset?.let { (info, _) -> AssetSheet(account, info, onDismiss = { asset = null }, onSaved = { model.toast("Market value details saved") }) }
 }
 
 /** The latest transactions in one account, twenty-five at a time. */

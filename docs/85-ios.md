@@ -14,7 +14,24 @@ in the other.
 | Accounts | every visible account by kind with its dot-matrix trend; an account shows its balance line, credit use, everything known about it (the bank's facts, what was entered on the dashboard tagged "entered", what follows tagged "calc": loan terms and payoff, card APR and limit, savings APY, holdings), a home's or car's monthly market value, performance and holdings (investments), and its transactions. Where it counts (its group) decides which: an offline account counted as an investment shows performance, one with imported statements its transactions | `/overview`, `/accounts/{id}/history`, `/accounts/{id}/details`, `/accounts/{id}/asset`, `/investments/performance`, `/holdings`, `/transactions` |
 | Activity | all transactions by day, or largest first; search, account (by group, offline accounts with imported transactions included) and category filters; tap for the full record, its account and whether it counts as business | `/transactions`, `/transactions/categories`, `/accounts` |
 | Insights | cash flow with the money-flow diagram (income → spending, saved or from savings), spending (by category, a category's kinds, merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks (offline investments "kept by hand"). Every number opens the transactions behind it, adding up to it: a row with one tap; a bar or a money-flow node with two (the first shows its numbers or lights its path). Chart legends hide and show their series | `/insights/*`, `/transactions` (Insights' `flow` and groupings), `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
-| Settings | who and which server, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
+| Settings | who and which server, Connections (below), blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
+
+**Editing.** A phone edits as the dashboard does (docs/40 §5), through the
+same endpoints and with the same forms, in sheets with Cancel and Save
+(`App/Components/Forms.swift`, `App/Screens/Edit/`). Every save reloads the
+screens and the widgets.
+
+| Where | What |
+|---|---|
+| Activity → a transaction → Edit | category (one in use, the bank's, or a new name kept in the bank's style), note, business or personal (`PATCH /transactions/{id}`) |
+| an account → Edit → Edit account… | name, where it counts, hidden, business, what secures a loan; remove an offline account (`PATCH /accounts/{id}`, `DELETE`) |
+| an account → Edit → Update value… (offline) / Refresh balance (connected) | a new value today or on a day (`PUT …/value`); the bank's latest balances (`POST …/refresh`) |
+| an account → Add details / Edit details | what the bank doesn't report, with the server's live preview as you type (`PUT …/terms`, `POST …/terms/preview`) |
+| an offline home or car → market value → Edit | address, or VIN, mileage and where it's kept (`PUT …/asset`) |
+| Accounts → Add an offline account (Settings → Connections too) | a home, car, cash, other asset or other debt with today's value and, for a home or car, its market-value details (`POST /accounts/manual`) |
+| Insights → Subscriptions → tap one | recurring, not sure yet, not recurring, rename; Look for new ones (`PATCH /recurring/{id}`, `POST /recurring/detect`) |
+| Overview / Insights → alerts → tap one; Dismiss all | `POST /alerts/dismiss`, `/alerts/dismiss-all` |
+| Settings → Connections | each bank's status and last sync; Sync now, Unlink (with the billing note), Sync everything, Refresh prices, Add an offline account; connect, re-link and add accounts (§2b) |
 
 **Blur**: the switch in Settings blurs every figure, radius scaled to the
 text, as on the web: for screenshots. A tab's large title sits in the top
@@ -71,6 +88,9 @@ ios/
     UI/                    tokens (colours, Plex + Doto faces), Readout, Panel, Delta, MoneyText,
                            pixel sparkline / meter / bars / waffle, blur
   App/                   the app: AppModel, LinkService, screens, components, charts; Fonts/
+    Components/Forms.swift  the form kit: FormSheet, Field, ChoiceField, MenuField, DateField, DangerButton, toast
+    Screens/Edit/           the edit sheets: transaction, account (and value), terms, asset (and add offline)
+    Screens/ConnectionsScreen.swift  Settings → Connections
   Widgets/               the extension: five widgets, one provider, intents
   UITests/               a screenshot tour for the simulator (not shipped)
   Scripts/
@@ -114,4 +134,6 @@ JF_DEBUG_TOKEN=<token> ios/Scripts/sim-tour.sh <simulator-id> /tmp/tour
 
 A token for the local database comes from `auth.tokens.issue_token`. The
 tour signs the simulator in with it (debug builds only), walks every screen
-and writes a PNG per stop.
+and writes a PNG per stop. `TourTests.testEditing` walks the edit sheets
+instead (it wants the demo household, `server/tools/demo_seed.py`, for its
+account names): `xcodebuild … -only-testing:JFinancesUITests/TourTests/testEditing test`.

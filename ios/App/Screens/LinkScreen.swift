@@ -2,7 +2,7 @@ import JFinancesKit
 import SwiftUI
 
 /// Not linked yet: sign in through Cloudflare Access once, and the phone gets
-/// its own read-only token (docs/40 §5).
+/// its own token (docs/40 §5).
 struct LinkScreen: View {
     @Environment(AppModel.self) private var model
     @State private var server = AppConfig.defaultServer
@@ -40,7 +40,7 @@ struct LinkScreen: View {
                 if let error {
                     ErrorNote(error)
                 }
-                Text("You sign in with the same emailed code as the dashboard. This phone can read everything and change nothing; unlink it any time from Settings on either side.")
+                Text("You sign in with the same emailed code as the dashboard. This phone then does what the dashboard does; unlink it any time from Settings on either side.")
                     .font(JFFont.mono(11))
                     .foregroundStyle(JF.ink3)
                     .padding(.top, 4)

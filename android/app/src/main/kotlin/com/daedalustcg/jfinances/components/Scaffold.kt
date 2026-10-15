@@ -103,6 +103,8 @@ fun Screen(
     inline: Boolean = false,
     onBack: (() -> Unit)? = null,
     scroll: ScrollState = rememberScrollState(),
+    /** The bar's trailing action (Edit), as iOS's toolbar item. */
+    actions: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val model = LocalAppModel.current
@@ -147,7 +149,7 @@ fun Screen(
         }
         val showTitle by remember(inline, titlePx) { derivedStateOf { inline || scroll.value > titlePx } }
         val scrolled by remember { derivedStateOf { scroll.value > 0 } }
-        TopBar(title = title, showTitle = showTitle, scrolled = scrolled, onBack = onBack)
+        TopBar(title = title, showTitle = showTitle, scrolled = scrolled, onBack = onBack, actions = actions)
     }
 }
 
@@ -164,7 +166,7 @@ fun LargeTitle(title: String) {
  * content slides under it.
  */
 @Composable
-fun TopBar(title: String, showTitle: Boolean, scrolled: Boolean, onBack: (() -> Unit)?) {
+fun TopBar(title: String, showTitle: Boolean, scrolled: Boolean, onBack: (() -> Unit)?, actions: (@Composable () -> Unit)? = null) {
     val page = JF.page
     Box(
         Modifier
@@ -202,6 +204,7 @@ fun TopBar(title: String, showTitle: Boolean, scrolled: Boolean, onBack: (() -> 
                     modifier = Modifier.widthIn(max = 230.dp),
                 )
             }
+            if (actions != null) Box(Modifier.align(Alignment.CenterEnd)) { actions() }
         }
     }
 }

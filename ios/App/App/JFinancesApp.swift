@@ -69,7 +69,7 @@ struct MainTabs: View {
                 NavigationStack { InsightsScreen() }
             }
             Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
-                NavigationStack { SettingsScreen() }
+                SettingsTab()
             }
         }
     }

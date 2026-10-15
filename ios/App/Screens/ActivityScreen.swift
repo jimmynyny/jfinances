@@ -222,12 +222,29 @@ struct FilterChip: View {
     }
 }
 
-/// One transaction in full, including which account it belongs to.
+/// One transaction in full, including which account it belongs to; Edit changes
+/// its category, note and whether it counts as business.
 struct TxnDetailScreen: View {
-    let tx: Txn
+    @State private var tx: Txn
+    @State private var editing = false
+    @State private var toast: String?
+
+    init(tx: Txn) {
+        _tx = State(initialValue: tx)
+    }
 
     var body: some View {
         Screen(tx.title, inline: true) {
+            detail
+        }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } } }
+        .toast($toast)
+        .sheet(isPresented: $editing) {
+            TxnEditSheet(tx: tx) { tx = $0; toast = "Saved" }
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
             Panel(tx.pending ? "pending" : "posted") {
                 VStack(alignment: .leading, spacing: 10) {
                     Readout(tx.amount < 0 ? "money in" : "money out",
@@ -264,6 +281,5 @@ struct TxnDetailScreen: View {
                     if let m = tx.account_mask { KeyValueRow("number") { Text("··\(m)").font(JFFont.mono(14)) } }
                 }
             }
-        }
     }
 }

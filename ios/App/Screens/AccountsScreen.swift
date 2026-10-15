@@ -25,8 +25,11 @@ struct AccountsTab: View {
 }
 
 /// Every visible account by kind, with each group's total, as the dashboard's
-/// Accounts page.
+/// Accounts page. Offline accounts are added at the bottom.
 struct AccountsScreen: View {
+    @State private var adding = false
+    @State private var toast: String?
+
     var body: some View {
         Screen("Accounts") {
             Loader(height: 400) {
@@ -46,6 +49,12 @@ struct AccountsScreen: View {
                     if let at = ov.as_of { Fine("balances as of \(Fmt.relative(at))").frame(maxWidth: .infinity) }
                 }
             }
+            Button("Add an offline account") { adding = true }
+                .buttonStyle(QuietButtonStyle())
+        }
+        .toast($toast)
+        .sheet(isPresented: $adding) {
+            AddOfflineSheet { a in toast = "Added \(a.name)" }
         }
     }
 }
@@ -54,16 +63,79 @@ struct AccountsScreen: View {
 /// everything known about it (the bank's facts, what was entered, what follows),
 /// its holdings or its latest activity. Where it counts (its group), not its
 /// type, decides which: an offline account counted as an investment shows
-/// performance, one with imported statements its transactions.
+/// performance, one with imported statements its transactions. The Edit menu
+/// changes what the dashboard's account drawer changes.
 struct AccountDetailScreen: View {
-    let account: Account
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var account: Account
     @State private var range = "6m"
+    @State private var editing = false
+    @State private var valuing = false
+    @State private var terms: AccountDetails?
+    @State private var asset: (AssetInfo?)?
+    @State private var refreshing = false
+    @State private var toast: String?
+
+    init(account: Account) {
+        _account = State(initialValue: account)
+    }
 
     private var isInvestment: Bool { account.countsAsInvestment }
     private var isCredit: Bool { account.countsAsCard }
 
     var body: some View {
         Screen(account.name, inline: true) {
+            screen
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Edit account…", systemImage: "pencil") { editing = true }
+                    if account.isManual {
+                        Button("Update value…", systemImage: "dollarsign") { valuing = true }
+                    } else {
+                        Button("Refresh balance", systemImage: "arrow.clockwise") { Task { await refresh() } }
+                    }
+                } label: {
+                    if refreshing { ProgressView() } else { Text("Edit") }
+                }
+            }
+        }
+        .toast($toast)
+        .sheet(isPresented: $editing) {
+            AccountEditSheet(account: account, onSaved: { account = $0; toast = "Saved" }, onRemoved: { dismiss() })
+        }
+        .sheet(isPresented: $valuing) {
+            ValueSheet(account: account) { account = $0; toast = "Value updated" }
+        }
+        .sheet(item: Binding(get: { terms.map(TermsBox.init) }, set: { terms = $0?.details })) { box in
+            TermsSheet(account: account, details: box.details) { _ in toast = "Details saved" }
+        }
+        .sheet(isPresented: Binding(get: { asset != nil }, set: { if !$0 { asset = nil } })) {
+            AssetSheet(account: account, info: asset ?? nil) { _ in toast = "Market value details saved" }
+        }
+    }
+
+    private struct TermsBox: Identifiable {
+        let details: AccountDetails
+        var id: String { details.kind }
+    }
+
+    private func refresh() async {
+        refreshing = true
+        defer { refreshing = false }
+        do {
+            account = try await APIClient.shared.refreshAccount(id: account.id)
+            model.changed()
+            toast = "Balance refreshed"
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
+    }
+
+    @ViewBuilder private var screen: some View {
             Panel(account.subtitle.isEmpty ? "balance" : account.subtitle.lowercased(), actions: {
                 Chips(options: [("1m", "1m"), ("3m", "3m"), ("6m", "6m"), ("1y", "1y"), ("all", "all")], value: $range)
             }) {
@@ -98,15 +170,14 @@ struct AccountDetailScreen: View {
                 }
             }
 
-            if account.isValuedAsset { MarketValuePanel(account: account) }
-            AccountDetailsPanels(accountId: account.id)
+            if account.isValuedAsset { MarketValuePanel(account: account, onEdit: { asset = .some($0) }) }
+            AccountDetailsPanels(accountId: account.id, onEdit: { terms = $0 })
             if isInvestment {
                 PerformancePanel(accountId: account.id)
                 HoldingsPanel(accountId: account.id)
             }
             if !isInvestment && account.holdsTransactions { AccountActivity(accountId: account.id) }
             about
-        }
     }
 
     private var kind: String {

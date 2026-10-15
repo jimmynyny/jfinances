@@ -23,6 +23,22 @@ struct SettingsScreen: View {
                         KeyValueRow("linked") { Text(cred.linkedAt.formatted(date: .abbreviated, time: .shortened)).font(JFFont.mono(13)) }
                     }
                 }
+                Panel("banks", flush: true) {
+                    NavigationLink(value: SettingsRoute.connections) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Connections").font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink)
+                                Fine("Connect, re-link, sync or unlink a bank; add an offline account.")
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(JF.ink3)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 Panel("privacy") {
                     VStack(alignment: .leading, spacing: 10) {
                         Toggle(isOn: $model.blur) {
@@ -33,7 +49,7 @@ struct SettingsScreen: View {
                         }
                         .tint(JF.accent)
                         Rule()
-                        Text("This phone is read-only: it can see everything on the dashboard and change nothing. It never talks to a bank.")
+                        Text("This phone does what the dashboard does: it reads everything and edits what you tell it to. It never moves money and never talks to a bank itself; connecting one goes through the same secure window as on the web.")
                             .font(JFFont.sans(13)).foregroundStyle(JF.ink2)
                     }
                 }
@@ -53,11 +69,37 @@ struct SettingsScreen: View {
             }
             Fine("jFinances \(Self.version)").frame(maxWidth: .infinity).padding(.top, 8)
         }
+        .navigationDestination(for: SettingsRoute.self) { route in
+            switch route {
+            case .connections: ConnectionsScreen()
+            }
+        }
     }
 
     static var version: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         return "\(v) (\(b))"
+    }
+}
+
+enum SettingsRoute: Hashable {
+    case connections
+}
+
+/// The Settings tab owns its path so the Overview's "needs re-linking" note
+/// (and `jfinances://settings/connections`) can open Connections directly.
+struct SettingsTab: View {
+    @Environment(AppModel.self) private var model
+    @State private var path: [SettingsRoute] = []
+
+    var body: some View {
+        NavigationStack(path: $path) { SettingsScreen() }
+            .onChange(of: model.showConnections, initial: true) { _, wanted in
+                if wanted {
+                    model.showConnections = false
+                    path = [.connections]
+                }
+            }
     }
 }

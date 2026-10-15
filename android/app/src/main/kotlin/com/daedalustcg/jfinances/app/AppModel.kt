@@ -46,6 +46,9 @@ sealed interface Route {
 
     /** The transactions behind a number on Insights. */
     data class Drill(val target: DrillTarget) : Route
+
+    /** Settings → Connections: the banks, synced, re-linked or unlinked. */
+    data object Connections : Route
 }
 
 /**
@@ -126,6 +129,37 @@ class AppModel(private val context: Context) {
     suspend fun pullToRefresh() {
         refreshToken += 1
         refreshGlance(force = true)
+    }
+
+    /**
+     * Something was edited on this phone: every loader reloads, the glance and
+     * the widgets with it.
+     */
+    fun changed() {
+        refreshToken += 1
+        scope.launch { refreshGlance(force = true) }
+    }
+
+    /** A short confirmation at the bottom of the screen (RootView draws it). */
+    var toastText by mutableStateOf<String?>(null)
+        private set
+    private var toastJob: Job? = null
+
+    fun toast(text: String) {
+        toastText = text
+        toastJob?.cancel()
+        toastJob = scope.launch {
+            delay(2200)
+            toastText = null
+        }
+    }
+
+    /** Settings → Connections, from anywhere (a bank needs re-linking). */
+    fun openConnections() {
+        tab = AppTab.Settings
+        val stack = stacks.getValue(AppTab.Settings)
+        stack.clear()
+        stack.add(Route.Connections)
     }
 
     /**
@@ -272,7 +306,7 @@ class AppModel(private val context: Context) {
                 InsightsSection.entries.firstOrNull { it.key == first }?.let { insightsSection = it }
                 showTab(AppTab.Insights)
             }
-            "settings" -> showTab(AppTab.Settings)
+            "settings" -> if (first == "connections") openConnections() else showTab(AppTab.Settings)
         }
     }
 

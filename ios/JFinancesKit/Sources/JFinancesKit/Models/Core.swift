@@ -76,6 +76,27 @@ public struct Account: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
+    /// Where the account counts by its type (or offline category) alone, before
+    /// anyone chose: what "(its type)" means in the edit form.
+    public var naturalGroupKey: String {
+        if isManual {
+            switch manual_category {
+            case "real_estate": return "real_estate"
+            case "vehicle": return "vehicles"
+            case "cash": return "cash"
+            case "other_liability": return "other_liabilities"
+            default: return "other_assets"
+            }
+        }
+        switch type {
+        case "depository": return "cash"
+        case "credit": return "credit_cards"
+        case "investment", "brokerage": return "investments"
+        case "loan": return "loans"
+        default: return "other_assets"
+        }
+    }
+
     /// Homes and cars hold no transactions; every other account can, an offline
     /// one through imported statements.
     public var holdsTransactions: Bool { !(isManual && (groupKey == "real_estate" || groupKey == "vehicles")) }
@@ -334,9 +355,20 @@ public struct DetailFact: Codable, Hashable, Sendable, Identifiable {
     /// bank | you | calc
     public let source: String?
     public let note: String?
-    /// The entered field behind this fact: a missing value can be added there (on the dashboard).
+    /// The entered field behind this fact: a missing value can be added there.
     public let field: String?
     public var id: String { key }
+
+    public init(key: String, label: String, value: JSONValue?, format: String, source: String? = nil, note: String? = nil,
+                field: String? = nil) {
+        self.key = key
+        self.label = label
+        self.value = value
+        self.format = format
+        self.source = source
+        self.note = note
+        self.field = field
+    }
 
     public var isKnown: Bool {
         switch value { case .none, .some(.null): return false; default: return true }
@@ -351,13 +383,101 @@ public struct DetailSection: Codable, Hashable, Sendable, Identifiable {
     public var id: String { key }
 }
 
+/// A term the person may enter for this kind of account (PUT /accounts/{id}/terms).
+public struct DetailField: Codable, Hashable, Sendable, Identifiable {
+    public let key: String
+    public let label: String
+    /// pct | money | date | months | day | choice
+    public let format: String
+    public let min: Double?
+    public let max: Double?
+    public let help: String?
+    public let options: [String]?
+    /// Set when the bank reports it: shown, not edited.
+    public let bank: JSONValue?
+    public var id: String { key }
+
+    public var isReported: Bool {
+        switch bank { case .none, .some(.null): return false; default: return true }
+    }
+}
+
+/// Why a value is suggested for a term ("Pnc Auto Loan: $541.37 monthly, last on Sep 15").
+public struct DetailSuggestion: Codable, Hashable, Sendable {
+    public let value: JSONValue
+    public let why: String
+}
+
 public struct AccountDetails: Codable, Sendable {
     /// mortgage | student | loan | credit | depository | investment | asset | other
     public let kind: String
     public let sections: [DetailSection]
+    /// What can be entered for this kind; empty when nothing can.
+    public let fields: [DetailField]?
+    /// The values entered so far, by field key.
+    public let terms: [String: JSONValue]?
+    public let suggestions: [String: DetailSuggestion]?
 
     /// Facts the bank doesn't report and nothing could work out, which can be entered.
     public var missing: Int { sections.flatMap(\.facts).filter { !$0.isKnown && $0.field != nil }.count }
+    /// The fields the person may type into (the bank reports the rest).
+    public var editable: [DetailField] { (fields ?? []).filter { !$0.isReported } }
+}
+
+// MARK: - connections (GET /items)
+
+public struct Item: Codable, Hashable, Sendable, Identifiable {
+    public let id: String
+    public let institution_id: String?
+    public let institution_name: String?
+    /// active | login_required | error | pending_expiration | removed
+    public let status: String
+    public let error_code: String?
+    public let error_message: String?
+    public let consent_expires_at: String?
+    public let transactions_status: String?
+    public let last_synced_at: String?
+    public let last_webhook_at: String?
+    /// The bank has accounts on this login that aren't connected yet: Add accounts picks them.
+    public let new_accounts_at: String?
+    public let products: [String]?
+    public let account_count: Int?
+    public let created_at: String?
+    public let removed_at: String?
+
+    public var name: String { institution_name ?? institution_id ?? "Unknown bank" }
+    public var needsRelink: Bool { status == "login_required" || status == "pending_expiration" || status == "error" }
+
+    /// How the connection's status reads, as the web's itemStatusLabel.
+    public var statusLabel: String {
+        switch status {
+        case "active": return "active"
+        case "login_required": return "needs re-link"
+        case "pending_expiration": return "consent expiring"
+        case "error": return "error"
+        case "removed": return "unlinked"
+        default: return status
+        }
+    }
+}
+
+public struct ItemsList: Codable, Sendable {
+    public let items: [Item]
+}
+
+/// `POST /items/{id}/sync` and friends: whether a job was queued.
+public struct Queued: Codable, Sendable {
+    public let queued: Bool
+}
+
+/// `POST /link/token`, `POST /items/{id}/relink`: what Link needs.
+public struct LinkToken: Codable, Sendable {
+    public let link_token: String
+    public let expiration: String?
+    public let link_session_id: String
+    /// create | update
+    public let mode: String
+    public let redirect_uri: String?
 }
 
 // MARK: - market values (GET /accounts/{id}/asset)

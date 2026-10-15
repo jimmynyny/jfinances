@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.daedalustcg.jfinances.app.AppTab
 import com.daedalustcg.jfinances.app.InsightsSection
 import com.daedalustcg.jfinances.app.LocalAppModel
-import com.daedalustcg.jfinances.components.AlertRow
+import com.daedalustcg.jfinances.components.AlertsPanel
 import com.daedalustcg.jfinances.components.Chips
 import com.daedalustcg.jfinances.components.DatedValue
 import com.daedalustcg.jfinances.components.ErrorNote
@@ -75,7 +75,7 @@ fun OverviewScreen() {
                 NetWorthPanel(g)
                 MonthPanel(g)
                 UpcomingPanel(g)
-                if (g.alerts.count > 0) AlertsPanel()
+                if (g.alerts.count > 0) AlertsPanel(limit = 5)
                 GroupsPanel(g)
                 model.glanceFetchedAt?.let {
                     Fine("updated ${Fmt.relative(it)}", Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = TextAlign.Center)
@@ -162,28 +162,6 @@ private fun UpcomingPanel(g: Glance) {
 }
 
 @Composable
-private fun AlertsPanel() {
-    val model = LocalAppModel.current
-    Panel("alerts", flush = true) {
-        Loader(height = 80.dp, load = { ApiClient.alerts() }) { list ->
-            Column {
-                if (list.isEmpty()) {
-                    Fine("No alerts.", Modifier.padding(16.dp))
-                } else {
-                    RuledList(list.take(5)) { AlertRow(it) }
-                    if (list.size > 5) {
-                        LinkText("All ${list.size} alerts", {
-                            model.insightsSection = InsightsSection.Subscriptions
-                            model.select(AppTab.Insights)
-                        }, Modifier.padding(16.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun GroupsPanel(g: Glance) {
     val model = LocalAppModel.current
     Panel("where it sits", flush = true) {
@@ -210,21 +188,24 @@ private fun GroupsPanel(g: Glance) {
 }
 
 /**
- * A connection the bank wants signed in again. The phone can't do that (it
- * is read-only), so it says where to go.
+ * A connection the bank wants signed in again: re-link it from Settings →
+ * Connections, which this opens.
  */
 @Composable
 fun AttentionNote(items: List<Attention>) {
+    val model = LocalAppModel.current
     Row(
         Modifier
             .fillMaxWidth()
             .background(JF.panel)
             .border(1.dp, JF.warn.copy(alpha = 0.6f), RectangleShape)
+            .clickable { model.openConnections() }
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = JF.warn, modifier = Modifier.size(20.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 if (items.size == 1) "${items[0].institution_name ?: "A bank"} needs you to sign in again."
                 else "${items.size} connections need you to sign in again.",
@@ -232,10 +213,11 @@ fun AttentionNote(items: List<Attention>) {
                 color = JF.ink,
             )
             Text(
-                "Fix it on the dashboard, Settings → connections. Balances from it may be stale until then.",
+                "Re-link it in Settings → Connections. Balances from it may be stale until then.",
                 style = JFFont.sans(13f),
                 color = JF.ink2,
             )
         }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = JF.ink3, modifier = Modifier.size(16.dp))
     }
 }

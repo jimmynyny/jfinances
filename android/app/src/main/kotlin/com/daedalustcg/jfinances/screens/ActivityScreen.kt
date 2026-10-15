@@ -58,6 +58,7 @@ import com.daedalustcg.jfinances.app.LocalAppModel
 import com.daedalustcg.jfinances.app.Route
 import com.daedalustcg.jfinances.components.ErrorNote
 import com.daedalustcg.jfinances.components.Fine
+import com.daedalustcg.jfinances.components.GlassPill
 import com.daedalustcg.jfinances.components.LargeTitle
 import com.daedalustcg.jfinances.components.Screen
 import com.daedalustcg.jfinances.components.Skeleton
@@ -80,6 +81,7 @@ import com.daedalustcg.jfinances.kit.ui.MoneyText
 import com.daedalustcg.jfinances.kit.ui.Panel
 import com.daedalustcg.jfinances.kit.ui.Readout
 import com.daedalustcg.jfinances.kit.ui.Rule
+import com.daedalustcg.jfinances.screens.edit.TxnEditSheet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -378,10 +380,14 @@ internal fun FilterMenu(
     }
 }
 
-/** One transaction in full, including which account it belongs to. */
+/** One transaction in full, including which account it belongs to; Edit changes its category, note and whether it counts as business. */
 @Composable
-fun TxnDetailScreen(tx: Txn, onBack: () -> Unit) {
-    Screen(tx.title, inline = true, onBack = onBack) {
+fun TxnDetailScreen(initial: Txn, onBack: () -> Unit) {
+    val model = LocalAppModel.current
+    var tx by remember { mutableStateOf(initial) }
+    var editing by remember { mutableStateOf(false) }
+    if (editing) TxnEditSheet(tx, onDismiss = { editing = false }, onSaved = { tx = it; model.toast("Saved") })
+    Screen(tx.title, inline = true, onBack = onBack, actions = { GlassPill("Edit", { editing = true }) }) {
         Panel(if (tx.pending) "pending" else "posted") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Readout(label = if (tx.amount < 0) "money in" else "money out", value = Fmt.money(kotlin.math.abs(tx.amount), currency = tx.currency), size = 40f)

@@ -3,8 +3,8 @@ import SwiftUI
 
 // An account's details (GET /accounts/{id}/details) and an offline home's or
 // car's market value (GET /accounts/{id}/asset), as the dashboard's account
-// panel shows them. Read-only: what the bank doesn't report is entered on the
-// dashboard, and the phone says so.
+// panel shows them. What the bank doesn't report is entered here too
+// (TermsSheet, AssetSheet), as on the dashboard.
 
 extension View {
     /// `figure(size:)` only when `on`: a word next to a figure stays readable.
@@ -104,19 +104,26 @@ struct FactValue: View {
     }
 }
 
-/// The account's details, one panel per section, as the dashboard's account panel.
+/// The account's details, one panel per section, as the dashboard's account
+/// panel; "Add details" / "Edit details" opens the form for what the bank
+/// doesn't report.
 struct AccountDetailsPanels: View {
     let accountId: String
+    var onEdit: ((AccountDetails) -> Void)?
 
     var body: some View {
         Loader(height: 160) {
             try await APIClient.shared.accountDetails(id: accountId)
         } content: { d in
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(d.sections.filter { s in s.facts.contains(where: \.isKnown) }) { s in
+                ForEach(Array(d.sections.filter { s in s.facts.contains(where: \.isKnown) }.enumerated()), id: \.element.id) { i, s in
                     // A section that is all worked out (its note says so) doesn't tag every row.
                     let tags = s.facts.contains { $0.isKnown && $0.source != "calc" }
-                    Panel(s.title) {
+                    Panel(s.title, actions: {
+                        if i == 0, let onEdit, !d.editable.isEmpty {
+                            Button(d.missing > 0 ? "Add details" : "Edit details") { onEdit(d) }.font(JFFont.mono(12, .medium))
+                        }
+                    }) {
                         VStack(alignment: .leading, spacing: 0) {
                             if let note = s.note, !note.isEmpty {
                                 Text(note).font(JFFont.sans(13)).foregroundStyle(JF.ink2).padding(.bottom, 4)
@@ -127,8 +134,15 @@ struct AccountDetailsPanels: View {
                         }
                     }
                 }
-                if d.missing > 0 {
-                    Fine("\(d.missing) detail\(d.missing == 1 ? "" : "s") the bank doesn't report can be added on the dashboard: Accounts → this account → Add details.")
+                if d.missing > 0, let onEdit, !d.editable.isEmpty {
+                    Button {
+                        onEdit(d)
+                    } label: {
+                        Text("\(d.missing) detail\(d.missing == 1 ? "" : "s") the bank doesn't report can be added")
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                } else if d.missing > 0 {
+                    Fine("\(d.missing) detail\(d.missing == 1 ? "" : "s") the bank doesn't report can be added.")
                 }
             }
         }
@@ -140,6 +154,8 @@ struct AccountDetailsPanels: View {
 /// their own; nothing here asks for one.
 struct MarketValuePanel: View {
     let account: Account
+    /// Opens the form for the address, or the VIN, mileage and where it's kept.
+    var onEdit: ((AssetInfo?) -> Void)?
 
     private static let needs = [
         "address": "its street address", "city": "its city", "state": "its state", "zip": "its ZIP",
@@ -173,12 +189,16 @@ struct MarketValuePanel: View {
         let det = info.details
         let on = info.valuation_enabled != false
         let home = det?.garage_account_id.flatMap { id in accounts.first { $0.id == id } }
-        return Panel("market value") {
+        return Panel("market value", actions: {
+            if let onEdit {
+                Button(on && info.missing.isEmpty ? "Edit" : "Add details") { onEdit(info) }.font(JFFont.mono(12, .medium))
+            }
+        }) {
             VStack(alignment: .leading, spacing: 8) {
                 if !on {
                     Fine("Kept by hand: market values are off for it.")
                 } else if !info.missing.isEmpty {
-                    Fine("Needs \(info.missing.map { Self.needs[$0] ?? $0 }.joined(separator: ", ")) to be valued from market data once a month. Add \(info.missing.count == 1 ? "it" : "them") on the dashboard.")
+                    Fine("Needs \(info.missing.map { Self.needs[$0] ?? $0 }.joined(separator: ", ")) to be valued from market data once a month.")
                 } else if let next = info.next_month {
                     Fine("Valued from market data once a month; the next estimate comes in \(Self.monthName(next)).")
                 }

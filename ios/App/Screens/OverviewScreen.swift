@@ -93,22 +93,7 @@ struct OverviewScreen: View {
     }
 
     private var alerts: some View {
-        Panel("alerts", flush: true) {
-            Loader(height: 80) {
-                try await APIClient.shared.alerts()
-            } content: { list in
-                if list.isEmpty {
-                    Fine("No alerts.").padding(16)
-                } else {
-                    RuledList(Array(list.prefix(5))) { AlertRow(alert: $0) }
-                    if list.count > 5 {
-                        Button("All \(list.count) alerts") { model.insightsSection = .subscriptions; model.tab = .insights }
-                            .font(JFFont.mono(12, .medium))
-                            .padding(16)
-                    }
-                }
-            }
-        }
+        AlertsPanel(limit: 5)
     }
 
     private func groups(_ g: Glance) -> some View {
@@ -138,26 +123,34 @@ struct OverviewScreen: View {
     }
 }
 
-/// A connection the bank wants signed in again. The phone can't do that (it
-/// is read-only), so it says where to go.
+/// A connection the bank wants signed in again: re-link it from Settings →
+/// Connections, which this opens.
 struct AttentionNote: View {
+    @Environment(AppModel.self) private var model
     let items: [Attention]
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle").foregroundStyle(JF.warn)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(items.count == 1
-                     ? "\(items[0].institution_name ?? "A bank") needs you to sign in again."
-                     : "\(items.count) connections need you to sign in again.")
-                    .font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink)
-                Text("Fix it on the dashboard, Settings → connections. Balances from it may be stale until then.")
-                    .font(JFFont.sans(13)).foregroundStyle(JF.ink2)
+        Button {
+            model.openConnections()
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(JF.warn)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(items.count == 1
+                         ? "\(items[0].institution_name ?? "A bank") needs you to sign in again."
+                         : "\(items.count) connections need you to sign in again.")
+                        .font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink)
+                    Text("Re-link it in Settings → Connections. Balances from it may be stale until then.")
+                        .font(JFFont.sans(13)).foregroundStyle(JF.ink2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(JF.ink3)
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(JF.panel)
+            .overlay(Rectangle().strokeBorder(JF.warn.opacity(0.6), lineWidth: 1))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(JF.panel)
-        .overlay(Rectangle().strokeBorder(JF.warn.opacity(0.6), lineWidth: 1))
+        .buttonStyle(.plain)
     }
 }

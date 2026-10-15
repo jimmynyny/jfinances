@@ -14,8 +14,13 @@ import com.daedalustcg.jfinances.kit.models.Glance
 import com.daedalustcg.jfinances.kit.models.Holdings
 import com.daedalustcg.jfinances.kit.models.Home
 import com.daedalustcg.jfinances.kit.models.Homes
+import com.daedalustcg.jfinances.kit.models.Item
+import com.daedalustcg.jfinances.kit.models.ItemsList
 import com.daedalustcg.jfinances.kit.models.JSON
 import com.daedalustcg.jfinances.kit.models.Liabilities
+import com.daedalustcg.jfinances.kit.models.LinkToken
+import com.daedalustcg.jfinances.kit.models.Queued
+import com.daedalustcg.jfinances.kit.models.RecurringStream
 import com.daedalustcg.jfinances.kit.models.LoanPayoff
 import com.daedalustcg.jfinances.kit.models.Loans
 import com.daedalustcg.jfinances.kit.models.Me
@@ -29,6 +34,7 @@ import com.daedalustcg.jfinances.kit.models.Performance
 import com.daedalustcg.jfinances.kit.models.RecurringList
 import com.daedalustcg.jfinances.kit.models.RedeemResponse
 import com.daedalustcg.jfinances.kit.models.Spending
+import com.daedalustcg.jfinances.kit.models.Txn
 import com.daedalustcg.jfinances.kit.models.TxnPage
 import com.daedalustcg.jfinances.kit.models.Upcoming
 import com.daedalustcg.jfinances.kit.storage.Keychain
@@ -43,7 +49,10 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.serializer
 
 sealed class ApiError(message: String) : Exception(message) {
@@ -60,6 +69,12 @@ sealed class ApiError(message: String) : Exception(message) {
     class Decoding(val detail: String) : ApiError(detail)
 
     /**
+     * 409 from the duplicate guard on a bank link (docs/80 "POST /link/exchange"):
+     * `confirm` is the answer that lets it through, or null when nothing does.
+     */
+    class LinkGuard(val code: String, val serverMessage: String, val institution: String?, val accounts: List<String>, val confirm: String?) : ApiError(code)
+
+    /**
      * The token itself is finished (revoked, unknown, or its person was
      * removed): throw it away and sign in again.
      */
@@ -73,13 +88,42 @@ sealed class ApiError(message: String) : Exception(message) {
             is Unauthorized -> when (code) {
                 "auth.bad_token" -> "This phone was unlinked. Sign in again."
                 "auth.not_allowed" -> "This account is no longer allowed in."
-                "auth.read_only" -> "This phone can look, not change."
+                "auth.forbidden" -> "That's done on the dashboard, not from a phone."
                 else -> serverMessage
             }
-            is Http -> "$serverMessage (HTTP $status)"
+            is Http -> serverMessage
             is Transport -> "Couldn't reach jFinances. $detail"
             is Decoding -> "jFinances answered in a shape this version of the app doesn't understand."
+            is LinkGuard -> serverMessage
         }
+}
+
+/**
+ * The body of a write, as JSON. `null` is sent for a key whose value is
+ * JsonNull (it clears), so leave a key out to keep its value.
+ */
+class JSONBody(initial: Map<String, JsonElement> = emptyMap()) {
+    val fields: MutableMap<String, JsonElement> = LinkedHashMap(initial)
+    operator fun set(key: String, value: JsonElement) { fields[key] = value }
+    operator fun get(key: String): JsonElement? = fields[key]
+    val isEmpty: Boolean get() = fields.isEmpty()
+    fun json(): JsonObject = JsonObject(fields)
+    fun encode(): String = JSON.encodeToString(JsonObject.serializer(), json())
+
+    companion object {
+        /** A string, or null when blank. */
+        fun text(s: String?): JsonElement = s?.trim()?.takeIf { it.isNotEmpty() }?.let { JsonPrimitive(it) } ?: JsonNull
+
+        /** A number, or null when null. */
+        fun num(d: Double?): JsonElement = d?.let { JsonPrimitive(it) } ?: JsonNull
+
+        fun flag(b: Boolean?): JsonElement = b?.let { JsonPrimitive(it) } ?: JsonNull
+
+        /** "1234.56": what a money field sends (the server stores numeric, not float). */
+        fun money(d: Double): JsonElement = JsonPrimitive(String.format(Locale.US, "%.2f", d))
+
+        fun str(s: String): JsonElement = JsonPrimitive(s)
+    }
 }
 
 /** The Insights slice (docs/80 "Insights"): a date range and whose accounts. */
@@ -168,12 +212,13 @@ data class TxnQuery(
 }
 
 /**
- * Everything the phone reads, with its own token, on the API hostname.
+ * Everything the phone reads and changes, with its own token, on the API
+ * hostname.
  *
- * These are the dashboard's own endpoints, so the app decodes exactly what
- * the web decodes. Only `/mobile/redeem` and `/mobile/unlink` are the
- * phone's own. Every request is a GET except those two: the server refuses
- * anything else from a phone (docs/40 §5).
+ * These are the dashboard's own endpoints, so the app sends and decodes
+ * exactly what the web does. Only `/mobile/redeem` and `/mobile/unlink` are
+ * the phone's own. A phone edits as the dashboard does; managing phones is
+ * the dashboard's alone (docs/40 §5).
  */
 object ApiClient {
     private const val TIMEOUT_MS = 20_000
@@ -258,6 +303,104 @@ object ApiClient {
     suspend fun alerts(days: Int = 60): List<MoneyAlert> =
         get<AlertsList>("/api/v1/alerts", listOf("days" to days.toString())).alerts
 
+    suspend fun items(): List<Item> = get<ItemsList>("/api/v1/items").items
+
+    // -------------------------------------------------------- writes (docs/80)
+
+    /** A write with the phone's token. `body` null sends no body (a bare POST or DELETE). */
+    suspend fun <T> write(method: String, path: String, strategy: DeserializationStrategy<T>, body: JSONBody? = null): T {
+        val cred = Keychain.read() ?: throw ApiError.NotLinked
+        return send(url(cred.server.api, path, emptyList()), strategy, bearer = cred.token, body = body?.encode(), method = method)
+    }
+
+    suspend inline fun <reified T> write(method: String, path: String, body: JSONBody? = null): T =
+        write(method, path, serializer<T>(), body)
+
+    /** A write whose answer is nothing (204) or nothing worth decoding. */
+    suspend fun act(method: String, path: String, body: JSONBody? = null) {
+        write(method, path, JsonElement.serializer(), body)
+    }
+
+    /** Category (left out keeps it; JsonNull goes back to the bank's), note, business. */
+    suspend fun patchTransaction(id: String, body: JSONBody): Txn = write("PATCH", "/api/v1/transactions/$id", body)
+
+    /** Name, hidden, business, where it counts (`group`), what secures it (`secured_by_id`). */
+    suspend fun patchAccount(id: String, body: JSONBody): Account = write("PATCH", "/api/v1/accounts/$id", body)
+
+    /** The latest balances the bank has for this account's connection (free, rate limited). */
+    suspend fun refreshAccount(id: String): Account = write("POST", "/api/v1/accounts/$id/refresh")
+
+    /** An offline account's value, as of a day (today when null). */
+    suspend fun setValue(id: String, value: Double, asOf: String?, note: String?): Account {
+        val b = JSONBody(mapOf("value" to JSONBody.money(value)))
+        if (!asOf.isNullOrEmpty()) b["as_of"] = JSONBody.str(asOf)
+        if (!note.isNullOrEmpty()) b["note"] = JSONBody.str(note)
+        return write("PUT", "/api/v1/accounts/$id/value", b)
+    }
+
+    suspend fun createManual(body: JSONBody): Account = write("POST", "/api/v1/accounts/manual", body)
+
+    suspend fun deleteAccount(id: String) = act("DELETE", "/api/v1/accounts/$id")
+
+    /** A home's address or a car's VIN, mileage and where it's kept (docs/80 "PUT /accounts/{id}/asset"). */
+    suspend fun putAsset(id: String, body: JSONBody): AssetInfo = write("PUT", "/api/v1/accounts/$id/asset", body)
+
+    /** What the bank doesn't report, entered; the details as they read with it. */
+    suspend fun putTerms(id: String, body: JSONBody): AccountDetails = write("PUT", "/api/v1/accounts/$id/terms", body)
+
+    /** The details as they would read with these terms, saving nothing. */
+    suspend fun previewTerms(id: String, body: JSONBody): AccountDetails = write("POST", "/api/v1/accounts/$id/terms/preview", body)
+
+    /** A subscription's verdict (detected | confirmed | dismissed) and name. */
+    suspend fun patchRecurring(id: String, body: JSONBody): RecurringStream = write("PATCH", "/api/v1/recurring/$id", body)
+
+    @Serializable
+    private data class Found(val found: Int = 0)
+
+    suspend fun detectRecurring(): Int = write("POST", "/api/v1/recurring/detect", Found.serializer()).found
+
+    suspend fun dismissAlert(key: String) = act("POST", "/api/v1/alerts/dismiss", JSONBody(mapOf("key" to JSONBody.str(key))))
+
+    @Serializable
+    private data class Dismissed(val dismissed: Int = 0)
+
+    suspend fun dismissAllAlerts(): Int = write("POST", "/api/v1/alerts/dismiss-all", Dismissed.serializer()).dismissed
+
+    /** Queue a sync (transactions, investments, liabilities) for one connection. */
+    suspend fun syncItem(id: String): Boolean = write("POST", "/api/v1/items/$id/sync", Queued.serializer()).queued
+
+    suspend fun syncAll() = act("POST", "/api/v1/sync/all")
+
+    suspend fun refreshPrices(): Boolean = write("POST", "/api/v1/prices/refresh", Queued.serializer()).queued
+
+    /** `/item/remove` at the bank's aggregator: the connection stops and stops billing; history stays. */
+    suspend fun removeItem(id: String): Item = write("DELETE", "/api/v1/items/$id")
+
+    // ------------------------------- connecting a bank (docs/30 "Link on the phones")
+
+    /** A link token to connect something new (`kind`: banking | investments). */
+    suspend fun linkToken(kind: String): LinkToken =
+        write("POST", "/api/v1/link/token", JSONBody(mapOf("kind" to JSONBody.str(kind), "platform" to JSONBody.str("android"))))
+
+    /** A link token in update mode: re-link, or add accounts to, one connection. */
+    suspend fun relinkToken(itemId: String): LinkToken =
+        write("POST", "/api/v1/items/$itemId/relink", JSONBody(mapOf("platform" to JSONBody.str("android"))))
+
+    /**
+     * Trade Link's public token for a connection. A 409 from the duplicate
+     * guard surfaces as [ApiError.LinkGuard]; answer it with `confirm`.
+     */
+    suspend fun linkExchange(publicToken: String, metadata: JsonElement?, sessionId: String, confirm: String?): Item {
+        val b = JSONBody(mapOf("public_token" to JSONBody.str(publicToken), "link_session_id" to JSONBody.str(sessionId)))
+        if (metadata != null) b["metadata"] = metadata
+        if (confirm != null) b["confirm"] = JSONBody.str(confirm)
+        return write("POST", "/api/v1/link/exchange", b)
+    }
+
+    /** After update-mode Link finishes: the connection is well again, a sync is queued. */
+    suspend fun linkUpdateComplete(sessionId: String): Item =
+        write("POST", "/api/v1/link/update-complete", JSONBody(mapOf("link_session_id" to JSONBody.str(sessionId))))
+
     // ------------------------------------------------ linking, and its undoing
 
     @Serializable
@@ -293,11 +436,18 @@ object ApiClient {
     @Serializable
     private data class ErrorBody(val error: Inner? = null) {
         @Serializable
-        data class Inner(val code: String? = null, val message: String? = null)
+        data class Inner(
+            val code: String? = null,
+            val message: String? = null,
+            // The duplicate guard's extras (409 link.*).
+            val institution: String? = null,
+            val accounts: List<String>? = null,
+            val confirm: String? = null,
+        )
     }
 
-    /** A POST when there is a body, else a GET. */
-    private suspend fun <T> send(url: URL, strategy: DeserializationStrategy<T>, bearer: String? = null, body: String? = null): T =
+    /** `method`, else a POST when there is a body and a GET when there isn't. */
+    private suspend fun <T> send(url: URL, strategy: DeserializationStrategy<T>, bearer: String? = null, body: String? = null, method: String? = null): T =
         runInterruptible(Dispatchers.IO) {
             val conn = try {
                 (url.openConnection() as HttpURLConnection).apply {
@@ -308,8 +458,8 @@ object ApiClient {
                     setRequestProperty("Accept", "application/json")
                     setRequestProperty("User-Agent", "jfinances-Android")
                     bearer?.let { setRequestProperty("Authorization", "Bearer $it") }
+                    requestMethod = method ?: if (body != null) "POST" else "GET"
                     if (body != null) {
-                        requestMethod = "POST"
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
                         outputStream.use { it.write(body.toByteArray()) }
@@ -333,7 +483,22 @@ object ApiClient {
                     if ((status == 401 || status == 403) && code != null && code.startsWith("auth.")) {
                         throw ApiError.Unauthorized(code, message)
                     }
+                    if (status == 409 && code != null && code.startsWith("link.")) {
+                        throw ApiError.LinkGuard(code, message, err?.institution, err?.accounts ?: emptyList(), err?.confirm)
+                    }
+                    if (status == 422) {
+                        // The server's validation detail is for programmers; say what the person can act on.
+                        throw ApiError.Http(422, code, "Something in the form isn't valid. Check the values and try again.")
+                    }
                     throw ApiError.Http(status, code, message)
+                }
+                // A 204, or an answer nobody reads, decodes as JSON null.
+                if (text.isBlank()) {
+                    if (strategy === JsonElement.serializer()) {
+                        @Suppress("UNCHECKED_CAST")
+                        return@runInterruptible JsonNull as T
+                    }
+                    throw ApiError.Decoding("empty answer")
                 }
                 try {
                     JSON.decodeFromString(strategy, text)

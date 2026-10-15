@@ -38,7 +38,7 @@ import kotlinx.coroutines.delay
 
 /**
  * Not linked yet: sign in through Cloudflare Access once, and the phone gets
- * its own read-only token (docs/40 §5).
+ * its own token (docs/40 §5).
  */
 @Composable
 fun LinkScreen() {
@@ -75,7 +75,7 @@ fun LinkScreen() {
             )
             model.linkError?.let { ErrorNote(it) }
             Text(
-                "You sign in with the same emailed code as the dashboard. This phone can read everything and change nothing; unlink it any time from Settings on either side.",
+                "You sign in with the same emailed code as the dashboard. This phone then does what the dashboard does; unlink it any time from Settings on either side.",
                 style = JFFont.mono(11f),
                 color = JF.ink3,
                 modifier = Modifier.padding(top = 4.dp),

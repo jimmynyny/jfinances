@@ -12,13 +12,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import com.daedalustcg.jfinances.app.DrillTarget
 import com.daedalustcg.jfinances.app.Route
@@ -47,7 +51,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.daedalustcg.jfinances.app.InsightsSection
 import com.daedalustcg.jfinances.app.LocalAppModel
-import com.daedalustcg.jfinances.components.AlertRow
+import com.daedalustcg.jfinances.components.AlertsPanel
+import com.daedalustcg.jfinances.components.Field
+import com.daedalustcg.jfinances.components.FormSheet
 import com.daedalustcg.jfinances.components.Chips
 import com.daedalustcg.jfinances.components.ClassBarsChart
 import com.daedalustcg.jfinances.components.DatedValue
@@ -64,6 +70,8 @@ import com.daedalustcg.jfinances.components.StackedSpendingChart
 import com.daedalustcg.jfinances.components.ToggleChip
 import com.daedalustcg.jfinances.components.UpcomingRow
 import com.daedalustcg.jfinances.kit.api.ApiClient
+import com.daedalustcg.jfinances.kit.api.ApiError
+import com.daedalustcg.jfinances.kit.api.JSONBody
 import com.daedalustcg.jfinances.kit.api.Slice
 import com.daedalustcg.jfinances.kit.models.Home
 import com.daedalustcg.jfinances.kit.models.LoanPayoff
@@ -75,6 +83,7 @@ import com.daedalustcg.jfinances.kit.ui.BadgeTone
 import com.daedalustcg.jfinances.kit.ui.BusinessMark
 import com.daedalustcg.jfinances.kit.ui.Category
 import com.daedalustcg.jfinances.kit.ui.Fmt
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.daedalustcg.jfinances.kit.ui.JF
 import com.daedalustcg.jfinances.kit.ui.JFFont
 import com.daedalustcg.jfinances.kit.ui.KeyValueRow
@@ -90,6 +99,7 @@ import com.daedalustcg.jfinances.kit.ui.Rule
 import com.daedalustcg.jfinances.kit.ui.StatTile
 import com.daedalustcg.jfinances.kit.ui.figure
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 /** The dashboard's Insights tabs: cash flow, spending, subscriptions, net worth and debt, and investing. */
 @Composable
@@ -380,32 +390,92 @@ private fun SpendingInsights() {
 
 @Composable
 private fun SubscriptionInsights() {
+    val model = LocalAppModel.current
+    val scope = rememberCoroutineScope()
+    var renaming by remember { mutableStateOf<RecurringStream?>(null) }
+    var looking by remember { mutableStateOf(false) }
+
+    fun verdict(s: RecurringStream, status: String) {
+        scope.launch {
+            try {
+                ApiClient.patchRecurring(s.id, JSONBody(mapOf("status" to JSONBody.str(status))))
+                model.changed()
+                model.toast(when (status) { "confirmed" -> "Marked recurring"; "dismissed" -> "Marked not recurring"; else -> "Back to review" })
+            } catch (e: ApiError) {
+                model.handle(e)
+                model.toast(e.description)
+            }
+        }
+    }
+
     Loader(height = 300.dp, load = { ApiClient.recurring() }) { r ->
         // The server lists recurring ones first, then those to review, each soonest next charge first.
         val streams = r.streams.filter { it.state == "active" && it.status != "dismissed" }
             .sortedWith(compareBy<RecurringStream>({ if (it.status == "confirmed") 0 else 1 }, { it.next_date }))
-        Panel("subscriptions", flush = true) {
+        Panel("subscriptions", flush = true, actions = {
+            LinkText(if (looking) "Looking…" else "Look for new ones", {
+                scope.launch {
+                    looking = true
+                    try {
+                        val n = ApiClient.detectRecurring()
+                        model.changed()
+                        model.toast(if (n == 0) "Nothing new found" else "Found $n new")
+                    } catch (e: ApiError) {
+                        model.handle(e)
+                        model.toast(e.description)
+                    } finally {
+                        looking = false
+                    }
+                }
+            }, enabled = !looking)
+        }) {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatTile("recurring / month", Modifier.weight(1f)) { MoneyText(r.monthly_confirmed, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
                 StatTile("to review / month", Modifier.weight(1f)) { MoneyText(r.monthly_detected, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
             }
             Rule()
             if (streams.isEmpty()) Fine("No recurring charges found yet.", Modifier.padding(16.dp))
-            RuledList(streams) { StreamRow(it) }
+            streams.forEachIndexed { i, s ->
+                var open by remember(s.id) { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp)) {
+                    StreamRow(s)
+                    DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = JF.panel, shape = RoundedCornerShape(8.dp)) {
+                        if (s.status != "confirmed") {
+                            DropdownMenuItem(text = { Text("Recurring", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "confirmed") })
+                        }
+                        if (s.status != "detected") {
+                            DropdownMenuItem(text = { Text("Not sure yet", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "detected") })
+                        }
+                        DropdownMenuItem(text = { Text("Rename…", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; renaming = s })
+                        DropdownMenuItem(text = { Text("Not recurring", style = JFFont.sans(15f), color = JF.neg) }, onClick = { open = false; verdict(s, "dismissed") })
+                    }
+                }
+                if (i < streams.size - 1) Rule(Modifier.padding(start = 16.dp))
+            }
             Rule()
-            Fine("Mark them recurring or not on the dashboard: Insights → Subscriptions.", Modifier.padding(16.dp))
+            Fine("Tap one to mark it recurring or not, or to name it.", Modifier.padding(16.dp))
         }
     }
+    renaming?.let { s -> RenameStreamSheet(s, onDismiss = { renaming = null }, onSaved = { model.toast("Renamed") }) }
     Loader(height = 160.dp, load = { ApiClient.upcoming(days = 30) }) { up ->
         Panel("next 30 days", flush = true, actions = { MoneyText(up.total, cents = false, size = 12f, weight = JFFont.Weight.Medium) }) {
             if (up.items.isEmpty()) Fine("Nothing expected.", Modifier.padding(16.dp))
             RuledList(up.items) { UpcomingRow(it) }
         }
     }
-    Loader(height = 120.dp, load = { ApiClient.alerts() }) { list ->
-        Panel("alerts", flush = true, actions = { Fine("${list.size}") }) {
-            if (list.isEmpty()) Fine("No alerts in the last 60 days.", Modifier.padding(16.dp))
-            RuledList(list) { AlertRow(it) }
+    AlertsPanel(limit = null)
+}
+
+/** A subscription's name, as it reads in lists; blank goes back to the merchant's. */
+@Composable
+private fun RenameStreamSheet(stream: RecurringStream, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    var name by remember { mutableStateOf(stream.name ?: "") }
+    FormSheet(title = "Rename", onDismiss = onDismiss, save = {
+        ApiClient.patchRecurring(stream.id, JSONBody(mapOf("name" to JSONBody.text(name))))
+        onSaved()
+    }) {
+        Panel(stream.merchant.lowercase()) {
+            Field("name", name, { name = it }, placeholder = stream.merchant, capitalization = KeyboardCapitalization.Words, help = "Blank goes back to the merchant's name.")
         }
     }
 }

@@ -1,13 +1,18 @@
 package com.daedalustcg.jfinances.screens
 
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -26,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.daedalustcg.jfinances.BuildConfig
 import com.daedalustcg.jfinances.app.LocalAppModel
+import com.daedalustcg.jfinances.app.Route
 import com.daedalustcg.jfinances.components.Fine
 import com.daedalustcg.jfinances.components.QuietButton
 import com.daedalustcg.jfinances.components.Screen
@@ -67,6 +73,18 @@ fun SettingsScreen() {
                     Text(Instant.ofEpochMilli(cred.linkedAt).atZone(ZoneId.systemDefault()).format(linkedFormat), style = JFFont.mono(13f))
                 }
             }
+            Panel("banks", flush = true) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { model.push(Route.Connections) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Connections", style = JFFont.sans(15f, JFFont.Weight.Medium), color = JF.ink)
+                        Fine("Connect, re-link, sync or unlink a bank; add an offline account.")
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = JF.ink3, modifier = Modifier.size(16.dp))
+                }
+            }
             Panel("privacy") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -88,7 +106,7 @@ fun SettingsScreen() {
                     }
                     Rule()
                     Text(
-                        "This phone is read-only: it can see everything on the dashboard and change nothing. It never talks to a bank.",
+                        "This phone does what the dashboard does: it reads everything and edits what you tell it to. It never moves money and never talks to a bank itself; connecting one goes through the same secure window as on the web.",
                         style = JFFont.sans(13f),
                         color = JF.ink2,
                     )

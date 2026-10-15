@@ -153,6 +153,123 @@ final class TourTests: XCTestCase {
         scroll(2, prefix: "15-investing")
     }
 
+    /// Editing from the phone: an account's Edit menu and its sheets, a loan's
+    /// details form, a transaction's edit sheet, a subscription's verdict menu,
+    /// an alert's dismiss menu, and Settings → Connections.
+    func testEditing() {
+        sleep(4)
+        tab("Accounts")
+        let mortgage = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Chase Mortgage'")).firstMatch
+        for _ in 0..<4 where !mortgage.isHittable { app.swipeUp(velocity: .slow) }
+        if mortgage.waitForExistence(timeout: 3) {
+            mortgage.tap()
+            sleep(3)
+            app.navigationBars.buttons["Edit"].firstMatch.tap()
+            sleep(1)
+            snap("20-account-menu")
+            app.buttons["Edit account…"].firstMatch.tap()
+            sleep(2)
+            snap("21-account-edit")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+            let add = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Add details' OR label BEGINSWITH[c] 'Edit details'")).firstMatch
+            for _ in 0..<4 where !add.isHittable { app.swipeUp(velocity: .slow) }
+            if add.waitForExistence(timeout: 3) {
+                add.tap()
+                sleep(3)
+                snap("22-terms")
+                scroll(1, prefix: "22-terms")
+                app.buttons["Cancel"].firstMatch.tap()
+                sleep(1)
+            }
+            app.navigationBars.buttons.firstMatch.tap()
+            sleep(1)
+        }
+        app.swipeDown(); app.swipeDown(); app.swipeDown()
+        let house = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Main house'")).firstMatch
+        for _ in 0..<4 where !house.isHittable { app.swipeUp(velocity: .slow) }
+        if house.waitForExistence(timeout: 3) {
+            house.tap()
+            sleep(3)
+            app.navigationBars.buttons["Edit"].firstMatch.tap()
+            sleep(1)
+            app.buttons["Update value…"].firstMatch.tap()
+            sleep(2)
+            snap("23-value")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+            let mv = app.buttons.matching(NSPredicate(format: "label == 'Edit' OR label == 'Add details'")).element(boundBy: 1)
+            if mv.waitForExistence(timeout: 3) {
+                mv.tap()
+                sleep(2)
+                snap("24-asset")
+                app.buttons["Cancel"].firstMatch.tap()
+                sleep(1)
+            }
+            app.navigationBars.buttons.firstMatch.tap()
+            sleep(1)
+        }
+        app.swipeDown(); app.swipeDown(); app.swipeDown()
+        let addOffline = app.buttons["Add an offline account"].firstMatch
+        for _ in 0..<6 where !addOffline.isHittable { app.swipeUp(velocity: .slow) }
+        if addOffline.waitForExistence(timeout: 3) {
+            addOffline.tap()
+            sleep(2)
+            snap("25-add-offline")
+            app.buttons["vehicle"].firstMatch.tap()
+            sleep(1)
+            snap("25-add-offline-vehicle")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+        }
+
+        tab("Activity")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] '$'")).firstMatch
+        if row.waitForExistence(timeout: 3) {
+            row.tap()
+            sleep(2)
+            app.navigationBars.buttons["Edit"].firstMatch.tap()
+            sleep(2)
+            snap("26-txn-edit")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+            app.navigationBars.buttons.firstMatch.tap()
+        }
+
+        tab("Insights")
+        app.buttons["Subscriptions"].firstMatch.tap()
+        sleep(4)
+        snap("27-subscriptions")
+        let stream = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'next'")).firstMatch
+        if stream.waitForExistence(timeout: 3) {
+            stream.tap()
+            sleep(1)
+            snap("27-subscription-menu")
+            app.buttons["Rename…"].firstMatch.tap()
+            sleep(2)
+            snap("27-rename")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+        }
+        let alert = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'usual' OR label CONTAINS[c] 'Price went' OR label CONTAINS[c] 'twice'")).firstMatch
+        for _ in 0..<4 where !alert.isHittable { app.swipeUp(velocity: .slow) }
+        if alert.waitForExistence(timeout: 3) {
+            alert.tap()
+            sleep(1)
+            snap("28-alert-menu")
+            app.tap()
+        }
+
+        tab("Settings")
+        let connections = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Connections'")).firstMatch
+        if connections.waitForExistence(timeout: 3) {
+            connections.tap()
+            sleep(4)
+            snap("29-connections")
+            scroll(1, prefix: "29-connections")
+        }
+    }
+
     private func tab(_ name: String) {
         app.tabBars.buttons[name].tap()
         sleep(3)

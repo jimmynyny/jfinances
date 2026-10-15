@@ -350,6 +350,11 @@ struct SpendingInsights: View {
 // MARK: - subscriptions
 
 struct SubscriptionInsights: View {
+    @Environment(AppModel.self) private var model
+    @State private var renaming: RecurringStream?
+    @State private var looking = false
+    @State private var toast: String?
+
     var body: some View {
         Loader(height: 300) {
             try await APIClient.shared.recurring()
@@ -357,7 +362,15 @@ struct SubscriptionInsights: View {
             // The server lists recurring ones first, then those to review, each soonest next charge first.
             let streams = r.streams.filter { $0.state == "active" && $0.status != "dismissed" }
                 .sorted { ($0.status == "confirmed" ? 0 : 1, $0.next_date) < ($1.status == "confirmed" ? 0 : 1, $1.next_date) }
-            Panel("subscriptions", flush: true) {
+            Panel("subscriptions", flush: true, actions: {
+                Button {
+                    Task { await look() }
+                } label: {
+                    if looking { ProgressView() } else { Text("Look for new ones") }
+                }
+                .font(JFFont.mono(12, .medium))
+                .disabled(looking)
+            }) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 12) {
                         StatTile("recurring / month") { MoneyText(r.monthly_confirmed, cents: false, size: 18, weight: .medium) }
@@ -366,11 +379,25 @@ struct SubscriptionInsights: View {
                     .padding(16)
                     Rule()
                     if streams.isEmpty { Fine("No recurring charges found yet.").padding(16) }
-                    RuledList(streams) { s in StreamRow(stream: s) }
+                    RuledList(streams) { s in
+                        Menu {
+                            if s.status != "confirmed" { Button("Recurring", systemImage: "checkmark") { Task { await verdict(s, "confirmed") } } }
+                            if s.status != "detected" { Button("Not sure yet", systemImage: "questionmark") { Task { await verdict(s, "detected") } } }
+                            Button("Rename…", systemImage: "pencil") { renaming = s }
+                            Button("Not recurring", systemImage: "xmark", role: .destructive) { Task { await verdict(s, "dismissed") } }
+                        } label: {
+                            StreamRow(stream: s)
+                        }
+                        .tint(JF.ink)
+                    }
                     Rule()
-                    Fine("Mark them recurring or not on the dashboard: Insights → Subscriptions.").padding(16)
+                    Fine("Tap one to mark it recurring or not, or to name it.").padding(16)
                 }
             }
+        }
+        .toast($toast)
+        .sheet(item: $renaming) { s in
+            RenameStreamSheet(stream: s) { toast = "Renamed" }
         }
         Loader(height: 160) {
             try await APIClient.shared.upcoming(days: 30)
@@ -380,14 +407,122 @@ struct SubscriptionInsights: View {
                 RuledList(up.items) { UpcomingRow(item: $0) }
             }
         }
+        AlertsPanel(limit: nil)
+    }
+
+    private func verdict(_ s: RecurringStream, _ status: String) async {
+        do {
+            _ = try await APIClient.shared.patchRecurring(id: s.id, JSONBody(["status": .string(status)]))
+            model.changed()
+            toast = status == "confirmed" ? "Marked recurring" : status == "dismissed" ? "Marked not recurring" : "Back to review"
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
+    }
+
+    private func look() async {
+        looking = true
+        defer { looking = false }
+        do {
+            let n = try await APIClient.shared.detectRecurring()
+            model.changed()
+            toast = n == 0 ? "Nothing new found" : "Found \(n) new"
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
+    }
+}
+
+/// A subscription's name, as it reads in lists; blank goes back to the merchant's.
+struct RenameStreamSheet: View {
+    let stream: RecurringStream
+    let onSaved: () -> Void
+    @State private var name: String
+
+    init(stream: RecurringStream, onSaved: @escaping () -> Void) {
+        self.stream = stream
+        self.onSaved = onSaved
+        _name = State(initialValue: stream.name ?? "")
+    }
+
+    var body: some View {
+        FormSheet(title: "Rename", save: {
+            _ = try await APIClient.shared.patchRecurring(id: stream.id, JSONBody(["name": .text(name)]))
+            onSaved()
+        }) {
+            Panel(stream.merchant.lowercased()) {
+                Field(label: "name", text: $name, placeholder: stream.merchant, capitalization: .words, help: "Blank goes back to the merchant's name.")
+            }
+        }
+    }
+}
+
+/// Alerts, each dismissable with a tap, or all at once (Insights → Subscriptions
+/// and the Overview).
+struct AlertsPanel: View {
+    @Environment(AppModel.self) private var model
+    /// How many to show (the Overview shows five), or every one.
+    let limit: Int?
+    @State private var toast: String?
+    @State private var dismissing = false
+
+    var body: some View {
         Loader(height: 120) {
             try await APIClient.shared.alerts()
         } content: { list in
-            Panel("alerts", flush: true, actions: { Fine("\(list.count)") }) {
-                if list.isEmpty { Fine("No alerts in the last 60 days.").padding(16) }
-                RuledList(list) { AlertRow(alert: $0) }
+            Panel("alerts", flush: true, actions: {
+                if !list.isEmpty {
+                    Button {
+                        Task { await dismissAll() }
+                    } label: {
+                        if dismissing { ProgressView() } else { Text("Dismiss all") }
+                    }
+                    .font(JFFont.mono(12, .medium))
+                    .disabled(dismissing)
+                }
+            }) {
+                if list.isEmpty { Fine(limit == nil ? "No alerts in the last 60 days." : "No alerts.").padding(16) }
+                RuledList(limit.map { Array(list.prefix($0)) } ?? list) { a in
+                    Menu {
+                        Button("Dismiss", systemImage: "xmark") { Task { await dismiss(a) } }
+                    } label: {
+                        AlertRow(alert: a)
+                    }
+                    .tint(JF.ink)
+                }
+                if let limit, list.count > limit {
+                    Button("All \(list.count) alerts") { model.insightsSection = .subscriptions; model.tab = .insights }
+                        .font(JFFont.mono(12, .medium))
+                        .padding(16)
+                }
             }
         }
+        .toast($toast)
+    }
+
+    private func dismiss(_ a: MoneyAlert) async {
+        do {
+            try await APIClient.shared.dismissAlert(key: a.key)
+            model.changed()
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
+    }
+
+    private func dismissAll() async {
+        dismissing = true
+        defer { dismissing = false }
+        do {
+            let n = try await APIClient.shared.dismissAllAlerts()
+            model.changed()
+            toast = "Dismissed \(n)"
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
     }
 }
 

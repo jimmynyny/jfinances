@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- jfinances for Android (docs/86-android.md): the app and its five widgets.
-     Read-only: the phone's token can look, not change (docs/40 §5). -->
+     The phone's token edits as the dashboard does (docs/40 §5). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 

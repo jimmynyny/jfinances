@@ -92,6 +92,30 @@ data class Account(
         }
 
     /**
+     * Where the account counts by its type (or offline category) alone, before
+     * anyone chose: what "(its type)" means in the edit form.
+     */
+    val naturalGroupKey: String
+        get() {
+            if (isManual) {
+                return when (manual_category) {
+                    "real_estate" -> "real_estate"
+                    "vehicle" -> "vehicles"
+                    "cash" -> "cash"
+                    "other_liability" -> "other_liabilities"
+                    else -> "other_assets"
+                }
+            }
+            return when (type) {
+                "depository" -> "cash"
+                "credit" -> "credit_cards"
+                "investment", "brokerage" -> "investments"
+                "loan" -> "loans"
+                else -> "other_assets"
+            }
+        }
+
+    /**
      * Homes and cars hold no transactions; every other account can, an offline
      * one through imported statements.
      */
@@ -373,7 +397,7 @@ data class DetailFact(
     /** bank | you | calc */
     val source: String? = null,
     val note: String? = null,
-    /** The entered field behind this fact: a missing value can be added there (on the dashboard). */
+    /** The entered field behind this fact: a missing value can be added there. */
     val field: String? = null,
 ) {
     val isKnown: Boolean get() = value != null && value !is JsonNull
@@ -387,15 +411,99 @@ data class DetailSection(
     val facts: List<DetailFact> = emptyList(),
 )
 
+/** A term the person may enter for this kind of account (PUT /accounts/{id}/terms). */
+@Serializable
+data class DetailField(
+    val key: String,
+    val label: String,
+    /** pct | money | date | months | day | choice */
+    val format: String = "money",
+    val min: FlexOpt = null,
+    val max: FlexOpt = null,
+    val help: String? = null,
+    val options: List<String>? = null,
+    /** Set when the bank reports it: shown, not edited. */
+    val bank: JsonElement? = null,
+) {
+    val isReported: Boolean get() = bank != null && bank !is JsonNull
+}
+
+/** Why a value is suggested for a term ("Pnc Auto Loan: $541.37 monthly, last on Sep 15"). */
+@Serializable
+data class DetailSuggestion(val value: JsonElement, val why: String = "")
+
 @Serializable
 data class AccountDetails(
     /** mortgage | student | loan | credit | depository | investment | asset | other */
     val kind: String = "other",
     val sections: List<DetailSection> = emptyList(),
+    /** What can be entered for this kind; empty when nothing can. */
+    val fields: List<DetailField> = emptyList(),
+    /** The values entered so far, by field key. */
+    val terms: Map<String, JsonElement> = emptyMap(),
+    val suggestions: Map<String, DetailSuggestion> = emptyMap(),
 ) {
     /** Facts the bank doesn't report and nothing could work out, which can be entered. */
     val missing: Int get() = sections.flatMap { it.facts }.count { !it.isKnown && it.field != null }
+
+    /** The fields the person may type into (the bank reports the rest). */
+    val editable: List<DetailField> get() = fields.filter { !it.isReported }
 }
+
+// ------------------------------------------------------ connections (GET /items)
+
+@Serializable
+data class Item(
+    val id: String,
+    val institution_id: String? = null,
+    val institution_name: String? = null,
+    /** active | login_required | error | pending_expiration | removed */
+    val status: String = "active",
+    val error_code: String? = null,
+    val error_message: String? = null,
+    val consent_expires_at: String? = null,
+    val transactions_status: String? = null,
+    val last_synced_at: String? = null,
+    val last_webhook_at: String? = null,
+    /** The bank has accounts on this login that aren't connected yet: Add accounts picks them. */
+    val new_accounts_at: String? = null,
+    val products: List<String> = emptyList(),
+    val account_count: Int = 0,
+    val created_at: String? = null,
+    val removed_at: String? = null,
+) {
+    val name: String get() = institution_name ?: institution_id ?: "Unknown bank"
+    val needsRelink: Boolean get() = status == "login_required" || status == "pending_expiration" || status == "error"
+
+    /** How the connection's status reads, as the web's itemStatusLabel. */
+    val statusLabel: String
+        get() = when (status) {
+            "active" -> "active"
+            "login_required" -> "needs re-link"
+            "pending_expiration" -> "consent expiring"
+            "error" -> "error"
+            "removed" -> "unlinked"
+            else -> status
+        }
+}
+
+@Serializable
+data class ItemsList(val items: List<Item> = emptyList())
+
+/** `POST /items/{id}/sync` and friends: whether a job was queued. */
+@Serializable
+data class Queued(val queued: Boolean = false)
+
+/** `POST /link/token`, `POST /items/{id}/relink`: what Link needs. */
+@Serializable
+data class LinkToken(
+    val link_token: String,
+    val expiration: String? = null,
+    val link_session_id: String,
+    /** create | update */
+    val mode: String = "create",
+    val redirect_uri: String? = null,
+)
 
 // ---------------------------------------------- market values (GET /accounts/{id}/asset)
 

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daedalustcg.jfinances.components.ToastHost
 import com.daedalustcg.jfinances.components.glass
 import com.daedalustcg.jfinances.components.icon
 import com.daedalustcg.jfinances.kit.api.ApiClient
@@ -61,6 +62,7 @@ import com.daedalustcg.jfinances.kit.ui.LocalPalette
 import com.daedalustcg.jfinances.screens.AccountDetailScreen
 import com.daedalustcg.jfinances.screens.AccountsScreen
 import com.daedalustcg.jfinances.screens.ActivityScreen
+import com.daedalustcg.jfinances.screens.ConnectionsScreen
 import com.daedalustcg.jfinances.screens.DrillScreen
 import com.daedalustcg.jfinances.screens.InsightsScreen
 import com.daedalustcg.jfinances.screens.LinkScreen
@@ -80,6 +82,12 @@ fun RootView() {
         Crossfade(targetState = model.isLinked, animationSpec = tween(200), label = "linked") { linked ->
             if (linked) MainTabs() else LinkScreen()
         }
+        AnimatedVisibility(
+            visible = model.toastText != null,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = TabBarHeight + 28.dp),
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+        ) { ToastHost(model.toastText) }
         AnimatedVisibility(visible = splash, enter = fadeIn(tween(0)), exit = fadeOut(tween(350))) { SplashView() }
     }
 }
@@ -178,6 +186,7 @@ private fun RouteScreen(route: Route) {
         is Route.AccountDetail -> AccountDetailScreen(route.account, onBack = { model.pop() })
         is Route.TxnDetail -> TxnDetailScreen(route.tx, onBack = { model.pop() })
         is Route.Drill -> DrillScreen(route.target, onBack = { model.pop() })
+        Route.Connections -> ConnectionsScreen(onBack = { model.pop() })
     }
 }
 

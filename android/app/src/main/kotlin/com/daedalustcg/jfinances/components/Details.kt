@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.dp
 import com.daedalustcg.jfinances.kit.api.ApiClient
 import com.daedalustcg.jfinances.kit.models.Account
+import com.daedalustcg.jfinances.kit.models.AccountDetails
 import com.daedalustcg.jfinances.kit.models.AssetInfo
 import com.daedalustcg.jfinances.kit.models.AssetValuation
 import com.daedalustcg.jfinances.kit.models.DetailFact
@@ -37,8 +38,8 @@ import kotlinx.serialization.json.doubleOrNull
 
 // An account's details (GET /accounts/{id}/details) and an offline home's or
 // car's market value (GET /accounts/{id}/asset), as the dashboard's account
-// panel shows them. Read-only: what the bank doesn't report is entered on the
-// dashboard, and the phone says so.
+// panel shows them. What the bank doesn't report is entered here too
+// (TermsSheet, AssetSheet), as on the dashboard.
 
 /** `figure()` only when `on`: a word next to a figure stays readable. */
 fun Modifier.figureIf(on: Boolean, size: Float): Modifier = if (on) figure(size) else this
@@ -121,23 +122,32 @@ fun FactValue(fact: DetailFact, tag: Boolean) {
     }
 }
 
-/** The account's details, one panel per section, as the dashboard's account panel. */
+/**
+ * The account's details, one panel per section, as the dashboard's account
+ * panel; "Add details" / "Edit details" opens the form for what the bank
+ * doesn't report.
+ */
 @Composable
-fun AccountDetailsPanels(accountId: String) {
+fun AccountDetailsPanels(accountId: String, onEdit: ((AccountDetails) -> Unit)? = null) {
     Loader(height = 160.dp, load = { ApiClient.accountDetails(accountId) }) { d ->
+        val canEdit = onEdit != null && d.editable.isNotEmpty()
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            d.sections.filter { s -> s.facts.any { it.isKnown } }.forEach { s ->
+            d.sections.filter { s -> s.facts.any { it.isKnown } }.forEachIndexed { i, s ->
                 // A section that is all worked out (its note says so) doesn't tag every row.
                 val tags = s.facts.any { it.isKnown && it.source != "calc" }
-                Panel(s.title) {
+                Panel(s.title, actions = {
+                    if (i == 0 && canEdit) LinkText(if (d.missing > 0) "Add details" else "Edit details", { onEdit?.invoke(d) })
+                }) {
                     s.note?.takeIf { it.isNotEmpty() }?.let {
                         Text(it, style = JFFont.sans(13f), color = JF.ink2, modifier = Modifier.padding(bottom = 4.dp))
                     }
                     s.facts.filter { it.isKnown }.forEach { f -> KeyValueRow(f.label) { FactValue(f, tags) } }
                 }
             }
-            if (d.missing > 0) {
-                Fine("${d.missing} detail${if (d.missing == 1) "" else "s"} the bank doesn't report can be added on the dashboard: Accounts → this account → Add details.")
+            if (d.missing > 0 && canEdit) {
+                QuietButton("${d.missing} detail${if (d.missing == 1) "" else "s"} the bank doesn't report can be added", { onEdit?.invoke(d) })
+            } else if (d.missing > 0) {
+                Fine("${d.missing} detail${if (d.missing == 1) "" else "s"} the bank doesn't report can be added.")
             }
         }
     }
@@ -167,7 +177,7 @@ private fun basis(kind: String, v: AssetValuation): String {
  * their own; nothing here asks for one.
  */
 @Composable
-fun MarketValuePanel(account: Account) {
+fun MarketValuePanel(account: Account, onEdit: ((AssetInfo?) -> Unit)? = null) {
     Loader(height = 120.dp, load = {
         coroutineScope {
             val info = async { ApiClient.asset(account.id) }
@@ -176,23 +186,25 @@ fun MarketValuePanel(account: Account) {
         }
     }) { (info, accounts) ->
         val kind = info.kind
-        if (kind != null) MarketValueBody(kind, info, accounts)
+        if (kind != null) MarketValueBody(kind, info, accounts, onEdit)
     }
 }
 
 @Composable
-private fun MarketValueBody(kind: String, info: AssetInfo, accounts: List<Account>) {
+private fun MarketValueBody(kind: String, info: AssetInfo, accounts: List<Account>, onEdit: ((AssetInfo?) -> Unit)?) {
     val last = info.valuations.firstOrNull { it.status == "ok" && it.value != null }
     val latest = info.valuations.firstOrNull()
     val det = info.details
     val home = det?.garage_account_id?.let { id -> accounts.firstOrNull { it.id == id } }
-    Panel("market value") {
+    val on = info.valuation_enabled != false
+    Panel("market value", actions = {
+        if (onEdit != null) LinkText(if (on && info.missing.isEmpty()) "Edit" else "Add details", { onEdit(info) })
+    }) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
-                info.valuation_enabled == false -> Fine("Kept by hand: market values are off for it.")
+                !on -> Fine("Kept by hand: market values are off for it.")
                 info.missing.isNotEmpty() -> Fine(
-                    "Needs ${info.missing.joinToString(", ") { NEEDS[it] ?: it }} to be valued from market data once a month. " +
-                        "Add ${if (info.missing.size == 1) "it" else "them"} on the dashboard.",
+                    "Needs ${info.missing.joinToString(", ") { NEEDS[it] ?: it }} to be valued from market data once a month.",
                 )
                 info.next_month != null -> Fine("Valued from market data once a month; the next estimate comes in ${monthName(info.next_month)}.")
             }
