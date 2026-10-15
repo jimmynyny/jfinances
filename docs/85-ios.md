@@ -1,10 +1,30 @@
-# 85 — The iPhone app and widgets
+# 85 — The iPhone and iPad app and widgets
 
 `ios/` holds a native SwiftUI app, **jfinances**, and a WidgetKit extension.
 It shows what the dashboard shows, in the design system's dress, with a token
 that may edit as the dashboard does (docs/40 §5); which screens edit what is in
 §1. The Android app (`android/`, docs/86) is its twin: a change to one belongs
 in the other.
+
+**iPad and the iPhone Duo.** One app runs on iPhone and iPad. Where the screen
+is wide (the size class is regular: an iPad, the iPhone Duo unfolded) it lays
+out wider; the iPhone, the Duo folded, and an iPad in a narrow split stay the
+phone layout. Folding or unfolding a Duo switches between them in place.
+
+- The tab bar is `sidebarAdaptable`: on top on an iPad upright, a sidebar on
+  its side (or by its button).
+- Panels flow into columns (`PanelStack`, Scaffold.swift): one below 700pt,
+  two up to 1100pt, three above, each dropped into the shortest column;
+  `panelSpan()` keeps a title, the slice controls or a note across all.
+  Columns follow the width a stack is given, so a pane beside a list stays one.
+- Accounts and Activity (`TwoPane`): the list on the left (40%, 340–440pt),
+  the picked account or transaction on the right with its own navigation and
+  Edit. The pick lives in `AppModel.selectedAccount` / `selectedTxn`, so on a
+  phone it is the pushed screen, and folding a Duo keeps it open.
+- Edit forms are sheets, which an iPad shows as centred panels.
+- Turning: an iPad any way; the Duo unfolded upright or on its side, folded
+  upright only (`AppDelegate`, which asks again when the size class changes);
+  a phone upright only.
 
 ## 1. What is in it
 
@@ -47,11 +67,11 @@ cached for five minutes so several widgets make one request; refreshed every
 
 | Widget | Sizes | Options |
 |---|---|---|
-| Net worth | small, medium, Lock Screen rectangular / inline / circular | show amounts |
+| Net worth | small, medium, large (the line full width, owned and owed, where it sits), Lock Screen rectangular / inline / circular | show amounts |
 | This month | small, medium, large (waffle of categories), Lock Screen rectangular | show amounts |
 | Coming up | small, medium, large, Lock Screen rectangular | show amounts |
 | Account | small, Lock Screen rectangular / inline / circular | account, show amounts |
-| Accounts | medium: one to four balances side by side (two by two for four) | up to four accounts, in order (none picked: the first four), show amounts |
+| Accounts | medium: one to four balances side by side (two by two for four); large: up to eight, two by four, each with its line | up to eight accounts, in order (the medium size shows the first four; none picked: the first ones), show amounts |
 
 Every widget figure is `privacySensitive`: a locked phone shows it redacted.
 "Show amounts" off replaces figures with dots for a Home Screen others see.
@@ -200,3 +220,12 @@ tour signs the simulator in with it (debug builds only), walks every screen
 and writes a PNG per stop. `TourTests.testEditing` walks the edit sheets
 instead (it wants the demo household, `server/tools/demo_seed.py`, for its
 account names): `xcodebuild … -only-testing:JFinancesUITests/TourTests/testEditing test`.
+`sim-tour.sh <sim> <out> wide` runs `TourTests.testWide` on an iPad simulator
+(upright and on its side, every tab, a picked account and transaction, the
+edit sheet); `tour` runs only the phone walk.
+
+The iPhone Duo simulator needs Xcode 27.1 (prefix commands with
+`DEVELOPER_DIR=/Applications/Xcode-27.1-RC.app/Contents/Developer`). It boots
+folded: `simctl io <id> screenshot --display=LCD` captures the cover screen,
+`--display=LCD-1` the inner one (black while folded). Unfolding is only in
+the Simulator's Device Hub ("Open"); `simctl` has no pose command.

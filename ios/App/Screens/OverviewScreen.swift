@@ -10,7 +10,7 @@ struct OverviewScreen: View {
     var body: some View {
         Screen("Overview") {
             if let g = model.glance {
-                if !g.attention.isEmpty { AttentionNote(items: g.attention) }
+                if !g.attention.isEmpty { AttentionNote(items: g.attention).panelSpan() }
                 netWorth(g)
                 month(g)
                 upcoming(g)
@@ -20,9 +20,10 @@ struct OverviewScreen: View {
                     Fine("updated \(Fmt.relative(ISO8601DateFormatter().string(from: at)))")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 4)
+                        .panelSpan()
                 }
             } else if let err = model.lastError {
-                ErrorNote(err) { Task { await model.refreshGlance(force: true) } }
+                ErrorNote(err) { Task { await model.refreshGlance(force: true) } }.panelSpan()
             } else {
                 Skeleton(height: 320)
                 Skeleton(height: 160)

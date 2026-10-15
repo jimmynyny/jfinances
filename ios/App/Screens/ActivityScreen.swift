@@ -1,10 +1,42 @@
 import JFinancesKit
 import SwiftUI
 
+/// The Activity tab: on a phone the list pushes a transaction; on a wide screen
+/// (an iPad, the open iPhone Duo) it opens beside the list. The open one lives
+/// in the model, so folding or unfolding a Duo keeps it.
+struct ActivityTab: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        @Bindable var model = model
+        if sizeClass == .regular {
+            TwoPane {
+                NavigationStack { ActivityScreen(picking: true) }
+            } detail: {
+                NavigationStack {
+                    if let tx = model.selectedTxn {
+                        TxnDetailScreen(tx: tx).id(tx.id)
+                    } else {
+                        PickPrompt("Pick a transaction to see it in full or change its category.")
+                    }
+                }
+            }
+        } else {
+            NavigationStack {
+                ActivityScreen()
+                    .navigationDestination(item: $model.selectedTxn) { TxnDetailScreen(tx: $0) }
+            }
+        }
+    }
+}
+
 /// Every transaction, newest first by day (or largest first): search, filter by
 /// account or category, and scroll for more.
 struct ActivityScreen: View {
     @Environment(AppModel.self) private var model
+    /// Wide screens: the open transaction is marked in the list.
+    var picking = false
     @State private var search = ""
     @State private var accountId: String?
     @State private var category: String?
@@ -32,8 +64,9 @@ struct ActivityScreen: View {
                     // Largest first: one list, each row with its date.
                     VStack(spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, tx in
-                            NavigationLink { TxnDetailScreen(tx: tx) } label: { TxnRow(tx: tx, showDate: true) }
+                            Button { model.selectedTxn = tx } label: { TxnRow(tx: tx, showDate: true) }
                                 .buttonStyle(.plain)
+                                .picked(picking && model.selectedTxn?.id == tx.id)
                                 .padding(.horizontal, 16)
                                 .onAppear { if tx.id == rows.last?.id { Task { await more() } } }
                             if i < rows.count - 1 { Rule().padding(.leading, 58) }
@@ -48,8 +81,9 @@ struct ActivityScreen: View {
                     Section {
                         VStack(spacing: 0) {
                             ForEach(Array(txs.enumerated()), id: \.element.id) { i, tx in
-                                NavigationLink { TxnDetailScreen(tx: tx) } label: { TxnRow(tx: tx) }
+                                Button { model.selectedTxn = tx } label: { TxnRow(tx: tx) }
                                     .buttonStyle(.plain)
+                                    .picked(picking && model.selectedTxn?.id == tx.id)
                                     .padding(.horizontal, 16)
                                     .onAppear { if tx.id == rows.last?.id { Task { await more() } } }
                                 if i < txs.count - 1 { Rule().padding(.leading, 58) }

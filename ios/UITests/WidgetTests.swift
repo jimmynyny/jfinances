@@ -15,10 +15,10 @@ final class WidgetTests: XCTestCase {
         XCUIDevice.shared.press(.home)
         sleep(2)
 
-        // Every preview in the gallery, in order: net worth S M, this month
-        // S M L, coming up S M L, account S, accounts M.
+        // Every preview in the gallery, in order: net worth S M L, this month
+        // S M L, coming up S M L, account S, accounts M L.
         openGallery()
-        for page in 0..<10 {
+        for page in 0..<12 {
             snap("g-\(page)")
             springboard.swipeLeft()
             sleep(1)
@@ -26,9 +26,9 @@ final class WidgetTests: XCTestCase {
         closeGallery()
 
         // Then real ones, fed by the server through the shared Keychain.
-        add(page: 4)   // this month, large
-        add(page: 9)   // accounts, medium
-        add(page: 8)   // account, small
+        add(page: 2)   // net worth, large
+        add(page: 11)  // accounts, large
+        add(page: 10)  // accounts, medium
         add(page: 0)   // net worth, small
         let done = springboard.buttons["Done"]
         if done.waitForExistence(timeout: 2) { done.tap() }

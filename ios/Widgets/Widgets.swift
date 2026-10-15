@@ -22,7 +22,7 @@ struct NetWorthWidget: Widget {
         }
         .configurationDisplayName("Net worth")
         .description("Net worth, its 30-day change and line.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline, .accessoryCircular])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline, .accessoryCircular])
     }
 }
 
@@ -66,7 +66,7 @@ struct AccountsWidget: Widget {
             AccountsView(entry: e).widgetURL(URL(string: "jfinances://accounts"))
         }
         .configurationDisplayName("Accounts")
-        .description("Up to four accounts' balances side by side.")
-        .supportedFamilies([.systemMedium])
+        .description("Up to four accounts' balances side by side, eight in the large size.")
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }

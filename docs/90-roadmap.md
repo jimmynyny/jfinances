@@ -10,7 +10,12 @@ docs/85, docs/86), and since 2026-10-15 a phone edits as the dashboard does.
 Reserved:
 
 - Push notifications for alerts (needs APNs keys, FCM for Android, and a sender in `worker`).
+- Android tablets and foldables (Pixel Fold, Galaxy Fold): the iPad / iPhone Duo wide layout
+  (docs/85 "iPad and the iPhone Duo": columns, list beside detail, sidebar) and the large
+  Net worth and Accounts (eight) widgets. Deferred by Jimmy on 2026-10-15; the iPhone app is
+  ahead of its twin until then.
 - Statement imports from the phone (the API allows them; the apps have no file picker for them yet).
+
 ## Google login in Access
 
 The Zero Trust team currently uses Google Workspace for `webuytcg.com` and

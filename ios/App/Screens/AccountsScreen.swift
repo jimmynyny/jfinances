@@ -1,16 +1,35 @@
 import JFinancesKit
 import SwiftUI
 
-/// The Accounts tab owns its navigation path so a widget's deep link can
-/// push an account directly.
+/// The Accounts tab: on a phone a list that pushes an account, on a wide screen
+/// (an iPad, the open iPhone Duo) the list beside the open account. Which one is
+/// open lives in the model, so a widget's deep link, or folding the Duo, keeps it.
 struct AccountsTab: View {
     @Environment(AppModel.self) private var model
-    @State private var path: [Account] = []
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        NavigationStack(path: $path) {
-            AccountsScreen()
-                .navigationDestination(for: Account.self) { AccountDetailScreen(account: $0) }
+        @Bindable var model = model
+        Group {
+            if sizeClass == .regular {
+                TwoPane {
+                    NavigationStack { AccountsScreen(picking: true) }
+                } detail: {
+                    NavigationStack {
+                        if let a = model.selectedAccount {
+                            AccountDetailScreen(account: a).id(a.id)
+                        } else {
+                            PickPrompt("Pick an account to see everything about it.")
+                        }
+                    }
+                }
+            } else {
+                NavigationStack(path: Binding(get: { model.selectedAccount.map { [$0] } ?? [] },
+                                              set: { model.selectedAccount = $0.last })) {
+                    AccountsScreen()
+                        .navigationDestination(for: Account.self) { AccountDetailScreen(account: $0) }
+                }
+            }
         }
         .task(id: model.pendingAccountId) { await openPending() }
     }
@@ -18,15 +37,20 @@ struct AccountsTab: View {
     private func openPending() async {
         guard let id = model.pendingAccountId else { return }
         model.pendingAccountId = nil
-        let known = model.glance?.accounts.first { $0.id == id }
-        if let known { path = [known]; return }
-        if let all = try? await APIClient.shared.accounts(), let a = all.first(where: { $0.id == id }) { path = [a] }
+        if let known = model.glance?.accounts.first(where: { $0.id == id }) {
+            model.selectedAccount = known
+        } else if let all = try? await APIClient.shared.accounts(), let a = all.first(where: { $0.id == id }) {
+            model.selectedAccount = a
+        }
     }
 }
 
 /// Every visible account by kind, with each group's total, as the dashboard's
 /// Accounts page. Offline accounts are added at the bottom.
 struct AccountsScreen: View {
+    @Environment(AppModel.self) private var model
+    /// Wide screens: a row opens the account in the right pane instead of pushing it.
+    var picking = false
     @State private var adding = false
     @State private var toast: String?
 
@@ -42,7 +66,13 @@ struct AccountsScreen: View {
                             MoneyText(g.total, cents: false, size: 13, weight: .medium)
                         }) {
                             RuledList(accounts) { a in
-                                NavigationLink(value: a) { AccountRow(account: a) }.buttonStyle(.plain)
+                                if picking {
+                                    Button { model.selectedAccount = a } label: { AccountRow(account: a, trend: false) }
+                                        .buttonStyle(.plain)
+                                        .picked(model.selectedAccount?.id == a.id)
+                                } else {
+                                    NavigationLink(value: a) { AccountRow(account: a) }.buttonStyle(.plain)
+                                }
                             }
                         }
                     }
@@ -104,7 +134,10 @@ struct AccountDetailScreen: View {
         }
         .toast($toast)
         .sheet(isPresented: $editing) {
-            AccountEditSheet(account: account, onSaved: { account = $0; toast = "Saved" }, onRemoved: { dismiss() })
+            AccountEditSheet(account: account, onSaved: { account = $0; toast = "Saved" }, onRemoved: {
+                // On a wide screen the account is the right pane's root: clear it rather than pop.
+                if model.selectedAccount?.id == account.id { model.selectedAccount = nil } else { dismiss() }
+            })
         }
         .sheet(isPresented: $valuing) {
             ValueSheet(account: account) { account = $0; toast = "Value updated" }

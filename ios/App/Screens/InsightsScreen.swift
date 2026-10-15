@@ -29,6 +29,7 @@ struct InsightsScreen: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .panelSpan()
             switch model.insightsSection {
             case .cashflow: CashflowInsights()
             case .spending: SpendingInsights()
@@ -88,6 +89,7 @@ struct SliceControls: View {
             Chips(options: SlicePreset.ranges, value: $range)
             Chips(options: SlicePreset.scopes, value: $scope)
         }
+        .panelSpan()
     }
 }
 
@@ -111,7 +113,8 @@ struct CashflowInsights: View {
         Loader(id: slice, height: 420) {
             try await APIClient.shared.cashflow(slice)
         } content: { cf in
-            VStack(spacing: 12) {
+            // Its three panels share one load; on a wide screen they still take columns.
+            PanelStack {
                 Panel("cash flow") {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 12) {
@@ -174,6 +177,7 @@ struct CashflowInsights: View {
                 }
             }
         }
+        .panelSpan()
     }
 
     /// Income sources -> income -> spending categories, plus what was saved (or

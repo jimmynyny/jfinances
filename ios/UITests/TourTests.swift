@@ -308,8 +308,55 @@ final class TourTests: XCTestCase {
         snap("42-locked")
     }
 
+    /// The wide layout (an iPad; the open iPhone Duo is the same size class): the
+    /// panels in columns, a list beside what was picked in it, upright and on its side.
+    func testWide() {
+        guard app.windows.firstMatch.frame.width >= 600 else { return }
+        sleep(5)
+        for (o, orientation) in [("portrait", UIDeviceOrientation.portrait), ("landscape", .landscapeLeft)] {
+            XCUIDevice.shared.orientation = orientation
+            sleep(2)
+            tab("Overview")
+            snap("50-\(o)-overview")
+            tab("Accounts")
+            snap("51-\(o)-accounts")
+            let account = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] '$'")).element(boundBy: 1)
+            if account.waitForExistence(timeout: 3) { account.tap(); sleep(3) }
+            snap("52-\(o)-account")
+            tab("Activity")
+            let row = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] '$'")).element(boundBy: 2)
+            if row.waitForExistence(timeout: 3) { row.tap(); sleep(2) }
+            snap("53-\(o)-transaction")
+            if o == "portrait" {
+                app.navigationBars.buttons["Edit"].firstMatch.tap()
+                sleep(2)
+                snap("54-\(o)-transaction-edit")
+                app.buttons["Cancel"].firstMatch.tap()
+                sleep(1)
+            }
+            tab("Insights")
+            for (i, name) in ["Cash flow", "Spending", "Net worth & debt"].enumerated() {
+                let b = app.buttons[name]
+                if b.waitForExistence(timeout: 3) { b.tap() }
+                sleep(4)
+                snap("55-\(o)-insights-\(i)")
+            }
+            tab("Settings")
+            snap("56-\(o)-settings")
+        }
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     private func tab(_ name: String) {
-        app.tabBars.buttons[name].tap()
+        // A phone's tab bar; an iPad's bar on top (where a tab that doesn't fit
+        // hides behind its chevron).
+        let bar = app.tabBars.buttons[name]
+        if bar.exists, bar.isHittable { bar.tap() } else {
+            // On its side the iPad shows a sidebar, whose tabs are cells.
+            let candidates = [app.buttons[name].firstMatch, app.cells[name].firstMatch,
+                              app.cells.containing(.staticText, identifier: name).firstMatch]
+            if let hit = candidates.first(where: { $0.exists && $0.isHittable }) { hit.tap() }
+        }
         sleep(3)
     }
 

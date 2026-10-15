@@ -11,8 +11,10 @@ SIM=${1:?simulator id}
 OUT=${2:?output dir}
 case "${3:-screens}" in
   screens) ONLY=JFinancesUITests/TourTests ;;
+  wide) ONLY=JFinancesUITests/TourTests/testWide ;;
+  tour) ONLY=JFinancesUITests/TourTests/testTour ;;
   widgets) ONLY=JFinancesUITests/WidgetTests ;;
-  *) echo "screens or widgets"; exit 64 ;;
+  *) echo "screens, tour, wide or widgets"; exit 64 ;;
 esac
 : "${JF_DEBUG_TOKEN:?set JF_DEBUG_TOKEN}"
 DD=${DERIVED:-build/DerivedData}

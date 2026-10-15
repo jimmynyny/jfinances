@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct JFinancesApp: App {
+    @UIApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = AppModel()
 
     init() {
@@ -20,9 +21,20 @@ struct JFinancesApp: App {
     }
 }
 
+/// Which ways the screen may turn: an iPad any way; the open iPhone Duo, which is
+/// as wide as an iPad, either way up or on its side; a phone (and the Duo folded)
+/// upright only, as before.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        if UIDevice.current.userInterfaceIdiom == .pad { return .all }
+        return window?.traitCollection.horizontalSizeClass == .regular ? .allButUpsideDown : .portrait
+    }
+}
+
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var splash = true
 
     var body: some View {
@@ -62,6 +74,13 @@ struct RootView: View {
             }
         }
         .onOpenURL { model.open($0) }
+        .onChange(of: sizeClass) {
+            // The Duo folded or unfolded: ask again which ways it may turn (folded on
+            // its side, it turns back upright).
+            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            }
+        }
         .alert("Lock jFinances with \(Biometrics.kind)?", isPresented: $model.offerLock) {
             Button("Use \(Biometrics.kind)") { model.lockEnabled = true }
             Button("Not now", role: .cancel) {}
@@ -113,7 +132,7 @@ struct MainTabs: View {
                 AccountsTab()
             }
             Tab("Activity", systemImage: "list.bullet.rectangle", value: AppTab.activity) {
-                NavigationStack { ActivityScreen() }
+                ActivityTab()
             }
             Tab("Insights", systemImage: "chart.bar.xaxis", value: AppTab.insights) {
                 NavigationStack { InsightsScreen() }
@@ -122,6 +141,8 @@ struct MainTabs: View {
                 SettingsTab()
             }
         }
+        // A phone keeps the tab bar; an iPad gets the tab bar on top, or a sidebar.
+        .tabViewStyle(.sidebarAdaptable)
     }
 }
 

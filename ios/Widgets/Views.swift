@@ -106,6 +106,45 @@ struct NetWorthView: View {
                         if let delta, show { Text(delta.0 + " · 30d").font(JFFont.mono(10)).privacySensitive() }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                case .systemLarge:
+                    // The medium one's figures over a tall line, then where it sits.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            WidgetCaption(text: "net worth")
+                            Spacer()
+                            WidgetFoot(fetchedAt: entry.fetchedAt, stale: entry.status == .stale)
+                        }
+                        Figure(text: Fmt.money(nw.net, cents: false), show: show, font: JFFont.pixel(38)).widgetAccentable()
+                        if let delta { Figure(text: delta.0 + " · 30d", show: show, font: JFFont.mono(11, .medium), color: delta.1) }
+                        // Cells sized so the line spans the width, however few points the glance has.
+                        GeometryReader { geo in
+                            let n = max(2, nw.points.count)
+                            PixelSparkline(nw.points.map(\.net), cell: max(3, (geo.size.width / CGFloat(n)).rounded(.down) - 1), gap: 1)
+                        }
+                        .frame(maxHeight: .infinity)
+                        HStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("owned").font(JFFont.mono(9)).foregroundStyle(JF.ink3)
+                                Figure(text: Fmt.compact(nw.assets), show: show, font: JFFont.mono(13, .medium))
+                            }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("owed").font(JFFont.mono(9)).foregroundStyle(JF.ink3)
+                                Figure(text: Fmt.compact(nw.liabilities), show: show, font: JFFont.mono(13, .medium))
+                            }
+                        }
+                        Rule()
+                        let groups = g.groups.filter { $0.total != 0 }.prefix(6)
+                        VStack(spacing: 4) {
+                            ForEach(Array(groups)) { grp in
+                                HStack {
+                                    Text(grp.label).font(JFFont.sans(12)).foregroundStyle(JF.ink).lineLimit(1)
+                                    if grp.is_liability { Text("owed").font(JFFont.mono(9)).foregroundStyle(JF.ink3) }
+                                    Spacer()
+                                    Figure(text: Fmt.money(grp.total, cents: false), show: show, font: JFFont.mono(12, .medium))
+                                }
+                            }
+                        }
+                    }
                 case .systemMedium:
                     HStack(alignment: .top, spacing: 14) {
                         VStack(alignment: .leading, spacing: 6) {
@@ -389,10 +428,15 @@ struct AccountView: View {
 struct AccountsView: View {
     let entry: GlanceEntry<AccountsIntent>
 
+    @Environment(\.widgetFamily) private var family
+
+    /// The picked ones in order (four in the medium size, eight in the large),
+    /// else the first ones the glance lists.
     private var accounts: [Account] {
         guard let g = entry.glance else { return [] }
+        let room = family == .systemLarge ? 8 : 4
         let picked = entry.configuration.picked.compactMap { id in g.accounts.first { $0.id == id } }
-        return picked.isEmpty ? Array(g.accounts.prefix(4)) : picked
+        return Array((picked.isEmpty ? g.accounts : picked).prefix(room))
     }
 
     var body: some View {
@@ -408,7 +452,20 @@ struct AccountsView: View {
                         Spacer()
                         WidgetFoot(fetchedAt: entry.fetchedAt, stale: entry.status == .stale)
                     }
-                    if list.count == 4 {
+                    if family == .systemLarge {
+                        // Two columns, a ruled row each pair: up to eight, with their lines.
+                        let rows = stride(from: 0, to: list.count, by: 2).map { Array(list[$0..<min($0 + 2, list.count)]) }
+                        VStack(spacing: 8) {
+                            ForEach(Array(rows.enumerated()), id: \.offset) { i, pair in
+                                if i > 0 { Rule() }
+                                HStack(alignment: .top, spacing: 14) {
+                                    ForEach(pair) { a in largeCell(a, show) }
+                                    if pair.count == 1 { Color.clear.frame(maxWidth: .infinity) }
+                                }
+                                .frame(maxHeight: .infinity)
+                            }
+                        }
+                    } else if list.count == 4 {
                         VStack(spacing: 8) {
                             HStack(spacing: 14) { cell(list[0], show, compact: true); cell(list[1], show, compact: true) }
                             Rule()
@@ -423,6 +480,30 @@ struct AccountsView: View {
             }
         }
         .panelBackground()
+    }
+
+    /// The large size's: name, kind, then the balance with its line beside it, so
+    /// four rows of two fit without shrinking the figure.
+    private func largeCell(_ a: Account, _ show: Bool) -> some View {
+        Link(destination: URL(string: "jfinances://account/\(a.id)")!) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(a.name).font(JFFont.sans(12, .semibold)).foregroundStyle(JF.ink).lineLimit(1)
+                    if a.is_business == true { BusinessMark() }
+                }
+                Text(a.is_liability ? "owed" : a.subtitle).font(JFFont.mono(9)).foregroundStyle(JF.ink3).lineLimit(1)
+                Spacer(minLength: 0)
+                HStack(alignment: .bottom, spacing: 6) {
+                    Figure(text: Fmt.money(a.balance, cents: false, currency: a.currency), show: show, font: JFFont.pixel(18))
+                        .widgetAccentable()
+                    Spacer(minLength: 0)
+                    if a.trendValues.count >= 2 {
+                        PixelSparkline(a.trendValues, cell: 2, gap: 1).frame(width: 44, height: 14)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private func cell(_ a: Account, _ show: Bool, compact: Bool, size: CGFloat = 17) -> some View {

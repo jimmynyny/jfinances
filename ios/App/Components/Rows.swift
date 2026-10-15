@@ -4,6 +4,8 @@ import SwiftUI
 /// An account: name, institution ··last4, balance, and a dot-matrix trend.
 struct AccountRow: View {
     let account: Account
+    /// The line beside the balance; a wide screen's narrow list leaves it out for the name.
+    var trend = true
 
     var body: some View {
         HStack(spacing: 12) {
@@ -15,7 +17,7 @@ struct AccountRow: View {
                 Text(account.subtitle).font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1)
             }
             Spacer(minLength: 8)
-            if account.trendValues.count >= 2 {
+            if trend, account.trendValues.count >= 2 {
                 PixelSparkline(account.trendValues).frame(width: 54, height: 18)
             }
             MoneyText(account.balance, cents: false, size: 15, weight: .medium, currency: account.currency)
@@ -168,6 +170,19 @@ struct ShareRow: View {
 }
 
 /// Rows separated by 1px rules, inside a flush panel.
+extension View {
+    /// A row picked in a wide screen's list: the accent wash edge to edge of a
+    /// `RuledList` row, and a bar at its left.
+    func picked(_ on: Bool) -> some View {
+        background {
+            if on {
+                JF.accentWash.padding(.horizontal, -16)
+                    .overlay(alignment: .leading) { JF.accent.frame(width: 3).offset(x: -16) }
+            }
+        }
+    }
+}
+
 struct RuledList<Item: Identifiable, Row: View>: View {
     let items: [Item]
     let row: (Item) -> Row

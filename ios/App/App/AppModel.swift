@@ -35,6 +35,11 @@ final class AppModel {
     var insightsSection: InsightsSection = .cashflow
     /// An account a deep link asked for; the Accounts tab pushes it and clears it.
     var pendingAccountId: String?
+    /// The account open in the Accounts tab: pushed on a phone, in the right pane
+    /// on a wide screen. Kept here so folding or unfolding a Duo keeps it open.
+    var selectedAccount: Account?
+    /// The same for the Activity tab's transaction.
+    var selectedTxn: Txn?
     /// Settings → Connections is wanted (a bank needs re-linking); Settings pushes it.
     var showConnections = false
     /// Bumped by pull-to-refresh; every loader on screen reloads.

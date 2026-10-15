@@ -23,8 +23,8 @@ struct Screen<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if !inline { TabTitle(title) }
+            PanelStack {
+                if !inline { TabTitle(title).panelSpan() }
                 content
             }
             .padding(.horizontal, JF.gutter)
@@ -51,6 +51,104 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+/// A screen's panels: one column on a phone (exactly a VStack), and where the
+/// screen is wide (an iPad, the open iPhone Duo) two or three columns, each
+/// panel dropped into the shortest. `panelSpan()` keeps a row (a title, the
+/// slice controls, a note) across all of them. Columns follow the width the
+/// stack is given, not the device, so a pane beside a list stays one column.
+struct PanelStack: Layout {
+    var spacing: CGFloat = 12
+
+    static func columns(for width: CGFloat) -> Int {
+        width >= 1100 ? 3 : width >= 700 ? 2 : 1
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let frames = place(width: width, subviews: subviews)
+        return CGSize(width: width, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (frame, view) in zip(place(width: bounds.width, subviews: subviews), subviews) {
+            view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                       proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+
+    private func place(width: CGFloat, subviews: Subviews) -> [CGRect] {
+        let n = Self.columns(for: width)
+        let colWidth = (width - spacing * CGFloat(n - 1)) / CGFloat(n)
+        var tops = Array(repeating: CGFloat(0), count: n)
+        var frames: [CGRect] = []
+        for view in subviews {
+            let spans = n == 1 || view[PanelSpan.self]
+            let size = view.sizeThatFits(ProposedViewSize(width: spans ? width : colWidth, height: nil))
+            if spans {
+                let top = tops.max() ?? 0
+                let y = top > 0 ? top + spacing : 0
+                frames.append(CGRect(x: 0, y: y, width: min(size.width, width), height: size.height))
+                if size.height > 0 { tops = Array(repeating: y + size.height, count: n) }
+            } else {
+                let i = tops.indices.min { tops[$0] < tops[$1] }!
+                let y = tops[i] > 0 ? tops[i] + spacing : 0
+                frames.append(CGRect(x: CGFloat(i) * (colWidth + spacing), y: y, width: colWidth, height: size.height))
+                if size.height > 0 { tops[i] = y + size.height }
+            }
+        }
+        return frames
+    }
+}
+
+private struct PanelSpan: LayoutValueKey {
+    static let defaultValue = false
+}
+
+extension View {
+    /// Across every column of a wide `PanelStack`.
+    func panelSpan() -> some View { layoutValue(key: PanelSpan.self, value: true) }
+}
+
+/// Wide screens (an iPad, the open iPhone Duo): a list on the left, what was
+/// picked in it on the right, each with its own navigation. A phone (or the
+/// Duo folded) never gets here: the tab pushes instead.
+struct TwoPane<List: View, Detail: View>: View {
+    let list: List
+    let detail: Detail
+
+    init(@ViewBuilder list: () -> List, @ViewBuilder detail: () -> Detail) {
+        self.list = list()
+        self.detail = detail()
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                list.frame(width: min(440, max(340, geo.size.width * 0.4)))
+                Rectangle().fill(JF.line).frame(width: 1).ignoresSafeArea()
+                detail.frame(maxWidth: .infinity)
+            }
+        }
+        .background(JF.page)
+    }
+}
+
+/// The right pane before anything is picked.
+struct PickPrompt: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sidebar.left").font(.system(size: 28)).foregroundStyle(JF.ink3)
+            Fine(text)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(JF.page)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
