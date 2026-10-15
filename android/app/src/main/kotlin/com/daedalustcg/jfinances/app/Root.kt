@@ -46,6 +46,7 @@ import com.daedalustcg.jfinances.kit.ui.LocalPalette
 import com.daedalustcg.jfinances.screens.AccountDetailScreen
 import com.daedalustcg.jfinances.screens.AccountsScreen
 import com.daedalustcg.jfinances.screens.ActivityScreen
+import com.daedalustcg.jfinances.screens.DrillScreen
 import com.daedalustcg.jfinances.screens.InsightsScreen
 import com.daedalustcg.jfinances.screens.LinkScreen
 import com.daedalustcg.jfinances.screens.OverviewScreen
@@ -131,6 +132,7 @@ private fun RouteScreen(route: Route) {
     when (route) {
         is Route.AccountDetail -> AccountDetailScreen(route.account, onBack = { model.pop() })
         is Route.TxnDetail -> TxnDetailScreen(route.tx, onBack = { model.pop() })
+        is Route.Drill -> DrillScreen(route.target, onBack = { model.pop() })
     }
 }
 

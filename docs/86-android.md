@@ -12,9 +12,9 @@ The five tabs read what the iPhone's read, field for field:
 | Tab | What | Server reads |
 |---|---|---|
 | Overview | net worth readout and line (1m–all), owned / owed, this month in and out with top categories, the next 14 days of charges, alerts, totals by kind; a banner when a bank wants re-linking | `/glance`, `/networth/history`, `/alerts` |
-| Accounts | every visible account by kind with its dot-matrix trend; an account shows its balance line, credit use, the lender's details, performance and holdings (investments), and its transactions | `/overview`, `/accounts/{id}/history`, `/liabilities`, `/investments/performance`, `/holdings`, `/transactions` |
-| Activity | all transactions by day; search, account and category filters; tap for the full record and its account | `/transactions`, `/transactions/categories`, `/accounts` |
-| Insights | cash flow, spending (by category, then merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks | `/insights/*`, `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
+| Accounts | every visible account by kind with its dot-matrix trend; an account shows its balance line, credit use, everything known about it (the bank's facts, what was entered on the dashboard tagged "entered", what follows tagged "calc": loan terms and payoff, card APR and limit, savings APY, holdings), a home's or car's monthly market value, performance and holdings (investments), and its transactions. Where it counts (its group) decides which: an offline account counted as an investment shows performance, one with imported statements its transactions | `/overview`, `/accounts/{id}/history`, `/accounts/{id}/details`, `/accounts/{id}/asset`, `/investments/performance`, `/holdings`, `/transactions` |
+| Activity | all transactions by day, or largest first; search, account (by group, offline accounts with imported transactions included) and category filters; tap for the full record, its account and whether it counts as business | `/transactions`, `/transactions/categories`, `/accounts` |
+| Insights | cash flow with the money-flow diagram (income → spending, saved or from savings), spending (by category, a category's kinds, merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks (offline investments "kept by hand"). Every number opens the transactions behind it, adding up to it: a row with one tap; a bar or a money-flow node with two (the first shows its numbers or lights its path). Chart legends hide and show their series | `/insights/*`, `/transactions` (Insights' `flow` and groupings), `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
 | Settings | who and which server, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
 
 **Blur**: the "blur" button top-right on every screen (and a switch in
@@ -65,9 +65,8 @@ widgets are one process, so they share the credential directly. A 401 for the
 token signs the phone out. The name the dashboard's Settings → phones shows is
 "<maker> <model> · Android <version>".
 
-Production needs `API_HOST=jfinances-api.sellingtcg.com` on the production
-`web` service and its Cloudflare CNAME (docs/55); until then the app's default
-server is sandbox (`DEFAULT_SERVER` in `app/build.gradle.kts`).
+Production's API hostname is `jfinances-api.sellingtcg.com` (docs/55); the
+sign-in screen offers production first (`DEFAULT_SERVER` in `app/build.gradle.kts`).
 
 ## 3. Layout
 

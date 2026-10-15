@@ -50,15 +50,17 @@ struct AccountsScreen: View {
     }
 }
 
-/// One account: its balance and line, what the bank says about the debt or
-/// the holdings, and its latest activity.
+/// One account: its balance and line, a home's or car's market value,
+/// everything known about it (the bank's facts, what was entered, what follows),
+/// its holdings or its latest activity. Where it counts (its group), not its
+/// type, decides which: an offline account counted as an investment shows
+/// performance, one with imported statements its transactions.
 struct AccountDetailScreen: View {
     let account: Account
     @State private var range = "6m"
 
-    private var isInvestment: Bool { account.type == "investment" || account.type == "brokerage" }
-    private var isCredit: Bool { account.type == "credit" }
-    private var isLoan: Bool { account.type == "loan" || account.is_liability && !isCredit && !account.isManual }
+    private var isInvestment: Bool { account.countsAsInvestment }
+    private var isCredit: Bool { account.countsAsCard }
 
     var body: some View {
         Screen(account.name) {
@@ -96,65 +98,35 @@ struct AccountDetailScreen: View {
                 }
             }
 
-            if account.is_liability && !account.isManual { DebtPanel(accountId: account.id) }
+            if account.isValuedAsset { MarketValuePanel(account: account) }
+            AccountDetailsPanels(accountId: account.id)
             if isInvestment {
                 PerformancePanel(accountId: account.id)
                 HoldingsPanel(accountId: account.id)
             }
-            if !isInvestment && !account.isManual { AccountActivity(accountId: account.id) }
+            if !isInvestment && account.holdsTransactions { AccountActivity(accountId: account.id) }
             about
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var kind: String {
+        if account.isManual { return account.isValuedAsset ? "offline asset" : "offline, kept by hand" }
+        return [account.type, account.subtype].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var about: some View {
         Panel("about") {
             VStack(spacing: 0) {
                 if let inst = account.institution_name { KeyValueRow("institution") { Text(inst) } }
-                KeyValueRow("type") { Text([account.type, account.subtype].compactMap { $0 }.joined(separator: " · ")) }
+                KeyValueRow("type") { Text(kind) }
+                if account.group_override != nil, let label = Account.groupLabels[account.groupKey] {
+                    KeyValueRow("counts as") { Text(label.lowercased()) }
+                }
                 if let m = account.mask { KeyValueRow("number") { Text("··\(m)").font(JFFont.mono(14)) } }
                 if let official = account.official_name, official != account.name { KeyValueRow("bank's name") { Text(official) } }
                 if account.is_business == true { KeyValueRow("use") { HStack(spacing: 6) { BusinessMark(); Text("business") } } }
                 KeyValueRow("updated") { Text(Fmt.relative(account.balance_updated_at)).font(JFFont.mono(13)) }
-            }
-        }
-    }
-}
-
-/// What the lender reports: rate, payments, statement.
-struct DebtPanel: View {
-    let accountId: String
-
-    var body: some View {
-        Loader(height: 120) {
-            try await APIClient.shared.liabilities().accounts.first { $0.account.id == accountId }?.detail
-        } content: { detail in
-            if let d = detail {
-                Panel("the debt") {
-                    VStack(spacing: 0) {
-                        if let r = d.interest_rate_pct { KeyValueRow("rate") { Text(Fmt.pct(r, digits: 2, ratio: false)).font(JFFont.mono(14)) } }
-                        if let due = d.next_payment_due_date {
-                            KeyValueRow("next payment due") {
-                                HStack(spacing: 6) {
-                                    if d.is_overdue == true { Badge("overdue", tone: .bad) }
-                                    Text(Fmt.date(due, year: true))
-                                }
-                            }
-                        }
-                        if let v = d.minimum_payment ?? d.next_payment_amount { KeyValueRow("payment") { MoneyText(v) } }
-                        if let v = d.last_payment_amount {
-                            KeyValueRow("last paid") {
-                                HStack(spacing: 6) {
-                                    MoneyText(v)
-                                    if let when = d.last_payment_date { Text(Fmt.date(when)).font(JFFont.mono(12)).foregroundStyle(JF.ink3) }
-                                }
-                            }
-                        }
-                        if let v = d.last_statement_balance { KeyValueRow("last statement") { MoneyText(v) } }
-                        if let v = d.origination_principal { KeyValueRow("borrowed") { MoneyText(v, cents: false) } }
-                        if let m = d.maturity_date { KeyValueRow("ends") { Text(Fmt.date(m, year: true)) } }
-                    }
-                }
             }
         }
     }
@@ -214,6 +186,8 @@ struct HoldingsPanel: View {
         let name: String?
         var quantity: Double
         var value: Double
+        /// An offline account counted as an investment: its balance, no holdings.
+        var keptByHand = false
     }
 
     private func merged(_ hs: [Holding]) -> [Row] {
@@ -241,18 +215,29 @@ struct HoldingsPanel: View {
             try await APIClient.shared.holdings()
         } content: { h in
             let accounts = h.accounts.filter { accountId == nil || $0.account.id == accountId }
-            let all = merged(accounts.flatMap(\.holdings)).sorted { $0.value > $1.value }
+            // An account with no holdings reported (one kept by hand) counts at its balance.
+            let byHand = accounts.filter { $0.holdings.isEmpty && $0.account.isManual }.map {
+                Row(id: $0.account.id, ticker: nil, name: $0.account.name, quantity: 0, value: $0.account.balance, keptByHand: true)
+            }
+            let all = (merged(accounts.flatMap(\.holdings)) + (accountId == nil ? byHand : [])).sorted { $0.value > $1.value }
             let total = all.reduce(0) { $0 + $1.value }
             Panel("holdings", flush: true, actions: { MoneyText(total, cents: false, size: 12, weight: .medium) }) {
                 if all.isEmpty {
-                    Fine("No holdings reported.").padding(16)
+                    Fine(byHand.isEmpty
+                         ? "No holdings reported."
+                         : "An offline account: its value is what you set (or what its imported statements say). Holdings aren't listed.")
+                        .padding(16)
                 } else {
                     RuledList(Array(all.prefix(limit))) { x in
                         HStack(spacing: 12) {
-                            Text(symbol(x)).font(JFFont.mono(13, .semibold)).foregroundStyle(JF.ink).frame(width: 64, alignment: .leading)
+                            Text(x.keptByHand ? "—" : symbol(x)).font(JFFont.mono(13, .semibold)).foregroundStyle(JF.ink).frame(width: 64, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(x.name ?? "").font(JFFont.sans(13)).foregroundStyle(JF.ink2).lineLimit(1)
-                                Text("\(Fmt.number(x.quantity, digits: x.quantity == x.quantity.rounded() ? 0 : 3)) sh").font(JFFont.mono(11)).foregroundStyle(JF.ink3).figure(size: 11)
+                                if x.keptByHand {
+                                    Text("kept by hand").font(JFFont.mono(11)).foregroundStyle(JF.ink3)
+                                } else {
+                                    Text("\(Fmt.number(x.quantity, digits: x.quantity == x.quantity.rounded() ? 0 : 3)) sh").font(JFFont.mono(11)).foregroundStyle(JF.ink3).figure(size: 11)
+                                }
                             }
                             Spacer(minLength: 8)
                             VStack(alignment: .trailing, spacing: 2) {

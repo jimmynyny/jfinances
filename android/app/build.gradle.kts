@@ -25,9 +25,8 @@ android {
         targetSdk = 36
         versionCode = buildNumber
         versionName = "0.1.0"
-        // Which server the sign-in screen offers first: sandbox until
-        // production has the API hostname (docs/85 §2).
-        buildConfigField("String", "DEFAULT_SERVER", "\"sandbox\"")
+        // Which server the sign-in screen offers first.
+        buildConfigField("String", "DEFAULT_SERVER", "\"production\"")
         // A developer's own server (and the emulator's token shortcut): debug builds only.
         buildConfigField("boolean", "LOCAL_SERVER", "false")
     }

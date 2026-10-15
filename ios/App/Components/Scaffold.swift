@@ -3,6 +3,9 @@ import SwiftUI
 
 /// A tab's page: the desk-coloured background, panels in a column with the
 /// dashboard's 16pt gutter, pull to refresh, and the blur switch top-right.
+/// A plain stack, not a lazy one: a screen holds a few panels, and a lazy stack
+/// unloads a panel scrolled away, so its loader starts over at skeleton height
+/// and a tall one (an account's details) can bounce in and out of view forever.
 struct Screen<Content: View>: View {
     @Environment(AppModel.self) private var model
     let title: String
@@ -15,7 +18,7 @@ struct Screen<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 content
             }
             .padding(.horizontal, JF.gutter)

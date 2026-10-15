@@ -183,6 +183,8 @@ public struct CardRow: Codable, Hashable, Sendable, Identifiable {
     public let id: String
     public let name: String
     public let mask: String?
+    public let institution_name: String?
+    public let is_business: Bool?
     @FlexOpt public var limit: Double?
     @Flex public var balance: Double
     @FlexOpt public var utilization: Double?

@@ -19,6 +19,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.daedalustcg.jfinances.app.DrillTarget
+import com.daedalustcg.jfinances.app.Route
+import com.daedalustcg.jfinances.components.FlowNodeSpec
+import com.daedalustcg.jfinances.components.LegendItem
+import com.daedalustcg.jfinances.components.LegendToggles
+import com.daedalustcg.jfinances.components.MoneyFlowChart
+import com.daedalustcg.jfinances.kit.api.Drill
+import com.daedalustcg.jfinances.kit.models.Account
+import com.daedalustcg.jfinances.kit.models.Cashflow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +61,7 @@ import com.daedalustcg.jfinances.components.RuledList
 import com.daedalustcg.jfinances.components.Screen
 import com.daedalustcg.jfinances.components.ShareRow
 import com.daedalustcg.jfinances.components.StackedSpendingChart
+import com.daedalustcg.jfinances.components.ToggleChip
 import com.daedalustcg.jfinances.components.UpcomingRow
 import com.daedalustcg.jfinances.kit.api.ApiClient
 import com.daedalustcg.jfinances.kit.api.Slice
@@ -132,6 +143,23 @@ fun slicePreset(range: String, scope: String, today: LocalDate = Fmt.today()): S
     }
 }
 
+/** The days the period starting `start` covers at `grain`, inside the slice. */
+fun periodRange(start: String, grain: String, slice: Slice): Pair<String, String> {
+    val d = Fmt.day(start) ?: Fmt.today()
+    val months = when (grain) { "quarter" -> 3L; "year" -> 12L; else -> 1L }
+    val last = Fmt.isoDay(d.plusMonths(months).minusDays(1))
+    return (if (start < slice.from) slice.from else start) to (if (last > slice.to) slice.to else last)
+}
+
+/** "food and drink" -> "Food and drink", for a screen title. */
+private fun String.capitalizedFirst() = replaceFirstChar { it.uppercase() }
+
+/** A trailing chevron: this row opens its transactions. */
+@Composable
+private fun OpensMark() {
+    Text("›", style = JFFont.sans(16f), color = JF.ink3)
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SliceControls(range: String, onRange: (String) -> Unit, scope: String, onScope: (String) -> Unit) {
@@ -145,9 +173,11 @@ private fun SliceControls(range: String, onRange: (String) -> Unit, scope: Strin
 
 @Composable
 private fun CashflowInsights() {
+    val model = LocalAppModel.current
     var range by rememberPref("jf.ins.range", "12m")
     var scope by rememberPref("jf.ins.scope", "personal")
     val slice = slicePreset(range, scope)
+    fun open(drill: Drill, title: String) = model.push(Route.Drill(DrillTarget(slice, drill, title)))
     SliceControls(range, { range = it }, scope, { scope = it })
     Loader(id = slice, height = 420.dp, load = { ApiClient.cashflow(slice) }) { cf ->
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -158,7 +188,14 @@ private fun CashflowInsights() {
                         StatTile("money out", Modifier.weight(1f)) { MoneyText(cf.totals.spending, cents = false, size = 16f, weight = JFFont.Weight.Medium) }
                         StatTile("net", Modifier.weight(1f)) { MoneyText(cf.totals.net, cents = false, style = MoneyStyle.Signed, size = 16f, weight = JFFont.Weight.Medium) }
                     }
-                    if (cf.periods.isEmpty()) Fine("Nothing in this range.") else FlowBarsChart(cf.periods)
+                    if (cf.periods.isEmpty()) {
+                        Fine("Nothing in this range.")
+                    } else {
+                        FlowBarsChart(cf.periods) { p, flow ->
+                            val (from, to) = periodRange(p.period, cf.grain, slice)
+                            open(Drill(flow = flow, from = from, to = to), "${p.label} · money ${if (flow == "income") "in" else "out"}")
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatTile("avg in / month", Modifier.weight(1f)) { MoneyText(cf.averages.income, cents = false, size = 13f) }
                         StatTile("avg out / month", Modifier.weight(1f)) { MoneyText(cf.averages.spending, cents = false, size = 13f) }
@@ -166,27 +203,28 @@ private fun CashflowInsights() {
                             Text(Fmt.pct(cf.totals.savings_rate, digits = 0), style = JFFont.mono(13f), color = JF.ink, modifier = Modifier.figure(13f))
                         }
                     }
+                    if (cf.periods.isNotEmpty()) Fine("Tap a bar for its numbers, again for its transactions.")
+                }
+            }
+            val (sources, uses) = flowNodes(cf, ::open)
+            if (sources.isNotEmpty() || uses.isNotEmpty()) {
+                Panel("money flow") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MoneyFlowChart(sources, uses, "income", openCenter = { open(Drill(flow = "income"), "Income") })
+                        Fine("Tap a name to light its path, again for its transactions.")
+                    }
                 }
             }
             if (cf.income_sources.isNotEmpty()) {
                 Panel("money in, by source", flush = true) {
-                    RuledList(cf.income_sources) { s ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RuledList(cf.income_sources, onClick = { s -> open(Drill(flow = "income", merchant = s.label, incomeKind = s.kind), s.label) }) { s ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(s.label, style = JFFont.sans(14f, JFFont.Weight.Medium), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                s.count?.let { Fine("$it deposits") }
+                                Fine(listOfNotNull(s.kind, s.count?.let { "$it deposit${if (it == 1) "" else "s"}" }).joinToString(" · "))
                             }
                             MoneyText(s.amount, cents = false, size = 14f, weight = JFFont.Weight.Medium)
-                        }
-                    }
-                }
-            }
-            val total = cf.spending_categories.sumOf { it.amount }
-            if (total > 0) {
-                Panel("where it went") {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        cf.spending_categories.forEachIndexed { i, c ->
-                            ShareRow(Category.label(c.key), c.amount, c.amount / total, series = if (c.key == "OTHER") null else i)
+                            OpensMark()
                         }
                     }
                 }
@@ -195,40 +233,99 @@ private fun CashflowInsights() {
     }
 }
 
+/**
+ * Income sources -> income -> spending categories, plus what was saved (or
+ * drawn from savings); each node opens the transactions it is made of.
+ */
+@Composable
+private fun flowNodes(d: Cashflow, open: (Drill, String) -> Unit): Pair<List<FlowNodeSpec>, List<FlowNodeSpec>> {
+    val inColor = JF.divPos
+    val head = d.income_sources.take(5)
+    val rest = d.income_sources.drop(5).sumOf { it.amount }
+    val sources = head.map { s ->
+        FlowNodeSpec("in:${s.kind}:${s.label}", s.label, s.amount, inColor) { open(Drill(flow = "income", merchant = s.label, incomeKind = s.kind), s.label) }
+    }.toMutableList()
+    if (rest > 0) {
+        sources += FlowNodeSpec("in:other", "other income", rest, inColor) {
+            open(Drill(flow = "income", notSource = head.map { "${it.kind}:${it.label}" }), "Other income")
+        }
+    }
+    val named = d.spending_categories.filter { it.key != "OTHER" }.map { it.key }
+    val uses = d.spending_categories.mapIndexed { i, c ->
+        FlowNodeSpec("out:${c.key}", Category.label(c.key), c.amount, if (c.key == "OTHER") JF.other else JF.seriesColor(i)) {
+            open(if (c.key == "OTHER") Drill(flow = "spending", notCategory = named) else Drill(flow = "spending", category = c.key), Category.label(c.key).capitalizedFirst())
+        }
+    }.toMutableList()
+    if (d.totals.net > 0) uses += FlowNodeSpec("saved", "saved", d.totals.net, inColor) { open(Drill(flow = "all"), "Income and spending") }
+    if (d.totals.net < 0) {
+        sources += FlowNodeSpec("in:savings", "from savings", -d.totals.net, JF.ink3) {
+            open(Drill(flow = "spending", largestFirst = true, why = "savings"), "From savings")
+        }
+    }
+    return sources to uses
+}
+
 // ------------------------------------------------------------------ spending
 
 @Composable
 private fun SpendingInsights() {
+    val model = LocalAppModel.current
     var range by rememberPref("jf.ins.range", "12m")
     var scope by rememberPref("jf.ins.scope", "personal")
+    /** A category to look inside: its kinds in the chart, its merchants below. */
     var category by rememberSaveable { mutableStateOf<String?>(null) }
+    var hidden by remember { mutableStateOf(setOf<String>()) }
+    /** The top categories, for the picker (from the last look at all of them). */
+    var topKeys by remember { mutableStateOf(listOf<String>()) }
     val slice = slicePreset(range, scope)
+    fun label(key: String) = Category.label(key, primary = category)
+    fun open(drill: Drill, title: String) = model.push(Route.Drill(DrillTarget(slice, drill, title)))
+    /** The rows a series is made of: inside a category, one of its kinds; "OTHER" is every one not shown. */
+    fun drill(key: String, named: List<String>): Drill = when {
+        key == "OTHER" && category != null -> Drill(flow = "spending", category = category, notDetailed = named)
+        key == "OTHER" -> Drill(flow = "spending", notCategory = named)
+        category != null -> Drill(flow = "spending", category = category, detailed = key)
+        else -> Drill(flow = "spending", category = key)
+    }
     SliceControls(range, { range = it }, scope, { scope = it })
-    Loader(id = slice, height = 360.dp, load = { ApiClient.spending(slice, top = 6) }) { sp ->
-        Panel("spending by category") {
+    Loader(id = slice to category, height = 360.dp, load = {
+        ApiClient.spending(slice, category = category, top = 6).also { sp ->
+            if (category == null) topKeys = sp.series.map { it.key }.filter { it != "OTHER" }
+        }
+    }) { sp ->
+        val named = sp.series.filter { it.key != "OTHER" }.map { it.key }
+        Panel(category?.let { "spending · ${Category.label(it)}" } ?: "spending by category", actions = {
+            FilterMenu(
+                text = category?.let { Category.label(it) } ?: "all",
+                active = category != null,
+                options = listOf<Pair<String?, String>>(null to "All categories") + topKeys.map { it to Category.label(it) },
+                onPick = { category = it; hidden = emptySet() },
+            )
+        }) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Readout("total", Fmt.money(sp.total, cents = false), size = 36f)
-                if (sp.periods.isNotEmpty()) StackedSpendingChart(sp)
+                if (sp.periods.isNotEmpty()) {
+                    LegendToggles(
+                        sp.series.mapIndexed { i, s -> LegendItem(s.key, label(s.key), if (s.key == "OTHER") JF.other else JF.seriesColor(i)) },
+                        hidden,
+                    ) { hidden = it }
+                    StackedSpendingChart(sp, hidden = hidden, labelFor = ::label) { key, period ->
+                        val (from, to) = periodRange(period.period, sp.grain, slice)
+                        open(drill(key, named).copy(from = from, to = to), "${label(key).capitalizedFirst()} · ${period.label}")
+                    }
+                }
                 Column {
                     sp.series.forEachIndexed { i, s ->
-                        val on = category == s.key
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { category = if (on || s.key == "OTHER") null else s.key }
+                                .clickable { open(drill(s.key, named), label(s.key).capitalizedFirst()) }
                                 .padding(vertical = 7.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.size(8.dp).background(if (s.key == "OTHER") JF.other else JF.seriesColor(i)))
-                            Text(
-                                Category.label(s.key),
-                                style = JFFont.sans(14f, if (on) JFFont.Weight.Semibold else JFFont.Weight.Regular),
-                                color = JF.ink,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
+                            Text(label(s.key), style = JFFont.sans(14f), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             MoneyText(s.total, cents = false, size = 13f)
                             if (sp.total > 0) {
                                 Text(
@@ -236,22 +333,25 @@ private fun SpendingInsights() {
                                     style = JFFont.mono(11f),
                                     color = JF.ink3,
                                     textAlign = TextAlign.End,
-                                    modifier = Modifier.width(36.dp),
+                                    modifier = Modifier.width(36.dp).figure(11f),
                                 )
                             }
+                            OpensMark()
                         }
                     }
                 }
-                Fine("Tap a category to see its merchants.")
+                Fine(
+                    if (category == null) "Tap a category for its transactions, or pick one above for its kinds and merchants. A bar: once for its numbers, again for its transactions."
+                    else "Tap a kind for its transactions. A bar: once for its numbers, again for its transactions.",
+                )
             }
         }
     }
     Loader(id = slice to category, height = 300.dp, load = { ApiClient.merchants(slice, category, top = 20) }) { list ->
-        Panel(category?.let { "top merchants · ${Category.label(it)}" } ?: "top merchants", flush = true, actions = {
-            if (category != null) LinkText("all", { category = null })
-        }) {
+        Panel(category?.let { "top merchants · ${Category.label(it)}" } ?: "top merchants", flush = true) {
             if (list.isEmpty()) Fine("No merchants in this range.", Modifier.padding(16.dp))
-            RuledList(list) { m ->
+            // A merchant's total counts purchases, not refunds: so does its list.
+            RuledList(list, onClick = { m -> open(Drill(flow = "spending", category = category, merchant = m.label, direction = "out"), m.label) }) { m ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -269,6 +369,7 @@ private fun SpendingInsights() {
                     }
                     PixelBars(m.trend, Modifier.size(44.dp, 18.dp), color = JF.ink3)
                     MoneyText(m.total, cents = false, size = 14f, weight = JFFont.Weight.Medium)
+                    OpensMark()
                 }
             }
         }
@@ -280,18 +381,19 @@ private fun SpendingInsights() {
 @Composable
 private fun SubscriptionInsights() {
     Loader(height = 300.dp, load = { ApiClient.recurring() }) { r ->
-        val streams = r.streams.filter { it.status != "dismissed" }
+        // The server lists recurring ones first, then those to review, each soonest next charge first.
+        val streams = r.streams.filter { it.state == "active" && it.status != "dismissed" }
             .sortedWith(compareBy<RecurringStream>({ if (it.status == "confirmed") 0 else 1 }, { it.next_date }))
         Panel("subscriptions", flush = true) {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatTile("confirmed / month", Modifier.weight(1f)) { MoneyText(r.monthly_confirmed, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
-                StatTile("unreviewed / month", Modifier.weight(1f)) { MoneyText(r.monthly_detected, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
+                StatTile("recurring / month", Modifier.weight(1f)) { MoneyText(r.monthly_confirmed, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
+                StatTile("to review / month", Modifier.weight(1f)) { MoneyText(r.monthly_detected, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
             }
             Rule()
             if (streams.isEmpty()) Fine("No recurring charges found yet.", Modifier.padding(16.dp))
             RuledList(streams) { StreamRow(it) }
             Rule()
-            Fine("Confirm or dismiss subscriptions on the dashboard, Insights → Subscriptions.", Modifier.padding(16.dp))
+            Fine("Mark them recurring or not on the dashboard: Insights → Subscriptions.", Modifier.padding(16.dp))
         }
     }
     Loader(height = 160.dp, load = { ApiClient.upcoming(days = 30) }) { up ->
@@ -316,7 +418,7 @@ private fun StreamRow(stream: RecurringStream) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stream.label, style = JFFont.sans(14f, JFFont.Weight.Medium), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (stream.is_business == true) BusinessMark()
-                if (stream.status == "detected") Badge("unreviewed")
+                if (stream.status == "detected") Badge("to review")
                 if (stream.state == "lapsed") Badge("lapsed", BadgeTone.Warn)
                 val prev = stream.previous_amount
                 if (prev != null && prev != stream.amount) Badge(if (stream.amount > prev) "price up" else "price down", BadgeTone.Accent)
@@ -351,6 +453,11 @@ private fun WealthInsights() {
     var range by rememberSaveable { mutableStateOf("2y") }
     var extra by rememberSaveable { mutableDoubleStateOf(0.0) }
     var cardRange by rememberSaveable { mutableStateOf("1y") }
+    /** The accounts marked business, to mark them in these lists. */
+    var business by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(Unit) {
+        runCatching { ApiClient.accounts() }.getOrNull()?.let { all -> business = all.filter { it.is_business == true }.map { it.id }.toSet() }
+    }
     Panel("net worth by kind", actions = { Chips(YEAR_RANGES, range, { range = it }) }) {
         Loader(id = range, height = 300.dp, load = { ApiClient.netWorthByClass(range) }) { d ->
             val last = d.points.lastOrNull()
@@ -371,7 +478,7 @@ private fun WealthInsights() {
     Loader(height = 160.dp, load = { ApiClient.homes() }) { homes ->
         if (homes.isNotEmpty()) {
             Panel("homes and equity") {
-                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) { homes.forEach { HomeBlock(it) } }
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) { homes.forEach { HomeBlock(it, business = it.id in business) } }
             }
         }
     }
@@ -379,7 +486,7 @@ private fun WealthInsights() {
         Loader(id = extra, height = 200.dp, load = { ApiClient.loans(extra) }) { loans ->
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 if (loans.isEmpty()) Fine("No loans.")
-                loans.forEach { LoanBlock(it) }
+                loans.forEach { LoanBlock(it, business = it.id in business) }
                 Fine("Chips add that much to every monthly payment, to see how much sooner each loan ends.")
             }
         }
@@ -400,9 +507,14 @@ private fun WealthInsights() {
                     c.cards.forEach { card ->
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(card.name, style = JFFont.sans(14f), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                card.mask?.let { Text("··$it", style = JFFont.mono(11f), color = JF.ink3) }
-                                Spacer(Modifier.weight(1f))
+                                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        (card.institution_name?.let { "$it: " } ?: "") + Account.nameWithoutMask(card.name, card.mask),
+                                        style = JFFont.sans(14f), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    if (card.is_business == true || card.id in business) BusinessMark()
+                                    card.mask?.let { Text("··$it", style = JFFont.mono(11f), color = JF.ink3) }
+                                }
                                 MoneyText(card.balance, cents = false, size = 13f)
                             }
                             val u = card.utilization
@@ -421,10 +533,13 @@ private fun WealthInsights() {
 }
 
 @Composable
-private fun HomeBlock(home: Home) {
+private fun HomeBlock(home: Home, business: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(home.name, style = JFFont.sans(15f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(home.name, style = JFFont.sans(15f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (business) BusinessMark()
+            }
             Fine("equity")
             MoneyText(home.equity, cents = false, size = 15f, weight = JFFont.Weight.Medium)
         }
@@ -455,10 +570,13 @@ private fun HomeBlock(home: Home) {
 }
 
 @Composable
-private fun LoanBlock(loan: LoanPayoff) {
+private fun LoanBlock(loan: LoanPayoff, business: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(loan.name, style = JFFont.sans(15f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(loan.name, style = JFFont.sans(15f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (business) BusinessMark()
+            }
             MoneyText(loan.balance, cents = false, size = 15f, weight = JFFont.Weight.Medium)
         }
         val s = loan.schedule
@@ -537,23 +655,4 @@ private fun lines(p: Performance, accountId: String?): List<ReturnLine> {
         out += ReturnLine(b.key, b.label, JF.seriesColor(i), b.points.mapNotNull { x -> Fmt.day(x.date)?.let { DatedValue(it, x.ret) } }, emphasis = false)
     }
     return out
-}
-
-/** A toggle chip: a square swatch and a mono label, filled when on. */
-@Composable
-fun ToggleChip(label: String, color: Color, on: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .height(26.dp)
-            .background(if (on) JF.panel2 else JF.panel)
-            .border(1.dp, JF.line, RectangleShape)
-            .clickable(role = Role.Checkbox, onClick = onClick)
-            .semantics { selected = on }
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(8.dp).background(if (on) color else Color.Transparent).border(1.dp, color, RectangleShape))
-        Text(label, style = JFFont.mono(11f, JFFont.Weight.Medium), color = if (on) JF.ink else JF.ink3, maxLines = 1)
-    }
 }

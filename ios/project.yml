@@ -49,9 +49,8 @@ targets:
           - CFBundleTypeRole: Viewer
             CFBundleURLName: com.daedalustcg.jfinances
             CFBundleURLSchemes: [jfinances]
-        # Which server the sign-in screen offers first (sandbox until
-        # production has the API hostname).
-        JFDefaultServer: sandbox
+        # Which server the sign-in screen offers first.
+        JFDefaultServer: production
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

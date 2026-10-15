@@ -9,7 +9,7 @@ Zone: `sellingtcg.com`. Zero Trust team: `daedalustcg` →
 
 ## 1. DNS
 
-Five proxied CNAMEs (orange cloud ON). Targets come from Railway → service
+Six proxied CNAMEs (orange cloud ON). Targets come from Railway → service
 → Settings → Networking → Custom Domain.
 
 | Name | Type | Target | Proxy |
@@ -18,10 +18,11 @@ Five proxied CNAMEs (orange cloud ON). Targets come from Railway → service
 | `jfinances-hooks` | CNAME | `3qcl1xl6.up.railway.app` (`hooks`, production) | proxied |
 | `jfinances-sandbox` | CNAME | `2rwwyp0l.up.railway.app` (`web`, sandbox) | proxied |
 | `jfinances-sandbox-hooks` | CNAME | `z0nl608z.up.railway.app` (`hooks`, sandbox) | proxied |
+| `jfinances-api` | CNAME | `b823caxf.up.railway.app` (`web`, production: the phones' API) | proxied |
 | `jfinances-sandbox-api` | CNAME | `phq8d6w0.up.railway.app` (`web`, sandbox: the phones' API) | proxied |
 | `_railway-verify.<each of the above>` | TXT | `railway-verify=…` from Railway | DNS only |
 
-All ten records exist (the phone pair since 2026-10-14). If a service's custom
+All twelve records exist (the phone pairs since 2026-10-14). If a service's custom
 domain is ever re-created in Railway, its CNAME target and TXT value change:
 copy the new ones from Railway → service → Settings → Networking (or the
 GraphQL `domains` query: `status.dnsRecords`, `verificationDnsHost`,
@@ -30,8 +31,7 @@ GraphQL `domains` query: `status.dnsRecords`, `verificationDnsHost`,
 Phones: `jfinances-api` / `jfinances-sandbox-api` → CNAME to the same `web`
 service's Railway target (production / sandbox), proxied, plus their
 `_railway-verify` TXT records, and **no Access application** (the app sends
-its own bearer token; docs/40 §5). The sandbox pair exists; production's waits
-for production's custom domain and `API_HOST` (docs/85 §2). Check one with
+its own bearer token; docs/40 §5). Both pairs exist. Check one with
 `curl https://jfinances-sandbox-api.sellingtcg.com/api/v1/me`: a 401
 `auth.missing_credential`, never a redirect to cloudflareaccess.com. Add a WAF
 rate-limit rule on these two hostnames as the outer wall.

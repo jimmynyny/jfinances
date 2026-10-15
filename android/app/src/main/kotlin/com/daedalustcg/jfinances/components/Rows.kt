@@ -57,7 +57,7 @@ fun AccountRow(account: Account, modifier: Modifier = Modifier) {
 
 /** A transaction: category glyph, merchant, category · account, amount. */
 @Composable
-fun TxnRow(tx: Txn, modifier: Modifier = Modifier, showAccount: Boolean = true) {
+fun TxnRow(tx: Txn, modifier: Modifier = Modifier, showAccount: Boolean = true, showDate: Boolean = false) {
     Row(modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(30.dp).background(JF.panel2).border(1.dp, JF.line, RectangleShape),
@@ -72,6 +72,7 @@ fun TxnRow(tx: Txn, modifier: Modifier = Modifier, showAccount: Boolean = true) 
                 if (tx.pending) Badge("pending", BadgeTone.Warn)
             }
             val parts = buildList {
+                if (showDate) add(Fmt.date(tx.date))
                 add(Category.label(tx.category))
                 if (showAccount && tx.account_name != null) add(tx.account_name + (tx.account_mask?.let { " ··$it" } ?: ""))
             }

@@ -5,6 +5,8 @@ import SwiftUI
 /// worth and debt, and investing.
 struct InsightsScreen: View {
     @Environment(AppModel.self) private var model
+    /// A number tapped twice: its transactions, pushed on this tab.
+    @State private var drill: DrillTarget?
 
     var body: some View {
         @Bindable var model = model
@@ -37,6 +39,8 @@ struct InsightsScreen: View {
                 HoldingsPanel(accountId: nil, limit: 20)
             }
         }
+        .environment(\.openDrill) { drill = $0 }
+        .navigationDestination(item: $drill) { DrillScreen(target: $0) }
     }
 }
 
@@ -64,6 +68,15 @@ enum SlicePreset {
         default: return Slice(from: Fmt.isoDay(monthsBack(11)), to: Fmt.isoDay(today), scope: scope)
         }
     }
+
+    /// The days the period starting `start` covers at `grain`, inside the slice.
+    static func periodRange(_ start: String, grain: String, slice: Slice) -> (from: String, to: String) {
+        let cal = Calendar.current
+        let d = Fmt.day(start) ?? Date()
+        let months = grain == "quarter" ? 3 : grain == "year" ? 12 : 1
+        let last = Fmt.isoDay(cal.date(byAdding: .day, value: -1, to: cal.date(byAdding: .month, value: months, to: d)!)!)
+        return (start < slice.from ? slice.from : start, last > slice.to ? slice.to : last)
+    }
 }
 
 struct SliceControls: View {
@@ -80,7 +93,15 @@ struct SliceControls: View {
 
 // MARK: - cash flow
 
+/// A trailing chevron: this row opens its transactions.
+struct OpensMark: View {
+    var body: some View {
+        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(JF.ink3)
+    }
+}
+
 struct CashflowInsights: View {
+    @Environment(\.openDrill) private var openDrill
     @AppStorage("jf.ins.range") private var range = "12m"
     @AppStorage("jf.ins.scope") private var scope = "personal"
 
@@ -98,7 +119,15 @@ struct CashflowInsights: View {
                             StatTile("money out") { MoneyText(cf.totals.spending, cents: false, size: 16, weight: .medium) }
                             StatTile("net") { MoneyText(cf.totals.net, cents: false, style: .signed, size: 16, weight: .medium) }
                         }
-                        if cf.periods.isEmpty { Fine("Nothing in this range.") } else { FlowBarsChart(periods: cf.periods) }
+                        if cf.periods.isEmpty {
+                            Fine("Nothing in this range.")
+                        } else {
+                            FlowBarsChart(periods: cf.periods) { p, flow in
+                                let r = SlicePreset.periodRange(p.period, grain: cf.grain, slice: slice)
+                                openDrill(DrillTarget(slice: slice, drill: Drill(flow: flow, from: r.from, to: r.to),
+                                                      title: "\(p.label) · money \(flow == "income" ? "in" : "out")"))
+                            }
+                        }
                         HStack(spacing: 12) {
                             StatTile("avg in / month") { MoneyText(cf.averages.income, cents: false, size: 13) }
                             StatTile("avg out / month") { MoneyText(cf.averages.spending, cents: false, size: 13) }
@@ -107,70 +136,154 @@ struct CashflowInsights: View {
                                     .font(JFFont.mono(13)).foregroundStyle(JF.ink).figure(size: 13)
                             }
                         }
+                        if !cf.periods.isEmpty { Fine("Tap a bar for its numbers, again for its transactions.") }
+                    }
+                }
+                let flow = flowNodes(cf, slice)
+                if !flow.sources.isEmpty || !flow.uses.isEmpty {
+                    Panel("money flow") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            MoneyFlowChart(sources: flow.sources, uses: flow.uses, centerLabel: "income") {
+                                openDrill(DrillTarget(slice: slice, drill: Drill(flow: "income"), title: "Income"))
+                            }
+                            Fine("Tap a name to light its path, again for its transactions.")
+                        }
                     }
                 }
                 if !cf.income_sources.isEmpty {
                     Panel("money in, by source", flush: true) {
                         RuledList(cf.income_sources) { s in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(s.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
-                                    if let n = s.count { Fine("\(n) deposits") }
+                            Button {
+                                openDrill(DrillTarget(slice: slice, drill: Drill(flow: "income", merchant: s.label, incomeKind: s.kind), title: s.label))
+                            } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(s.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                                        Fine([s.kind, s.count.map { "\($0) deposit\($0 == 1 ? "" : "s")" }].compactMap { $0 }.joined(separator: " · "))
+                                    }
+                                    Spacer()
+                                    MoneyText(s.amount, cents: false, size: 14, weight: .medium)
+                                    OpensMark()
                                 }
-                                Spacer()
-                                MoneyText(s.amount, cents: false, size: 14, weight: .medium)
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
                             }
-                            .padding(.vertical, 8)
-                        }
-                    }
-                }
-                let total = cf.spending_categories.reduce(0) { $0 + $1.amount }
-                if total > 0 {
-                    Panel("where it went") {
-                        VStack(spacing: 6) {
-                            ForEach(Array(cf.spending_categories.enumerated()), id: \.element.id) { i, c in
-                                ShareRow(label: Category.label(c.key), amount: c.amount, share: c.amount / total,
-                                         tone: c.key == "OTHER" ? .ink : .series(i))
-                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
         }
     }
+
+    /// Income sources -> income -> spending categories, plus what was saved (or
+    /// drawn from savings); each node opens the transactions it is made of.
+    private func flowNodes(_ d: Cashflow, _ slice: Slice) -> (sources: [FlowNodeSpec], uses: [FlowNodeSpec]) {
+        func open(_ drill: Drill, _ title: String) -> () -> Void {
+            { openDrill(DrillTarget(slice: slice, drill: drill, title: title)) }
+        }
+        let head = Array(d.income_sources.prefix(5))
+        let rest = d.income_sources.dropFirst(5).reduce(0) { $0 + $1.amount }
+        var sources = head.map { s in
+            FlowNodeSpec(key: "in:\(s.kind):\(s.label)", label: s.label, value: s.amount, color: JF.divPos,
+                         open: open(Drill(flow: "income", merchant: s.label, incomeKind: s.kind), s.label))
+        }
+        if rest > 0 {
+            sources.append(FlowNodeSpec(key: "in:other", label: "other income", value: rest, color: JF.divPos,
+                                        open: open(Drill(flow: "income", notSource: head.map { "\($0.kind):\($0.label)" }), "Other income")))
+        }
+        let named = d.spending_categories.filter { $0.key != "OTHER" }.map(\.key)
+        var uses = d.spending_categories.enumerated().map { i, c in
+            FlowNodeSpec(key: "out:\(c.key)", label: Category.label(c.key), value: c.amount,
+                         color: c.key == "OTHER" ? JF.other : JF.seriesColor(i),
+                         open: open(c.key == "OTHER" ? Drill(flow: "spending", notCategory: named) : Drill(flow: "spending", category: c.key),
+                                    Category.label(c.key).capitalizedFirst))
+        }
+        if d.totals.net > 0 {
+            uses.append(FlowNodeSpec(key: "saved", label: "saved", value: d.totals.net, color: JF.divPos,
+                                     open: open(Drill(flow: "all"), "Income and spending")))
+        }
+        if d.totals.net < 0 {
+            sources.append(FlowNodeSpec(key: "in:savings", label: "from savings", value: -d.totals.net, color: JF.ink3,
+                                        open: open(Drill(flow: "spending", largestFirst: true, why: "savings"), "From savings")))
+        }
+        return (sources, uses)
+    }
+}
+
+extension String {
+    /// "food and drink" -> "Food and drink", for a screen title.
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 // MARK: - spending
 
 struct SpendingInsights: View {
+    @Environment(\.openDrill) private var openDrill
     @AppStorage("jf.ins.range") private var range = "12m"
     @AppStorage("jf.ins.scope") private var scope = "personal"
+    /// A category to look inside: its kinds in the chart, its merchants below.
     @State private var category: String?
+    @State private var hidden: Set<String> = []
+    /// The top categories, for the picker (from the last look at all of them).
+    @State private var topKeys: [String] = []
 
-    private struct MerchantKey: Hashable { let slice: Slice; let category: String? }
+    private struct Key: Hashable { let slice: Slice; let category: String? }
+
+    private func label(_ key: String) -> String { Category.label(key, primary: category) }
+
+    /// The rows a series is made of: inside a category, one of its kinds; "OTHER" is every one not shown.
+    private func drill(_ key: String, _ sp: Spending) -> Drill {
+        let named = sp.series.filter { $0.key != "OTHER" }.map(\.key)
+        var d = Drill(flow: "spending", category: category)
+        if key == "OTHER" {
+            if category != nil { d.notDetailed = named } else { d.notCategory = named }
+        } else if category != nil {
+            d.detailed = key
+        } else {
+            d.category = key
+        }
+        return d
+    }
 
     var body: some View {
         let slice = SlicePreset.slice(range, scope)
         SliceControls(range: $range, scope: $scope)
-        Loader(id: slice, height: 360) {
-            try await APIClient.shared.spending(slice, top: 6)
+        Loader(id: Key(slice: slice, category: category), height: 360) {
+            let sp = try await APIClient.shared.spending(slice, category: category, top: 6)
+            if category == nil { topKeys = sp.series.map(\.key).filter { $0 != "OTHER" } }
+            return sp
         } content: { sp in
-            Panel("spending by category") {
+            Panel(category.map { "spending · \(Category.label($0))" } ?? "spending by category", actions: { categoryMenu }) {
                 VStack(alignment: .leading, spacing: 14) {
                     Readout("total", value: Fmt.money(sp.total, cents: false), size: 36)
-                    if sp.periods.count > 0 { StackedSpendingChart(spending: sp) }
+                    if sp.periods.count > 0 {
+                        LegendToggles(items: sp.series.enumerated().map { i, s in
+                            .init(key: s.key, label: label(s.key), color: s.key == "OTHER" ? JF.other : JF.seriesColor(i))
+                        }, hidden: $hidden)
+                        StackedSpendingChart(spending: sp, hidden: hidden, labelFor: label) { key, period in
+                            let r = SlicePreset.periodRange(period.period, grain: sp.grain, slice: slice)
+                            var d = drill(key, sp)
+                            d.from = r.from
+                            d.to = r.to
+                            openDrill(DrillTarget(slice: slice, drill: d, title: "\(label(key).capitalizedFirst) · \(period.label)"))
+                        }
+                    }
                     VStack(spacing: 0) {
                         ForEach(Array(sp.series.enumerated()), id: \.element.id) { i, s in
-                            let on = category == s.key
                             Button {
-                                category = (on || s.key == "OTHER") ? nil : s.key
+                                openDrill(DrillTarget(slice: slice, drill: drill(s.key, sp), title: label(s.key).capitalizedFirst))
                             } label: {
                                 HStack(spacing: 10) {
                                     Rectangle().fill(s.key == "OTHER" ? JF.other : JF.seriesColor(i)).frame(width: 8, height: 8)
-                                    Text(Category.label(s.key)).font(JFFont.sans(14, on ? .semibold : .regular)).foregroundStyle(JF.ink)
+                                    Text(label(s.key)).font(JFFont.sans(14)).foregroundStyle(JF.ink).lineLimit(1)
                                     Spacer()
                                     MoneyText(s.total, cents: false, size: 13)
-                                    if sp.total > 0 { Text(Fmt.pct(s.total / sp.total, digits: 0)).font(JFFont.mono(11)).foregroundStyle(JF.ink3).frame(width: 36, alignment: .trailing) }
+                                    if sp.total > 0 {
+                                        Text(Fmt.pct(s.total / sp.total, digits: 0)).font(JFFont.mono(11)).foregroundStyle(JF.ink3)
+                                            .frame(width: 36, alignment: .trailing).figure(size: 11)
+                                    }
+                                    OpensMark()
                                 }
                                 .padding(.vertical, 7)
                                 .contentShape(Rectangle())
@@ -178,35 +291,59 @@ struct SpendingInsights: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Fine("Tap a category to see its merchants.")
+                    Fine(category == nil
+                         ? "Tap a category for its transactions, or pick one above for its kinds and merchants. A bar: once for its numbers, again for its transactions."
+                         : "Tap a kind for its transactions. A bar: once for its numbers, again for its transactions.")
                 }
             }
         }
-        Loader(id: MerchantKey(slice: slice, category: category), height: 300) {
+        Loader(id: Key(slice: slice, category: category), height: 300) {
             try await APIClient.shared.merchants(slice, category: category, top: 20)
         } content: { list in
-            Panel(category.map { "top merchants · \(Category.label($0))" } ?? "top merchants", flush: true, actions: {
-                if category != nil { Button("all") { category = nil }.font(JFFont.mono(12, .medium)) }
-            }) {
+            Panel(category.map { "top merchants · \(Category.label($0))" } ?? "top merchants", flush: true) {
                 if list.isEmpty { Fine("No merchants in this range.").padding(16) }
                 RuledList(list) { m in
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(m.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
-                                if m.is_new { Badge("new", tone: .accent) }
+                    Button {
+                        // A merchant's total counts purchases, not refunds: so does its list.
+                        openDrill(DrillTarget(slice: slice, drill: Drill(flow: "spending", category: category, merchant: m.label, direction: "out"),
+                                              title: m.label))
+                    } label: {
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(m.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
+                                    if m.is_new { Badge("new", tone: .accent) }
+                                }
+                                Text("\(m.count)× · avg \(Fmt.money(m.average, cents: false)) · \(Category.label(m.category))")
+                                    .font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1).figure(size: 11)
                             }
-                            Text("\(m.count)× · avg \(Fmt.money(m.average, cents: false)) · \(Category.label(m.category))")
-                                .font(JFFont.mono(11)).foregroundStyle(JF.ink3).lineLimit(1).figure(size: 11)
+                            Spacer(minLength: 8)
+                            PixelBars(m.trend.map(\.wrappedValue), color: JF.ink3).frame(width: 44, height: 18)
+                            MoneyText(m.total, cents: false, size: 14, weight: .medium)
+                            OpensMark()
                         }
-                        Spacer(minLength: 8)
-                        PixelBars(m.trend.map(\.wrappedValue), color: JF.ink3).frame(width: 44, height: 18)
-                        MoneyText(m.total, cents: false, size: 14, weight: .medium)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 8)
+                    .buttonStyle(.plain)
                 }
             }
         }
+    }
+
+    private var categoryMenu: some View {
+        Menu {
+            Button("All categories") { pick(nil) }
+            ForEach(topKeys, id: \.self) { k in Button(Category.label(k)) { pick(k) } }
+        } label: {
+            FilterChip(text: category.map { Category.label($0) } ?? "all", active: category != nil)
+        }
+        .accessibilityLabel("Category, \(category.map { Category.label($0) } ?? "all")")
+    }
+
+    private func pick(_ key: String?) {
+        category = key
+        hidden = []
     }
 }
 
@@ -217,20 +354,21 @@ struct SubscriptionInsights: View {
         Loader(height: 300) {
             try await APIClient.shared.recurring()
         } content: { r in
-            let streams = r.streams.filter { $0.status != "dismissed" }
+            // The server lists recurring ones first, then those to review, each soonest next charge first.
+            let streams = r.streams.filter { $0.state == "active" && $0.status != "dismissed" }
                 .sorted { ($0.status == "confirmed" ? 0 : 1, $0.next_date) < ($1.status == "confirmed" ? 0 : 1, $1.next_date) }
             Panel("subscriptions", flush: true) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 12) {
-                        StatTile("confirmed / month") { MoneyText(r.monthly_confirmed, cents: false, size: 18, weight: .medium) }
-                        StatTile("unreviewed / month") { MoneyText(r.monthly_detected, cents: false, size: 18, weight: .medium) }
+                        StatTile("recurring / month") { MoneyText(r.monthly_confirmed, cents: false, size: 18, weight: .medium) }
+                        StatTile("to review / month") { MoneyText(r.monthly_detected, cents: false, size: 18, weight: .medium) }
                     }
                     .padding(16)
                     Rule()
                     if streams.isEmpty { Fine("No recurring charges found yet.").padding(16) }
                     RuledList(streams) { s in StreamRow(stream: s) }
                     Rule()
-                    Fine("Confirm or dismiss subscriptions on the dashboard, Insights → Subscriptions.").padding(16)
+                    Fine("Mark them recurring or not on the dashboard: Insights → Subscriptions.").padding(16)
                 }
             }
         }
@@ -262,8 +400,7 @@ struct StreamRow: View {
                 HStack(spacing: 6) {
                     Text(stream.label).font(JFFont.sans(14, .medium)).foregroundStyle(JF.ink).lineLimit(1)
                     if stream.is_business == true { BusinessMark() }
-                    if stream.status == "detected" { Badge("unreviewed") }
-                    if stream.state == "lapsed" { Badge("lapsed", tone: .warn) }
+                    if stream.status == "detected" { Badge("to review") }
                     if let prev = stream.previous_amount, prev != stream.amount { Badge(stream.amount > prev ? "price up" : "price down", tone: .accent) }
                 }
                 Text("\(stream.cadence) · next \(Fmt.date(stream.next_date))\(stream.account_name.map { " · \($0)" } ?? "")")
@@ -290,6 +427,8 @@ struct WealthInsights: View {
     @State private var range = "2y"
     @State private var extra = 0.0
     @State private var cardRange = "1y"
+    /// The accounts marked business, to mark them in these lists.
+    @State private var business: Set<String> = []
 
     var body: some View {
         Panel("net worth by kind", actions: {
@@ -312,13 +451,16 @@ struct WealthInsights: View {
                 }
             }
         }
+        .task {
+            if let all = try? await APIClient.shared.accounts() { business = Set(all.filter { $0.is_business == true }.map(\.id)) }
+        }
         Loader(height: 160) {
             try await APIClient.shared.homes()
         } content: { homes in
             if !homes.isEmpty {
                 Panel("homes and equity") {
                     VStack(alignment: .leading, spacing: 18) {
-                        ForEach(homes) { h in HomeBlock(home: h) }
+                        ForEach(homes) { h in HomeBlock(home: h, business: business.contains(h.id)) }
                     }
                 }
             }
@@ -331,7 +473,7 @@ struct WealthInsights: View {
             } content: { loans in
                 VStack(alignment: .leading, spacing: 18) {
                     if loans.isEmpty { Fine("No loans.") }
-                    ForEach(loans) { l in LoanBlock(loan: l) }
+                    ForEach(loans) { l in LoanBlock(loan: l, business: business.contains(l.id)) }
                     Fine("Chips add that much to every monthly payment, to see how much sooner each loan ends.")
                 }
             }
@@ -353,8 +495,10 @@ struct WealthInsights: View {
                         }
                         ForEach(c.cards) { card in
                             VStack(alignment: .leading, spacing: 5) {
-                                HStack {
-                                    Text(card.name).font(JFFont.sans(14)).foregroundStyle(JF.ink).lineLimit(1)
+                                HStack(spacing: 6) {
+                                    Text((card.institution_name.map { "\($0): " } ?? "") + Account.nameWithoutMask(card.name, card.mask))
+                                        .font(JFFont.sans(14)).foregroundStyle(JF.ink).lineLimit(1)
+                                    if card.is_business == true || business.contains(card.id) { BusinessMark() }
                                     if let m = card.mask { Text("··\(m)").font(JFFont.mono(11)).foregroundStyle(JF.ink3) }
                                     Spacer()
                                     MoneyText(card.balance, cents: false, size: 13)
@@ -376,11 +520,13 @@ struct WealthInsights: View {
 
 struct HomeBlock: View {
     let home: Home
+    var business = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(home.name).font(JFFont.sans(15, .semibold)).foregroundStyle(JF.ink)
+                if business { BusinessMark() }
                 Spacer()
                 Fine("equity")
                 MoneyText(home.equity, cents: false, size: 15, weight: .medium)
@@ -412,11 +558,13 @@ struct HomeBlock: View {
 
 struct LoanBlock: View {
     let loan: LoanPayoff
+    var business = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(loan.name).font(JFFont.sans(15, .semibold)).foregroundStyle(JF.ink).lineLimit(1)
+                if business { BusinessMark() }
                 Spacer()
                 MoneyText(loan.balance, cents: false, size: 15, weight: .medium)
             }

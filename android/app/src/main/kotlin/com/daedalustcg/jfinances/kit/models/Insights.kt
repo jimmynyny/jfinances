@@ -203,6 +203,8 @@ data class CardRow(
     val id: String,
     val name: String,
     val mask: String? = null,
+    val institution_name: String? = null,
+    val is_business: Boolean? = null,
     val limit: FlexOpt = null,
     val balance: Flex = 0.0,
     val utilization: FlexOpt = null,

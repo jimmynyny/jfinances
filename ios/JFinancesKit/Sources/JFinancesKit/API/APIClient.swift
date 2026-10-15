@@ -54,34 +54,110 @@ public struct Slice: Hashable, Sendable {
     }
 }
 
+/// How Insights grouped a number, so the transactions behind it add up to it
+/// (docs/80 "GET /transactions": `flow` applies Insights' rules, the rest its
+/// groupings). The web's lib/drill.ts says the same in its links.
+public struct Drill: Hashable, Sendable {
+    /// income | spending | all
+    public var flow: String
+    public var category: String?
+    /// A detailed category (or the category, when the bank gave none).
+    public var detailed: String?
+    /// Insights' merchant name.
+    public var merchant: String?
+    /// paychecks, dividends, interest, retirement, tax refunds, unemployment, other income.
+    public var incomeKind: String?
+    /// in | out
+    public var direction: String?
+    public var notCategory: [String] = []
+    public var notDetailed: [String] = []
+    /// "kind:merchant" income sources to leave out.
+    public var notSource: [String] = []
+    /// 0 = Monday.
+    public var weekday: Int?
+    public var day: Int?
+    /// The dates, when not the whole slice (a period of a chart).
+    public var from: String?
+    public var to: String?
+    /// List the biggest amounts first.
+    public var largestFirst = false
+    /// Why the list was opened, when its numbers need saying ("savings").
+    public var why: String?
+
+    public init(flow: String, category: String? = nil, detailed: String? = nil, merchant: String? = nil,
+                incomeKind: String? = nil, direction: String? = nil, notCategory: [String] = [],
+                notDetailed: [String] = [], notSource: [String] = [], weekday: Int? = nil, day: Int? = nil,
+                from: String? = nil, to: String? = nil, largestFirst: Bool = false, why: String? = nil) {
+        self.flow = flow
+        self.category = category
+        self.detailed = detailed
+        self.merchant = merchant
+        self.incomeKind = incomeKind
+        self.direction = direction
+        self.notCategory = notCategory
+        self.notDetailed = notDetailed
+        self.notSource = notSource
+        self.weekday = weekday
+        self.day = day
+        self.from = from
+        self.to = to
+        self.largestFirst = largestFirst
+        self.why = why
+    }
+}
+
 public struct TxnQuery: Hashable, Sendable {
     public var q: String = ""
     public var accountId: String?
     public var category: String?
     public var from: String?
     public var to: String?
+    /// newest (default) or largest: biggest amounts first, either way.
+    public var sort = "newest"
+    /// Insights' rules and grouping (flow, scope and the rest), when the list is a number's.
+    public var drill: Drill?
+    /// personal | business | all, with a drill.
+    public var scope: String?
     public var page = 1
     public var pageSize = 50
 
     public init(q: String = "", accountId: String? = nil, category: String? = nil, from: String? = nil,
-                to: String? = nil, page: Int = 1, pageSize: Int = 50) {
+                to: String? = nil, sort: String = "newest", drill: Drill? = nil, scope: String? = nil,
+                page: Int = 1, pageSize: Int = 50) {
         self.q = q
         self.accountId = accountId
         self.category = category
         self.from = from
         self.to = to
+        self.sort = sort
+        self.drill = drill
+        self.scope = scope
         self.page = page
         self.pageSize = pageSize
     }
 
     var items: [URLQueryItem] {
         var out = [URLQueryItem(name: "page", value: String(page)), URLQueryItem(name: "page_size", value: String(pageSize))]
-        let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { out.append(URLQueryItem(name: "q", value: trimmed)) }
-        if let accountId { out.append(URLQueryItem(name: "account_id", value: accountId)) }
-        if let category { out.append(URLQueryItem(name: "category", value: category)) }
-        if let from { out.append(URLQueryItem(name: "from", value: from)) }
-        if let to { out.append(URLQueryItem(name: "to", value: to)) }
+        func add(_ name: String, _ value: String?) { if let value, !value.isEmpty { out.append(URLQueryItem(name: name, value: value)) } }
+        add("q", q.trimmingCharacters(in: .whitespacesAndNewlines))
+        add("account_id", accountId)
+        add("category", category ?? drill?.category)
+        add("from", drill?.from ?? from)
+        add("to", drill?.to ?? to)
+        if sort != "newest" { add("sort", sort) }
+        if let d = drill {
+            add("flow", d.flow)
+            add("scope", scope)
+            add("detailed", d.detailed)
+            add("merchant", d.merchant)
+            add("income_kind", d.incomeKind)
+            add("direction", d.direction)
+            for v in d.notCategory { add("not_category", v) }
+            for v in d.notDetailed { add("not_detailed", v) }
+            for v in d.notSource { add("not_source", v) }
+            add("weekday", d.weekday.map(String.init))
+            add("day", d.day.map(String.init))
+        }
         return out
     }
 }
@@ -140,6 +216,17 @@ public final class APIClient: Sendable {
     public func categories() async throws -> [String] {
         let c: CategoriesList = try await get("/api/v1/transactions/categories")
         return c.categories
+    }
+
+    /// Everything known about one account: the bank's facts, what was entered
+    /// where the bank is silent, and what follows from both.
+    public func accountDetails(id: String) async throws -> AccountDetails {
+        try await get("/api/v1/accounts/\(id)/details")
+    }
+
+    /// An offline home's or car's valuation inputs and its monthly market values.
+    public func asset(id: String) async throws -> AssetInfo {
+        try await get("/api/v1/accounts/\(id)/asset")
     }
 
     public func holdings() async throws -> Holdings { try await get("/api/v1/holdings") }

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -68,6 +70,7 @@ import com.daedalustcg.jfinances.kit.api.ApiError
 import com.daedalustcg.jfinances.kit.api.TxnQuery
 import com.daedalustcg.jfinances.kit.models.Account
 import com.daedalustcg.jfinances.kit.models.Txn
+import com.daedalustcg.jfinances.kit.ui.BusinessMark
 import com.daedalustcg.jfinances.kit.ui.Category
 import com.daedalustcg.jfinances.kit.ui.Fmt
 import com.daedalustcg.jfinances.kit.ui.JF
@@ -82,10 +85,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Every transaction, newest first, by day: search, filter by account or
- * category, and scroll for more.
+ * Every transaction, newest first by day (or largest first): search, filter by
+ * account or category, and scroll for more.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ActivityScreen() {
     val model = LocalAppModel.current
@@ -93,6 +96,8 @@ fun ActivityScreen() {
     var search by rememberSaveable { mutableStateOf("") }
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var category by rememberSaveable { mutableStateOf<String?>(null) }
+    /** newest | largest: biggest amounts first, either way. */
+    var sort by rememberSaveable { mutableStateOf("newest") }
     val rows = remember { mutableStateListOf<Txn>() }
     var total by remember { mutableIntStateOf(0) }
     var page by remember { mutableIntStateOf(1) }
@@ -106,7 +111,7 @@ fun ActivityScreen() {
         loading = true
         page = 1
         try {
-            val r = ApiClient.transactions(TxnQuery(q = search, accountId = accountId, category = category, page = 1))
+            val r = ApiClient.transactions(TxnQuery(q = search, accountId = accountId, category = category, sort = sort, page = 1))
             rows.clear()
             rows.addAll(r.transactions)
             total = r.total
@@ -126,7 +131,7 @@ fun ActivityScreen() {
         loading = true
         val next = page + 1
         try {
-            val r = ApiClient.transactions(TxnQuery(q = search, accountId = accountId, category = category, page = next))
+            val r = ApiClient.transactions(TxnQuery(q = search, accountId = accountId, category = category, sort = sort, page = next))
             page = next
             val seen = rows.map { it.id }.toSet()
             rows.addAll(r.transactions.filter { it.id !in seen })
@@ -139,12 +144,13 @@ fun ActivityScreen() {
         }
     }
 
-    LaunchedEffect(search, accountId, category, model.refreshToken) {
+    LaunchedEffect(search, accountId, category, sort, model.refreshToken) {
         if (search.isNotEmpty()) delay(300)
         reload()
     }
     LaunchedEffect(Unit) {
-        accounts = runCatching { ApiClient.accounts() }.getOrNull()?.filter { it.is_hidden != true && !it.isManual } ?: emptyList()
+        // An offline account holds what its statements imported; homes and cars hold none.
+        accounts = runCatching { ApiClient.accounts() }.getOrNull()?.filter { it.is_hidden != true && it.holdsTransactions } ?: emptyList()
         categories = runCatching { ApiClient.categories() }.getOrNull() ?: emptyList()
     }
 
@@ -177,13 +183,27 @@ fun ActivityScreen() {
                     SearchField(search, { search = it }, "Merchant, name, or note", Modifier.padding(horizontal = JF.gutter).padding(top = 12.dp, bottom = 10.dp))
                 }
                 item(key = "filters") {
-                    Row(Modifier.padding(horizontal = JF.gutter).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        Modifier.padding(horizontal = JF.gutter).padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        // The account filter's sections, in the Accounts tab's order, an institution's accounts together.
+                        val groups = Account.groupOrder.mapNotNull { key ->
+                            accounts.filter { it.groupKey == key }.sortedWith(compareBy({ it.institution_name ?: "" }, { it.name }))
+                                .takeIf { it.isNotEmpty() }?.let { (Account.groupLabels[key] ?: key) to it }
+                        }
+                        val options = mutableListOf<Pair<String?, String>>(null to "All accounts")
+                        val headers = mutableMapOf<Int, String>()
+                        for ((label, list) in groups) {
+                            headers[options.size] = label
+                            options += list.map { it.id to it.filterLabel }
+                        }
                         FilterMenu(
                             text = accounts.firstOrNull { it.id == accountId }?.name ?: "all accounts",
                             active = accountId != null,
-                            options = listOf<Pair<String?, String>>(null to "All accounts") + accounts.map { a ->
-                                a.id to "${a.institution_name?.let { "$it: " } ?: ""}${a.name}${a.mask?.let { " ··$it" } ?: ""}"
-                            },
+                            options = options,
+                            headers = headers,
                             onPick = { accountId = it },
                         )
                         FilterMenu(
@@ -192,12 +212,39 @@ fun ActivityScreen() {
                             options = listOf<Pair<String?, String>>(null to "All categories") + categories.map { it to Category.label(it) },
                             onPick = { category = it },
                         )
+                        FilterMenu(
+                            text = if (sort == "largest") "largest first" else "newest first",
+                            active = sort == "largest",
+                            options = listOf("newest" to "Newest first", "largest" to "Largest first"),
+                            onPick = { sort = it ?: "newest" },
+                        )
                     }
                 }
                 if (error != null && rows.isEmpty()) {
                     item(key = "error") { Box(Modifier.padding(horizontal = JF.gutter)) { ErrorNote(error!!) { scope.launch { reload() } } } }
                 }
-                for ((day, txs) in days) {
+                if (sort == "largest" && rows.isNotEmpty()) {
+                    // Largest first: one list, each row with its date.
+                    item(key = "largest") {
+                        Column(
+                            Modifier
+                                .padding(horizontal = JF.gutter)
+                                .padding(bottom = 12.dp)
+                                .fillMaxWidth()
+                                .background(JF.panel)
+                                .border(1.dp, JF.line, RectangleShape),
+                        ) {
+                            rows.forEachIndexed { i, tx ->
+                                Box(Modifier.fillMaxWidth().clickable { model.push(Route.TxnDetail(tx)) }.padding(horizontal = 16.dp)) {
+                                    TxnRow(tx, showDate = true)
+                                }
+                                if (i == rows.size - 1) LaunchedEffect(tx.id) { more() }
+                                if (i < rows.size - 1) Rule(Modifier.padding(start = 58.dp))
+                            }
+                        }
+                    }
+                }
+                for ((day, txs) in if (sort == "largest") emptyList() else days) {
                     stickyHeader(key = "h$day") {
                         Row(
                             Modifier.fillMaxWidth().background(JF.page).padding(horizontal = JF.gutter, vertical = 6.dp),
@@ -285,7 +332,14 @@ private fun SearchField(value: String, onChange: (String) -> Unit, prompt: Strin
 
 /** A filter chip that opens a menu, as iOS's Menu on the Activity filters. */
 @Composable
-private fun FilterMenu(text: String, active: Boolean, options: List<Pair<String?, String>>, onPick: (String?) -> Unit) {
+internal fun FilterMenu(
+    text: String,
+    active: Boolean,
+    options: List<Pair<String?, String>>,
+    onPick: (String?) -> Unit,
+    /** Section headings, by the index of the option they come before. */
+    headers: Map<Int, String> = emptyMap(),
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -308,7 +362,10 @@ private fun FilterMenu(text: String, active: Boolean, options: List<Pair<String?
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.heightIn(max = 420.dp),
         ) {
-            options.forEach { (value, label) ->
+            options.forEachIndexed { i, (value, label) ->
+                headers[i]?.let { h ->
+                    Text(h, style = JFFont.mono(11f), color = JF.ink3, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
+                }
                 DropdownMenuItem(
                     text = { Text(label, style = JFFont.sans(15f), color = JF.ink, maxLines = 1) },
                     onClick = {
@@ -336,6 +393,16 @@ fun TxnDetailScreen(tx: Txn, onBack: () -> Unit) {
             KeyValueRow("description") { Text(tx.name) }
             KeyValueRow("category") { Text(Category.label(tx.category)) }
             tx.category_detailed?.let { KeyValueRow("bank category") { Text(Category.label(it, primary = tx.category_primary)) } }
+            if (tx.is_business == true || tx.business != null) {
+                // Business by its own flag, else its account's; "marked" when the person said so.
+                KeyValueRow("use") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (tx.is_business == true) BusinessMark()
+                        Text(if (tx.is_business == true) "business" else "personal")
+                        if (tx.business != null) Text("marked", style = JFFont.mono(11f), color = JF.ink3)
+                    }
+                }
+            }
             tx.payment_channel?.let { KeyValueRow("channel") { Text(it) } }
             tx.authorized_date?.takeIf { it != tx.date }?.let { KeyValueRow("authorized") { Text(Fmt.date(it, year = true)) } }
             tx.notes?.takeIf { it.isNotEmpty() }?.let { KeyValueRow("note") { Text(it) } }

@@ -25,10 +25,12 @@ struct AccountRow: View {
     }
 }
 
-/// A transaction: category glyph, merchant, category · account, amount.
+/// A transaction: category glyph, merchant, category · account, amount (and
+/// its date, in a list that isn't grouped by day).
 struct TxnRow: View {
     let tx: Txn
     var showAccount = true
+    var showDate = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -55,6 +57,7 @@ struct TxnRow: View {
 
     private var subtitle: String {
         var parts = [Category.label(tx.category)]
+        if showDate { parts.insert(Fmt.date(tx.date), at: 0) }
         if showAccount, let name = tx.account_name {
             parts.append(name + (tx.account_mask.map { " ··\($0)" } ?? ""))
         }

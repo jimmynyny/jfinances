@@ -11,6 +11,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.daedalustcg.jfinances.kit.api.ApiClient
 import com.daedalustcg.jfinances.kit.api.ApiError
+import com.daedalustcg.jfinances.kit.api.Slice
 import com.daedalustcg.jfinances.kit.models.Account
 import com.daedalustcg.jfinances.kit.models.Glance
 import com.daedalustcg.jfinances.kit.models.Me
@@ -42,7 +43,16 @@ enum class InsightsSection(val key: String, val title: String) {
 sealed interface Route {
     data class AccountDetail(val account: Account) : Route
     data class TxnDetail(val tx: Txn) : Route
+
+    /** The transactions behind a number on Insights. */
+    data class Drill(val target: DrillTarget) : Route
 }
+
+/**
+ * A number on Insights, opened: the slice it came from, how Insights grouped
+ * it, and a short name for the screen (the web's lib/drill.ts links).
+ */
+data class DrillTarget(val slice: Slice, val drill: com.daedalustcg.jfinances.kit.api.Drill, val title: String)
 
 val LocalAppModel = staticCompositionLocalOf<AppModel> { error("no AppModel") }
 

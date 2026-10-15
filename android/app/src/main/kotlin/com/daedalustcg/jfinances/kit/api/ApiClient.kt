@@ -1,9 +1,11 @@
 package com.daedalustcg.jfinances.kit.api
 
 import com.daedalustcg.jfinances.kit.models.Account
+import com.daedalustcg.jfinances.kit.models.AccountDetails
 import com.daedalustcg.jfinances.kit.models.AccountHistory
 import com.daedalustcg.jfinances.kit.models.AccountsList
 import com.daedalustcg.jfinances.kit.models.AlertsList
+import com.daedalustcg.jfinances.kit.models.AssetInfo
 import com.daedalustcg.jfinances.kit.models.BalancePoint
 import com.daedalustcg.jfinances.kit.models.CardsInsight
 import com.daedalustcg.jfinances.kit.models.Cashflow
@@ -90,24 +92,78 @@ data class Slice(
     val query: List<Pair<String, String>> get() = listOf("from" to from, "to" to to, "scope" to scope)
 }
 
+/**
+ * How Insights grouped a number, so the transactions behind it add up to it
+ * (docs/80 "GET /transactions": `flow` applies Insights' rules, the rest its
+ * groupings). The web's lib/drill.ts says the same in its links.
+ */
+data class Drill(
+    /** income | spending | all */
+    val flow: String,
+    val category: String? = null,
+    /** A detailed category (or the category, when the bank gave none). */
+    val detailed: String? = null,
+    /** Insights' merchant name. */
+    val merchant: String? = null,
+    /** paychecks, dividends, interest, retirement, tax refunds, unemployment, other income. */
+    val incomeKind: String? = null,
+    /** in | out */
+    val direction: String? = null,
+    val notCategory: List<String> = emptyList(),
+    val notDetailed: List<String> = emptyList(),
+    /** "kind:merchant" income sources to leave out. */
+    val notSource: List<String> = emptyList(),
+    /** 0 = Monday. */
+    val weekday: Int? = null,
+    val day: Int? = null,
+    /** The dates, when not the whole slice (a period of a chart). */
+    val from: String? = null,
+    val to: String? = null,
+    /** List the biggest amounts first. */
+    val largestFirst: Boolean = false,
+    /** Why the list was opened, when its numbers need saying ("savings"). */
+    val why: String? = null,
+)
+
 data class TxnQuery(
     val q: String = "",
     val accountId: String? = null,
     val category: String? = null,
     val from: String? = null,
     val to: String? = null,
+    /** newest (default) or largest: biggest amounts first, either way. */
+    val sort: String = "newest",
+    /** Insights' rules and grouping (flow, scope and the rest), when the list is a number's. */
+    val drill: Drill? = null,
+    /** personal | business | all, with a drill. */
+    val scope: String? = null,
     val page: Int = 1,
     val pageSize: Int = 50,
 ) {
     val items: List<Pair<String, String>>
         get() = buildList {
-            add("page" to page.toString())
-            add("page_size" to pageSize.toString())
-            q.trim().takeIf { it.isNotEmpty() }?.let { add("q" to it) }
-            accountId?.let { add("account_id" to it) }
-            category?.let { add("category" to it) }
-            from?.let { add("from" to it) }
-            to?.let { add("to" to it) }
+            fun add(name: String, value: String?) { if (!value.isNullOrEmpty()) add(name to value) }
+            add("page", page.toString())
+            add("page_size", pageSize.toString())
+            add("q", q.trim())
+            add("account_id", accountId)
+            add("category", category ?: drill?.category)
+            add("from", drill?.from ?: from)
+            add("to", drill?.to ?: to)
+            if (sort != "newest") add("sort", sort)
+            drill?.let { d ->
+                add("flow", d.flow)
+                add("scope", scope)
+                add("detailed", d.detailed)
+                add("merchant", d.merchant)
+                add("income_kind", d.incomeKind)
+                add("direction", d.direction)
+                d.notCategory.forEach { add("not_category", it) }
+                d.notDetailed.forEach { add("not_detailed", it) }
+                d.notSource.forEach { add("not_source", it) }
+                add("weekday", d.weekday?.toString())
+                add("day", d.day?.toString())
+            }
         }
 }
 
@@ -147,6 +203,15 @@ object ApiClient {
     suspend fun transactions(q: TxnQuery): TxnPage = get("/api/v1/transactions", q.items)
 
     suspend fun categories(): List<String> = get<CategoriesList>("/api/v1/transactions/categories").categories
+
+    /**
+     * Everything known about one account: the bank's facts, what was entered
+     * where the bank is silent, and what follows from both.
+     */
+    suspend fun accountDetails(id: String): AccountDetails = get("/api/v1/accounts/$id/details")
+
+    /** An offline home's or car's valuation inputs and its monthly market values. */
+    suspend fun asset(id: String): AssetInfo = get("/api/v1/accounts/$id/asset")
 
     suspend fun holdings(): Holdings = get("/api/v1/holdings")
     suspend fun liabilities(): Liabilities = get("/api/v1/liabilities")

@@ -24,12 +24,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.daedalustcg.jfinances.app.LocalAppModel
 import com.daedalustcg.jfinances.app.Route
+import com.daedalustcg.jfinances.components.AccountDetailsPanels
 import com.daedalustcg.jfinances.components.AccountRow
 import com.daedalustcg.jfinances.components.Chips
 import com.daedalustcg.jfinances.components.DatedValue
 import com.daedalustcg.jfinances.components.Fine
 import com.daedalustcg.jfinances.components.LinkText
 import com.daedalustcg.jfinances.components.Loader
+import com.daedalustcg.jfinances.components.MarketValuePanel
 import com.daedalustcg.jfinances.components.RuledList
 import com.daedalustcg.jfinances.components.Screen
 import com.daedalustcg.jfinances.components.TrendChart
@@ -39,8 +41,6 @@ import com.daedalustcg.jfinances.kit.api.TxnQuery
 import com.daedalustcg.jfinances.kit.models.Account
 import com.daedalustcg.jfinances.kit.models.Holding
 import com.daedalustcg.jfinances.kit.models.Txn
-import com.daedalustcg.jfinances.kit.ui.Badge
-import com.daedalustcg.jfinances.kit.ui.BadgeTone
 import com.daedalustcg.jfinances.kit.ui.BusinessMark
 import com.daedalustcg.jfinances.kit.ui.Delta
 import com.daedalustcg.jfinances.kit.ui.Fmt
@@ -78,12 +78,18 @@ fun AccountsScreen() {
     }
 }
 
-/** One account: its balance and line, what the bank says about the debt or the holdings, and its latest activity. */
+/**
+ * One account: its balance and line, a home's or car's market value, everything
+ * known about it (the bank's facts, what was entered, what follows), its
+ * holdings or its latest activity. Where it counts (its group), not its type,
+ * decides which: an offline account counted as an investment shows performance,
+ * one with imported statements its transactions.
+ */
 @Composable
 fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
     var range by remember { mutableStateOf("6m") }
-    val isInvestment = account.type == "investment" || account.type == "brokerage"
-    val isCredit = account.type == "credit"
+    val isInvestment = account.countsAsInvestment
+    val isCredit = account.countsAsCard
     Screen(account.name, inline = true, onBack = onBack) {
         Panel(account.subtitle.ifEmpty { "balance" }.lowercase(), actions = { Chips(RANGES, range, { range = it }) }) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -122,15 +128,24 @@ fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
                 }
             }
         }
-        if (account.is_liability && !account.isManual) DebtPanel(account.id)
+        if (account.isValuedAsset) MarketValuePanel(account)
+        AccountDetailsPanels(account.id)
         if (isInvestment) {
             PerformancePanel(account.id)
             HoldingsPanel(account.id)
         }
-        if (!isInvestment && !account.isManual) AccountActivity(account.id)
+        if (!isInvestment && account.holdsTransactions) AccountActivity(account.id)
         Panel("about") {
             account.institution_name?.let { KeyValueRow("institution") { Text(it) } }
-            KeyValueRow("type") { Text(listOfNotNull(account.type, account.subtype).joinToString(" · ")) }
+            val kind = if (account.isManual) {
+                if (account.isValuedAsset) "offline asset" else "offline, kept by hand"
+            } else {
+                listOfNotNull(account.type, account.subtype).joinToString(" · ")
+            }
+            KeyValueRow("type") { Text(kind) }
+            if (account.group_override != null) {
+                Account.groupLabels[account.groupKey]?.let { label -> KeyValueRow("counts as") { Text(label.lowercase()) } }
+            }
             account.mask?.let { KeyValueRow("number") { Text("··$it", style = JFFont.mono(14f)) } }
             account.official_name?.takeIf { it != account.name }?.let { KeyValueRow("bank's name") { Text(it) } }
             if (account.is_business == true) {
@@ -142,38 +157,6 @@ fun AccountDetailScreen(account: Account, onBack: () -> Unit) {
                 }
             }
             KeyValueRow("updated") { Text(Fmt.relative(account.balance_updated_at), style = JFFont.mono(13f)) }
-        }
-    }
-}
-
-/** What the lender reports: rate, payments, statement. */
-@Composable
-fun DebtPanel(accountId: String) {
-    Loader(height = 120.dp, load = { ApiClient.liabilities().accounts.firstOrNull { it.account.id == accountId }?.detail }) { d ->
-        if (d != null) {
-            Panel("the debt") {
-                d.interest_rate_pct?.let { KeyValueRow("rate") { Text(Fmt.pct(it, digits = 2, ratio = false), style = JFFont.mono(14f)) } }
-                d.next_payment_due_date?.let { due ->
-                    KeyValueRow("next payment due") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (d.is_overdue == true) Badge("overdue", BadgeTone.Bad)
-                            Text(Fmt.date(due, year = true))
-                        }
-                    }
-                }
-                (d.minimum_payment ?: d.next_payment_amount)?.let { KeyValueRow("payment") { MoneyText(it) } }
-                d.last_payment_amount?.let { v ->
-                    KeyValueRow("last paid") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            MoneyText(v)
-                            d.last_payment_date?.let { Text(Fmt.date(it), style = JFFont.mono(12f), color = JF.ink3) }
-                        }
-                    }
-                }
-                d.last_statement_balance?.let { KeyValueRow("last statement") { MoneyText(it) } }
-                d.origination_principal?.let { KeyValueRow("borrowed") { MoneyText(it, cents = false) } }
-                d.maturity_date?.let { KeyValueRow("ends") { Text(Fmt.date(it, year = true)) } }
-            }
         }
     }
 }
@@ -211,7 +194,15 @@ fun AccountActivity(accountId: String) {
     }
 }
 
-private data class HoldingRow(val id: String, val ticker: String?, val name: String?, val quantity: Double, val value: Double)
+private data class HoldingRow(
+    val id: String,
+    val ticker: String?,
+    val name: String?,
+    val quantity: Double,
+    val value: Double,
+    /** An offline account counted as an investment: its balance, no holdings. */
+    val keptByHand: Boolean = false,
+)
 
 private fun merged(hs: List<Holding>): List<HoldingRow> {
     val out = LinkedHashMap<String, HoldingRow>()
@@ -228,11 +219,18 @@ private fun merged(hs: List<Holding>): List<HoldingRow> {
 fun HoldingsPanel(accountId: String?, limit: Int = 15) {
     Loader(height = 160.dp, load = { ApiClient.holdings() }) { h ->
         val accounts = h.accounts.filter { accountId == null || it.account.id == accountId }
-        val all = merged(accounts.flatMap { it.holdings }).sortedByDescending { it.value }
+        // An account with no holdings reported (one kept by hand) counts at its balance.
+        val byHand = accounts.filter { it.holdings.isEmpty() && it.account.isManual }
+            .map { HoldingRow(it.account.id, null, it.account.name, 0.0, it.account.balance, keptByHand = true) }
+        val all = (merged(accounts.flatMap { it.holdings }) + if (accountId == null) byHand else emptyList()).sortedByDescending { it.value }
         val total = all.sumOf { it.value }
         Panel("holdings", flush = true, actions = { MoneyText(total, cents = false, size = 12f, weight = JFFont.Weight.Medium) }) {
             if (all.isEmpty()) {
-                Fine("No holdings reported.", Modifier.padding(16.dp))
+                Fine(
+                    if (byHand.isEmpty()) "No holdings reported."
+                    else "An offline account: its value is what you set (or what its imported statements say). Holdings aren't listed.",
+                    Modifier.padding(16.dp),
+                )
             } else {
                 RuledList(all.take(limit)) { x ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -240,12 +238,16 @@ fun HoldingsPanel(accountId: String?, limit: Int = 15) {
                         Text(symbol, style = JFFont.mono(13f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, modifier = Modifier.width(64.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(x.name ?: "", style = JFFont.sans(13f), color = JF.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                "${Fmt.number(x.quantity, digits = if (x.quantity == Math.rint(x.quantity)) 0 else 3)} sh",
-                                style = JFFont.mono(11f),
-                                color = JF.ink3,
-                                modifier = Modifier.figure(11f),
-                            )
+                            if (x.keptByHand) {
+                                Text("kept by hand", style = JFFont.mono(11f), color = JF.ink3)
+                            } else {
+                                Text(
+                                    "${Fmt.number(x.quantity, digits = if (x.quantity == Math.rint(x.quantity)) 0 else 3)} sh",
+                                    style = JFFont.mono(11f),
+                                    color = JF.ink3,
+                                    modifier = Modifier.figure(11f),
+                                )
+                            }
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             MoneyText(x.value, cents = false, size = 14f, weight = JFFont.Weight.Medium)

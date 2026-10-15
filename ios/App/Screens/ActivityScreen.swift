@@ -1,13 +1,15 @@
 import JFinancesKit
 import SwiftUI
 
-/// Every transaction, newest first, by day: search, filter by account or
-/// category, and scroll for more.
+/// Every transaction, newest first by day (or largest first): search, filter by
+/// account or category, and scroll for more.
 struct ActivityScreen: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var accountId: String?
     @State private var category: String?
+    /// newest | largest: biggest amounts first, either way.
+    @State private var sort = "newest"
     @State private var rows: [Txn] = []
     @State private var total = 0
     @State private var page = 1
@@ -16,14 +18,30 @@ struct ActivityScreen: View {
     @State private var accounts: [Account] = []
     @State private var categories: [String] = []
 
-    private struct Key: Hashable { let q: String; let a: String?; let c: String?; let t: UUID }
+    private struct Key: Hashable { let q: String; let a: String?; let c: String?; let s: String; let t: UUID }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 filters.padding(.horizontal, JF.gutter).padding(.bottom, 10)
                 if let error, rows.isEmpty { ErrorNote(error) { Task { await reload() } }.padding(.horizontal, JF.gutter) }
-                ForEach(days, id: \.0) { day, txs in
+                if sort == "largest" && !rows.isEmpty {
+                    // Largest first: one list, each row with its date.
+                    VStack(spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { i, tx in
+                            NavigationLink { TxnDetailScreen(tx: tx) } label: { TxnRow(tx: tx, showDate: true) }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, 16)
+                                .onAppear { if tx.id == rows.last?.id { Task { await more() } } }
+                            if i < rows.count - 1 { Rule().padding(.leading, 58) }
+                        }
+                    }
+                    .background(JF.panel)
+                    .overlay(Rectangle().strokeBorder(JF.line, lineWidth: 1))
+                    .padding(.horizontal, JF.gutter)
+                    .padding(.bottom, 12)
+                }
+                ForEach(sort == "largest" ? [] : days, id: \.0) { day, txs in
                     Section {
                         VStack(spacing: 0) {
                             ForEach(Array(txs.enumerated()), id: \.element.id) { i, tx in
@@ -67,13 +85,14 @@ struct ActivityScreen: View {
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Merchant, name, or note")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { BlurButton() } }
         .refreshable { await model.pullToRefresh() }
-        .task(id: Key(q: search, a: accountId, c: category, t: model.refreshToken)) {
+        .task(id: Key(q: search, a: accountId, c: category, s: sort, t: model.refreshToken)) {
             if !search.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
             if Task.isCancelled { return }
             await reload()
         }
         .task {
-            accounts = (try? await APIClient.shared.accounts())?.filter { $0.is_hidden != true && !$0.isManual } ?? []
+            // An offline account holds what its statements imported; homes and cars hold none.
+            accounts = (try? await APIClient.shared.accounts())?.filter { $0.is_hidden != true && $0.holdsTransactions } ?? []
             categories = (try? await APIClient.shared.categories()) ?? []
         }
     }
@@ -89,12 +108,24 @@ struct ActivityScreen: View {
         return order.map { ($0, groups[$0]!) }
     }
 
+    /// The account filter's sections, in the Accounts tab's order (Cash, Investments,
+    /// Credit cards, Loans…), an institution's accounts together.
+    private var accountGroups: [(String, [Account])] {
+        Account.groupOrder.compactMap { key in
+            let list = accounts.filter { $0.groupKey == key }
+                .sorted { ($0.institution_name ?? "", $0.name) < ($1.institution_name ?? "", $1.name) }
+            return list.isEmpty ? nil : (Account.groupLabels[key] ?? key, list)
+        }
+    }
+
     private var filters: some View {
-        HStack(spacing: 8) {
+        FlowLayout(spacing: 8) {
             Menu {
                 Button("All accounts") { accountId = nil }
-                ForEach(accounts) { a in
-                    Button("\(a.institution_name.map { $0 + ": " } ?? "")\(a.name)\(a.mask.map { " ··\($0)" } ?? "")") { accountId = a.id }
+                ForEach(accountGroups, id: \.0) { label, list in
+                    Section(label) {
+                        ForEach(list) { a in Button(a.filterLabel) { accountId = a.id } }
+                    }
                 }
             } label: {
                 FilterChip(text: accounts.first { $0.id == accountId }?.name ?? "all accounts", active: accountId != nil)
@@ -105,7 +136,14 @@ struct ActivityScreen: View {
             } label: {
                 FilterChip(text: category.map { Category.label($0) } ?? "all categories", active: category != nil)
             }
-            Spacer(minLength: 0)
+            Menu {
+                Picker("Order", selection: $sort) {
+                    Text("Newest first").tag("newest")
+                    Text("Largest first").tag("largest")
+                }
+            } label: {
+                FilterChip(text: sort == "largest" ? "largest first" : "newest first", active: sort == "largest")
+            }
         }
     }
 
@@ -114,7 +152,7 @@ struct ActivityScreen: View {
         defer { loading = false }
         page = 1
         do {
-            let r = try await APIClient.shared.transactions(TxnQuery(q: search, accountId: accountId, category: category, page: 1))
+            let r = try await APIClient.shared.transactions(TxnQuery(q: search, accountId: accountId, category: category, sort: sort, page: 1))
             rows = r.transactions
             total = r.total
             error = nil
@@ -130,7 +168,7 @@ struct ActivityScreen: View {
         loading = true
         defer { loading = false }
         let next = page + 1
-        if let r = try? await APIClient.shared.transactions(TxnQuery(q: search, accountId: accountId, category: category, page: next)) {
+        if let r = try? await APIClient.shared.transactions(TxnQuery(q: search, accountId: accountId, category: category, sort: sort, page: next)) {
             page = next
             let seen = Set(rows.map(\.id))
             rows += r.transactions.filter { !seen.contains($0.id) }
@@ -176,6 +214,16 @@ struct TxnDetailScreen: View {
                     KeyValueRow("description") { Text(tx.name) }
                     KeyValueRow("category") { Text(Category.label(tx.category)) }
                     if let d = tx.category_detailed { KeyValueRow("bank category") { Text(Category.label(d, primary: tx.category_primary)) } }
+                    if tx.is_business == true || tx.business != nil {
+                        // Business by its own flag, else its account's; "marked" when the person said so.
+                        KeyValueRow("use") {
+                            HStack(spacing: 6) {
+                                if tx.is_business == true { BusinessMark() }
+                                Text(tx.is_business == true ? "business" : "personal")
+                                if tx.business != nil { Text("marked").font(JFFont.mono(11)).foregroundStyle(JF.ink3) }
+                            }
+                        }
+                    }
                     if let ch = tx.payment_channel { KeyValueRow("channel") { Text(ch) } }
                     if let a = tx.authorized_date, a != tx.date { KeyValueRow("authorized") { Text(Fmt.date(a, year: true)) } }
                     if let n = tx.notes, !n.isEmpty { KeyValueRow("note") { Text(n) } }

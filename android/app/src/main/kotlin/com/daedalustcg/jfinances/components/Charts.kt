@@ -3,6 +3,13 @@ package com.daedalustcg.jfinances.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import com.daedalustcg.jfinances.kit.models.PeriodLabel
+import com.daedalustcg.jfinances.kit.ui.Category
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -96,9 +103,9 @@ private fun axisStyle(): TextStyle = JFFont.mono(10f).copy(color = JF.ink3)
 private fun widest(measurer: TextMeasurer, labels: List<String>, style: TextStyle): Int =
     labels.maxOfOrNull { measurer.measure(it, style).size.width } ?: 0
 
-/** The selection tooltip: date in mono, figure blurred with the switch. */
+/** The selection tooltip: date in mono, figure blurred with the switch, and what a second tap opens. */
 @Composable
-fun Tip(title: String, value: String, modifier: Modifier = Modifier) {
+fun Tip(title: String, value: String, modifier: Modifier = Modifier, hint: String? = null) {
     Column(
         modifier
             .background(JF.panel)
@@ -108,6 +115,7 @@ fun Tip(title: String, value: String, modifier: Modifier = Modifier) {
     ) {
         Text(title, style = JFFont.mono(10f), color = JF.ink3, maxLines = 1)
         Text(value, style = JFFont.mono(12f, JFFont.Weight.Semibold), color = JF.ink, maxLines = 1, modifier = Modifier.figure(12f))
+        hint?.let { Text(it, style = JFFont.mono(10f), color = JF.accentText, maxLines = 1) }
     }
 }
 
@@ -209,35 +217,83 @@ fun TrendChart(
     }
 }
 
+/** One series in a chart's legend. */
+data class LegendItem(val key: String, val label: String, val color: Color)
+
+/**
+ * A chart's legend that toggles its series (the web's legends): a hidden series
+ * leaves the chart and its scale, colours stay put, and the last one can't be hidden.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LegendSwatch(color: Color, label: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(color))
-        Text(label, style = JFFont.mono(10f), color = JF.ink2, maxLines = 1)
+fun LegendToggles(items: List<LegendItem>, hidden: Set<String>, onChange: (Set<String>) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        items.forEach { item ->
+            ToggleChip(item.label, item.color, on = item.key !in hidden) {
+                if (item.key in hidden) {
+                    onChange(hidden - item.key)
+                } else if (items.count { it.key !in hidden } > 1) {
+                    onChange(hidden + item.key)
+                }
+            }
+        }
+    }
+}
+
+/** A toggle chip: a square swatch and a mono label, filled when on. */
+@Composable
+fun ToggleChip(label: String, color: Color, on: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .height(26.dp)
+            .background(if (on) JF.panel2 else JF.panel)
+            .border(1.dp, JF.line, RectangleShape)
+            .clickable(role = Role.Checkbox, onClick = onClick)
+            .semantics { selected = on }
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(8.dp).background(if (on) color else Color.Transparent).border(1.dp, color, RectangleShape))
+        Text(label, style = JFFont.mono(11f, JFFont.Weight.Medium), color = if (on) JF.ink else JF.ink3, maxLines = 1)
     }
 }
 
 private fun shortLabel(label: String) = label.split(" ").firstOrNull() ?: label
 
-/** Money in and out per period, side by side. */
+/**
+ * A tap on a chart, without taking the page's scroll: the first tap on a mark
+ * shows its numbers, a second on the same mark opens it (the web on a touch screen).
+ */
+private fun Modifier.chartTap(key: Any?, onTap: (Offset) -> Unit): Modifier = pointerInput(key) {
+    detectTapGestures(onTap = onTap)
+}
+
+/**
+ * Money in and out per period, side by side. The legend hides either side; a
+ * tap shows a period's numbers and a second tap on the same bar opens its
+ * transactions (`onOpen` with "income" or "spending").
+ */
 @Composable
-fun FlowBarsChart(periods: List<CashflowPeriod>, height: Dp = 190.dp) {
+fun FlowBarsChart(periods: List<CashflowPeriod>, height: Dp = 190.dp, onOpen: ((CashflowPeriod, String) -> Unit)? = null) {
     val measurer = rememberTextMeasurer()
     val style = axisStyle()
     val grid = JF.grid
     val inColor = JF.divPos
     val outColor = JF.divNeg
     val density = LocalDensity.current
-    var selX by remember { mutableStateOf<Float?>(null) }
-    val top = periods.maxOfOrNull { max(it.income, it.spending) } ?: 0.0
+    var hidden by remember { mutableStateOf(setOf<String>()) }
+    var picked by remember(periods) { mutableStateOf<Pair<Int, String>?>(null) }
+    val kinds = listOf("in", "out").filter { it !in hidden }
+    val top = periods.maxOfOrNull { max(if ("in" in kinds) it.income else 0.0, if ("out" in kinds) it.spending else 0.0) } ?: 0.0
     val (dLo, dHi, yTicks) = barAxis(0.0, top, 4)
     val yLabelW = widest(measurer, yTicks.map { Fmt.compact(it) }, style)
-    Column(Modifier.fillMaxWidth().height(height), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            LegendSwatch(inColor, "money in")
-            LegendSwatch(outColor, "money out")
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LegendToggles(listOf(LegendItem("in", "money in", inColor), LegendItem("out", "money out", outColor)), hidden) {
+            hidden = it
+            picked = null
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).chartSelection(periods) { selX = it }) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
             val w = with(density) { maxWidth.toPx() }
             val h = with(density) { maxHeight.toPx() }
             val gap = with(density) { AxisGap.toPx() }
@@ -245,50 +301,83 @@ fun FlowBarsChart(periods: List<CashflowPeriod>, height: Dp = 190.dp) {
             val plotBottom = h - with(density) { XAxisHeight.toPx() }
             val n = max(1, periods.size)
             val band = plotRight / n
+            val groupW = band * 0.62f
             fun yOf(v: Double) = (plotBottom - (v - dLo) / (dHi - dLo) * plotBottom).toFloat()
-            val selected = selX?.let { ((it / band).toInt()).coerceIn(0, n - 1) }?.takeIf { periods.isNotEmpty() }
             val axes = Axes(
                 y = yTicks.map { yOf(it) to measurer.measure(Fmt.compact(it), style) },
                 x = periods.mapIndexed { i, p -> band * (i + 0.5f) to measurer.measure(shortLabel(p.label), style) },
             )
-            Canvas(Modifier.matchParentSize()) {
+            Canvas(
+                Modifier.matchParentSize().chartTap(Triple(periods, hidden, onOpen)) { pos ->
+                    if (periods.isEmpty() || pos.x > plotRight) { picked = null; return@chartTap }
+                    val i = (pos.x / band).toInt().coerceIn(0, periods.size - 1)
+                    // Side by side: the left half of a period's slot is money in, the right half money out.
+                    val kind = if (kinds.size == 2) (if (pos.x < band * (i + 0.5f)) "in" else "out") else kinds.first()
+                    val pick = i to kind
+                    if (picked == pick && onOpen != null) {
+                        picked = null
+                        onOpen(periods[i], if (kind == "in") "income" else "spending")
+                    } else {
+                        picked = pick
+                    }
+                },
+            ) {
                 drawGrid(axes.y.map { it.first }, plotRight, grid)
-                val groupW = band * 0.62f
-                val barW = groupW * 0.47f
+                val barW = if (kinds.size == 2) groupW * 0.47f else groupW * 0.6f
                 for ((i, p) in periods.withIndex()) {
                     val x0 = band * i + (band - groupW) / 2f
                     val y0 = yOf(0.0)
-                    val yi = yOf(p.income)
-                    val yo = yOf(p.spending)
-                    drawRect(inColor, Offset(x0, yi), Size(barW, y0 - yi))
-                    drawRect(outColor, Offset(x0 + groupW - barW, yo), Size(barW, y0 - yo))
+                    fun alpha(kind: String) = picked?.let { if (it == i to kind) 1f else 0.35f } ?: 1f
+                    if ("in" in kinds) {
+                        val yi = yOf(p.income)
+                        drawRect(inColor, Offset(x0, yi), Size(barW, y0 - yi), alpha = alpha("in"))
+                    }
+                    if ("out" in kinds) {
+                        val yo = yOf(p.spending)
+                        val x = if (kinds.size == 2) x0 + groupW - barW else x0
+                        drawRect(outColor, Offset(x, yo), Size(barW, y0 - yo), alpha = alpha("out"))
+                    }
                 }
             }
             Canvas(Modifier.matchParentSize().figure(10f)) { drawAxisLabels(axes, plotRight, plotBottom, gap) }
-            if (selected != null) {
-                val p = periods[selected]
-                TipAt(band * (selected + 0.5f), plotRight) {
-                    Tip(p.label, "in ${Fmt.compact(p.income)} · out ${Fmt.compact(p.spending)}")
+            picked?.let { (i, kind) ->
+                val p = periods[i]
+                TipAt(band * (i + 0.5f), plotRight) {
+                    Tip(p.label, "in ${Fmt.compact(p.income)} · out ${Fmt.compact(p.spending)}",
+                        hint = if (onOpen == null) null else "tap again: money $kind")
                 }
             }
         }
     }
 }
 
-/** Spending per period, stacked by category, in fixed series order. */
+/**
+ * Spending per period, stacked by category, in fixed series order. Hidden
+ * series leave the chart (colours stay put); a tap shows a period's category
+ * and a second tap on it opens its transactions (`onOpen` with the series key
+ * and the period).
+ */
 @Composable
-fun StackedSpendingChart(spending: Spending, height: Dp = 210.dp) {
+fun StackedSpendingChart(
+    spending: Spending,
+    height: Dp = 210.dp,
+    hidden: Set<String> = emptySet(),
+    labelFor: (String) -> String = { Category.label(it) },
+    onOpen: ((String, PeriodLabel) -> Unit)? = null,
+) {
     val measurer = rememberTextMeasurer()
     val style = axisStyle()
     val grid = JF.grid
     val density = LocalDensity.current
     val colors = spending.series.mapIndexed { i, s -> if (s.key == "OTHER") JF.other else JF.seriesColor(i) }
-    var selX by remember { mutableStateOf<Float?>(null) }
+    var picked by remember(spending, hidden) { mutableStateOf<Pair<Int, String>?>(null) }
     val n = spending.periods.size
-    val totals = (0 until n).map { i -> spending.series.sumOf { s -> s.values.getOrElse(i) { 0.0 }.coerceAtLeast(0.0) } }
+    val shown = spending.series.withIndex().filter { it.value.key !in hidden }
+    fun v(s: com.daedalustcg.jfinances.kit.models.SpendingSeries, i: Int) = s.values.getOrElse(i) { 0.0 }.coerceAtLeast(0.0)
+    val totals = (0 until n).map { i -> shown.sumOf { v(it.value, i) } }
     val (dLo, dHi, yTicks) = barAxis(0.0, totals.maxOrNull() ?: 0.0, 4)
     val yLabelW = widest(measurer, yTicks.map { Fmt.compact(it) }, style)
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height).chartSelection(spending) { selX = it }) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
         val w = with(density) { maxWidth.toPx() }
         val h = with(density) { maxHeight.toPx() }
         val gap = with(density) { AxisGap.toPx() }
@@ -296,31 +385,57 @@ fun StackedSpendingChart(spending: Spending, height: Dp = 210.dp) {
         val plotBottom = h - with(density) { XAxisHeight.toPx() }
         val band = plotRight / max(1, n)
         fun yOf(v: Double) = (plotBottom - (v - dLo) / (dHi - dLo) * plotBottom).toFloat()
-        val selected = selX?.let { ((it / band).toInt()).coerceIn(0, max(0, n - 1)) }?.takeIf { n > 0 }
         val axes = Axes(
             y = yTicks.map { yOf(it) to measurer.measure(Fmt.compact(it), style) },
             x = spending.periods.mapIndexed { i, p -> band * (i + 0.5f) to measurer.measure(shortLabel(p.label), style) },
         )
-        Canvas(Modifier.matchParentSize()) {
+        Canvas(
+            Modifier.matchParentSize().chartTap(Triple(spending, hidden, onOpen)) { pos ->
+                if (n == 0 || pos.x > plotRight) { picked = null; return@chartTap }
+                val i = (pos.x / band).toInt().coerceIn(0, n - 1)
+                // Which stacked segment: the series stack bottom-up in order; above the bar, its top one.
+                val amount = dLo + (plotBottom - pos.y) / plotBottom * (dHi - dLo)
+                var acc = 0.0
+                var key: String? = null
+                for ((_, s) in shown) {
+                    val x = v(s, i)
+                    if (x <= 0) continue
+                    acc += x
+                    key = s.key
+                    if (amount <= acc) break
+                }
+                if (key == null) { picked = null; return@chartTap }
+                val pick = i to key
+                if (picked == pick && onOpen != null) {
+                    picked = null
+                    onOpen(key, spending.periods[i])
+                } else {
+                    picked = pick
+                }
+            },
+        ) {
             drawGrid(axes.y.map { it.first }, plotRight, grid)
             val barW = band * 0.7f
             for (i in 0 until n) {
                 var acc = 0.0
                 val x = band * i + (band - barW) / 2f
-                for ((si, s) in spending.series.withIndex()) {
-                    val v = s.values.getOrElse(i) { 0.0 }.coerceAtLeast(0.0)
-                    if (v <= 0) continue
+                for ((si, s) in shown) {
+                    val value = v(s, i)
+                    if (value <= 0) continue
                     val y1 = yOf(acc)
-                    val y2 = yOf(acc + v)
-                    drawRect(colors[si], Offset(x, y2), Size(barW, y1 - y2))
-                    acc += v
+                    val y2 = yOf(acc + value)
+                    val alpha = picked?.let { if (it == i to s.key) 1f else 0.35f } ?: 1f
+                    drawRect(colors[si], Offset(x, y2), Size(barW, y1 - y2), alpha = alpha)
+                    acc += value
                 }
             }
         }
         Canvas(Modifier.matchParentSize().figure(10f)) { drawAxisLabels(axes, plotRight, plotBottom, gap) }
-        if (selected != null) {
-            TipAt(band * (selected + 0.5f), plotRight) {
-                Tip(spending.periods[selected].label, Fmt.money(totals[selected], cents = false))
+        picked?.let { (i, key) ->
+            val s = spending.series.first { it.key == key }
+            TipAt(band * (i + 0.5f), plotRight) {
+                Tip("${spending.periods[i].label} · ${labelFor(key)}", Fmt.money(v(s, i), cents = false),
+                    hint = if (onOpen == null) null else "tap again: see these")
             }
         }
     }
@@ -410,8 +525,9 @@ fun ClassBarsChart(data: NetWorthByClass, height: Dp = 230.dp) {
     val grid = JF.grid
     val density = LocalDensity.current
     val colors = data.groups.indices.map { JF.seriesColor(it) }
+    var hidden by remember { mutableStateOf(setOf<String>()) }
     val months = data.points.mapNotNull { p -> Fmt.day(p.string("date"))?.let { it to p } }
-    val signed = months.map { (_, p) -> data.groups.map { g -> (if (g.liability) -1 else 1) * data.value(p, g.key) } }
+    val signed = months.map { (_, p) -> data.groups.map { g -> if (g.key in hidden) 0.0 else (if (g.liability) -1 else 1) * data.value(p, g.key) } }
     val posMax = signed.maxOfOrNull { row -> row.filter { it > 0 }.sum() } ?: 0.0
     val negMin = signed.minOfOrNull { row -> row.filter { it < 0 }.sum() } ?: 0.0
     val (dLo, dHi, yTicks) = barAxis(negMin, posMax, 5)
@@ -455,9 +571,7 @@ fun ClassBarsChart(data: NetWorthByClass, height: Dp = 230.dp) {
             }
             Canvas(Modifier.matchParentSize().figure(10f)) { drawAxisLabels(axes, plotRight, plotBottom, gap) }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            data.groups.forEachIndexed { i, g -> LegendSwatch(colors[i], g.label) }
-        }
+        LegendToggles(data.groups.mapIndexed { i, g -> LegendItem(g.key, g.label, colors[i]) }, hidden) { hidden = it }
     }
 }
 
