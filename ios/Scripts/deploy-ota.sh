@@ -126,10 +126,10 @@ $SWIFTC -c -sdk "$SDK" -target "$TRIPLE" -O -wmo -application-extension -module-
 # --------------------------------------------------------------- 3. the assets
 echo "==> Compiling asset catalogues"
 mkdir -p "$B/appassets" "$B/extassets"
-$ACTOOL --compile "$B/appassets" --platform iphoneos --target-device iphone \
+$ACTOOL --compile "$B/appassets" --platform iphoneos --target-device iphone --target-device ipad \
   --minimum-deployment-target "$MIN_IOS" --app-icon AppIcon \
   --output-partial-info-plist "$B/app-assets.plist" --output-format human-readable-text App/Assets.xcassets >/dev/null
-$ACTOOL --compile "$B/extassets" --platform iphoneos --target-device iphone \
+$ACTOOL --compile "$B/extassets" --platform iphoneos --target-device iphone --target-device ipad \
   --minimum-deployment-target "$MIN_IOS" \
   --output-partial-info-plist "$B/ext-assets.plist" --output-format human-readable-text Widgets/Assets.xcassets >/dev/null
 
@@ -166,7 +166,7 @@ def build(src, out, *, bundle_id, exe, name, partial, extension=False):
     d.update({
         "MinimumOSVersion": os.environ["MIN_IOS"],
         "CFBundleSupportedPlatforms": ["iPhoneOS"],
-        "UIDeviceFamily": [1],
+        "UIDeviceFamily": [1, 2],  # iPhone and iPad (docs/85 "iPad and the iPhone Duo")
         "DTPlatformName": "iphoneos",
         "DTPlatformVersion": os.environ["SDK_VER"],
         "DTSDKName": "iphoneos" + os.environ["SDK_VER"],
