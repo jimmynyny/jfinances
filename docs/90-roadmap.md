@@ -11,10 +11,6 @@ Reserved:
 
 - Push notifications for alerts (needs APNs keys, FCM for Android, and a sender in `worker`).
 - Statement imports from the phone (the API allows them; the apps have no file picker for them yet).
-- Android bank links with OAuth banks: register `com.daedalustcg.jfinances` under "Allowed Android
-  package names" in the Plaid dashboard (docs/30 "What to register"). Until then Link on Android
-  works for banks that sign in inside Link, and an OAuth bank cannot return to the app.
-
 ## Google login in Access
 
 The Zero Trust team currently uses Google Workspace for `webuytcg.com` and
