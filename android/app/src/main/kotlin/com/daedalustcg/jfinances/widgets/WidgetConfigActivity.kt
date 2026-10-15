@@ -128,7 +128,7 @@ class WidgetConfigActivity : ComponentActivity() {
             }
             if (pickAccount) {
                 Panel("account", flush = true) {
-                    if (accounts.isEmpty()) Fine("Open jfinances and sign in first: the accounts come from it.", Modifier.padding(16.dp))
+                    if (accounts.isEmpty()) Fine("Open jFinances and sign in first: the accounts come from it.", Modifier.padding(16.dp))
                     accounts.forEachIndexed { i, a ->
                         Row(
                             Modifier
@@ -155,7 +155,7 @@ class WidgetConfigActivity : ComponentActivity() {
                     }
                 }
             }
-            Caption("tap the widget to open jfinances")
+            Caption("tap the widget to open jFinances")
             PrimaryButton("Done", onClick = {
                 scope.launch {
                     updateAppWidgetState(this@WidgetConfigActivity, glanceId) { prefs ->

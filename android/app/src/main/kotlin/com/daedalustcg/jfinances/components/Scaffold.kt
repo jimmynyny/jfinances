@@ -91,8 +91,8 @@ fun tabBarSpace(): Dp = TabBarHeight + WindowInsets.navigationBars.asPaddingValu
 
 /**
  * A tab's page: the desk-coloured background, panels in a column with the
- * dashboard's 16 dp gutter, pull to refresh, a large title that scrolls up
- * into the bar (iOS's large titles), and the blur switch top-right.
+ * dashboard's 16 dp gutter, pull to refresh, and a large title in the top row
+ * that scrolls up into the bar (iOS's large titles). Blur lives in Settings.
  * `inline` screens (an account, a transaction) show their title in the bar
  * from the start, with a back button.
  */
@@ -109,7 +109,8 @@ fun Screen(
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     val state = rememberPullToRefreshState()
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarHeight
+    // A tab's root has nothing in the bar at rest, so its title takes the bar's row.
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + if (inline || onBack != null) TopBarHeight else 0.dp
     val titlePx = with(LocalDensity.current) { (LargeTitleHeight - 12.dp).toPx() }
     Box(Modifier.fillMaxSize().background(JF.page)) {
         PullToRefreshBox(
@@ -158,8 +159,8 @@ fun LargeTitle(title: String) {
 }
 
 /**
- * The bar over every screen: back (pushed screens), the title once the large
- * one has scrolled away, and blur. Clear at rest; the page's colour once
+ * The bar over every screen: back (pushed screens) and the title once the
+ * large one has scrolled away. Clear at rest; the page's colour once
  * content slides under it.
  */
 @Composable
@@ -201,7 +202,6 @@ fun TopBar(title: String, showTitle: Boolean, scrolled: Boolean, onBack: (() -> 
                     modifier = Modifier.widthIn(max = 230.dp),
                 )
             }
-            BlurButton(Modifier.align(Alignment.CenterEnd))
         }
     }
 }
@@ -229,27 +229,6 @@ fun GlassCircle(onClick: () -> Unit, modifier: Modifier = Modifier, label: Strin
         contentAlignment = Alignment.Center,
         content = content,
     )
-}
-
-/** The web's top-right "blur" switch. */
-@Composable
-fun BlurButton(modifier: Modifier = Modifier) {
-    val model = LocalAppModel.current
-    val on = model.blur
-    Box(
-        modifier
-            .height(44.dp)
-            .glass(RoundedCornerShape(22.dp))
-            .clickable(role = Role.Switch) { model.setBlurNumbers(!on) }
-            .semantics {
-                contentDescription = if (on) "Show numbers" else "Blur numbers"
-                selected = on
-            }
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("blur", style = JFFont.mono(13f, JFFont.Weight.Medium), color = if (on) JF.accent else JF.ink2)
-    }
 }
 
 sealed interface LoadState<out T> {

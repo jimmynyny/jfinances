@@ -52,9 +52,9 @@ struct WidgetEmpty: View {
     let linked: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            WidgetCaption(text: "jfinances")
+            WidgetCaption(text: "jFinances")
             Spacer(minLength: 0)
-            Text(linked ? "Waiting for the first update." : "Open jfinances and sign in.")
+            Text(linked ? "Waiting for the first update." : "Open jFinances and sign in.")
                 .font(JFFont.sans(13, .medium))
                 .foregroundStyle(JF.ink2)
         }

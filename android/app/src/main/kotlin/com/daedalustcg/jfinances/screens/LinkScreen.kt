@@ -55,7 +55,7 @@ fun LinkScreen() {
     ) {
         Spacer(Modifier.weight(1f).heightIn(min = 40.dp))
         LogoMark(Modifier.size(96.dp))
-        Text("jfinances", style = JFFont.sans(34f, JFFont.Weight.Semibold), color = JF.ink, modifier = Modifier.padding(top = 28.dp))
+        Text("jFinances", style = JFFont.sans(34f, JFFont.Weight.Semibold), color = JF.ink, modifier = Modifier.padding(top = 28.dp))
         Text(
             "The household's money, on your phone and your home screen.",
             style = JFFont.sans(17f),

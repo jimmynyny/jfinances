@@ -23,6 +23,7 @@ struct JFinancesApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var splash = true
 
     var body: some View {
         ZStack {
@@ -32,6 +33,13 @@ struct RootView: View {
             } else {
                 LinkScreen()
             }
+            if splash {
+                SplashView().transition(.opacity).zIndex(1)
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(1100))
+            withAnimation(.easeOut(duration: 0.35)) { splash = false }
         }
         .animation(.easeInOut(duration: 0.2), value: model.isLinked)
         .task { await model.refreshGlance() }
@@ -74,5 +82,26 @@ enum Appearance {
         nav.largeTitleTextAttributes = [.font: JFFont.uiSans(30, .semibold)]
         nav.titleTextAttributes = [.font: JFFont.uiSans(17, .semibold)]
         UISegmentedControl.appearance().setTitleTextAttributes([.font: JFFont.uiMono(12, .medium)], for: .normal)
+    }
+}
+
+/// The first thing on screen: the launch screen's icon with the name under it,
+/// for a moment while the first glance loads behind it.
+struct SplashView: View {
+    var body: some View {
+        ZStack {
+            JF.page.ignoresSafeArea()
+            // Centred where the launch screen draws it, so the hand-off doesn't move it.
+            Image("LaunchIcon")
+                .overlay(alignment: .bottom) {
+                    Text("jFinances")
+                        .font(JFFont.sans(30, .semibold))
+                        .foregroundStyle(JF.ink)
+                        .fixedSize()
+                        .offset(y: 58)
+                }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("jFinances")
     }
 }

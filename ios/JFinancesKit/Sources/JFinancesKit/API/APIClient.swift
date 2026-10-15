@@ -29,8 +29,8 @@ public enum APIError: Error, LocalizedError, Sendable, Equatable {
             default: return message
             }
         case .http(let status, _, let message): return "\(message) (HTTP \(status))"
-        case .transport(let s): return "Couldn't reach jfinances. \(s)"
-        case .decoding: return "jfinances answered in a shape this version of the app doesn't understand."
+        case .transport(let s): return "Couldn't reach jFinances. \(s)"
+        case .decoding: return "jFinances answered in a shape this version of the app doesn't understand."
         }
     }
 }

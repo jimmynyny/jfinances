@@ -23,6 +23,9 @@ struct ActivityScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                TabTitle("Activity").padding(.horizontal, JF.gutter).padding(.top, 4)
+                SearchField(text: $search, prompt: "Merchant, name, or note")
+                    .padding(.horizontal, JF.gutter).padding(.top, 10).padding(.bottom, 10)
                 filters.padding(.horizontal, JF.gutter).padding(.bottom, 10)
                 if let error, rows.isEmpty { ErrorNote(error) { Task { await reload() } }.padding(.horizontal, JF.gutter) }
                 if sort == "largest" && !rows.isEmpty {
@@ -82,8 +85,8 @@ struct ActivityScreen: View {
         .scrollIndicators(.hidden)
         .background(JF.page)
         .navigationTitle("Activity")
-        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Merchant, name, or note")
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { BlurButton() } }
+        .toolbar(.hidden, for: .navigationBar)
+        .statusBarBackdrop()
         .refreshable { await model.pullToRefresh() }
         .task(id: Key(q: search, a: accountId, c: category, s: sort, t: model.refreshToken)) {
             if !search.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
@@ -177,6 +180,31 @@ struct ActivityScreen: View {
     }
 }
 
+/// The search field under the title, where the navigation bar's search drawer was.
+struct SearchField: View {
+    @Binding var text: String
+    let prompt: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(JF.ink3)
+            TextField(prompt, text: $text)
+                .font(JFFont.sans(16))
+                .foregroundStyle(JF.ink)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(JF.ink3) }
+                    .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(JF.panel2, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 struct FilterChip: View {
     let text: String
     let active: Bool
@@ -199,7 +227,7 @@ struct TxnDetailScreen: View {
     let tx: Txn
 
     var body: some View {
-        Screen(tx.title) {
+        Screen(tx.title, inline: true) {
             Panel(tx.pending ? "pending" : "posted") {
                 VStack(alignment: .leading, spacing: 10) {
                     Readout(tx.amount < 0 ? "money in" : "money out",
@@ -237,6 +265,5 @@ struct TxnDetailScreen: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

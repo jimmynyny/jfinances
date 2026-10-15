@@ -63,7 +63,7 @@ struct AccountDetailScreen: View {
     private var isCredit: Bool { account.countsAsCard }
 
     var body: some View {
-        Screen(account.name) {
+        Screen(account.name, inline: true) {
             Panel(account.subtitle.isEmpty ? "balance" : account.subtitle.lowercased(), actions: {
                 Chips(options: [("1m", "1m"), ("3m", "3m"), ("6m", "6m"), ("1y", "1y"), ("all", "all")], value: $range)
             }) {
@@ -107,7 +107,6 @@ struct AccountDetailScreen: View {
             if !isInvestment && account.holdsTransactions { AccountActivity(accountId: account.id) }
             about
         }
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var kind: String {

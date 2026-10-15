@@ -41,7 +41,7 @@ targets:
     info:
       path: Config/App-Info.plist
       properties:
-        CFBundleDisplayName: jfinances
+        CFBundleDisplayName: jFinances
         CFBundleName: JFinances
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -51,8 +51,10 @@ targets:
             CFBundleURLSchemes: [jfinances]
         # Which server the sign-in screen offers first.
         JFDefaultServer: production
+        # The app icon on the page colour; SplashView then adds the name under it.
         UILaunchScreen:
           UIColorName: LaunchBackground
+          UIImageName: LaunchIcon
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -92,7 +94,7 @@ targets:
     info:
       path: Config/Widgets-Info.plist
       properties:
-        CFBundleDisplayName: jfinances
+        CFBundleDisplayName: jFinances
         CFBundleName: JFinancesWidgets
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

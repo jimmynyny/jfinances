@@ -53,11 +53,12 @@ final class TourTests: XCTestCase {
         tab("Settings")
         snap("07-settings")
 
-        tab("Overview")
-        app.buttons["Blur numbers"].firstMatch.tap()
+        app.switches.firstMatch.tap()
         sleep(1)
+        tab("Overview")
         snap("08-blur")
-        app.buttons["Show numbers"].firstMatch.tap()
+        tab("Settings")
+        app.switches.firstMatch.tap()
     }
 
     /// The screens added to catch up with the dashboard: account details, market

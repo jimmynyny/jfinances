@@ -72,7 +72,7 @@ fun SettingsScreen() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Blur numbers", style = JFFont.sans(15f, JFFont.Weight.Medium), color = JF.ink)
-                            Fine("For screenshots. Also top-right on every screen.")
+                            Fine("For screenshots: every figure in the app blurs.")
                         }
                         Switch(
                             checked = model.blur,
@@ -96,7 +96,7 @@ fun SettingsScreen() {
             }
             Panel("widgets") {
                 Text(
-                    "Touch and hold the home screen, tap Widgets, and pick jfinances: net worth, this month, coming up, or one account. Touch and hold a widget to change what it shows.",
+                    "Touch and hold the home screen, tap Widgets, and pick jFinances: net worth, this month, coming up, or one account. Touch and hold a widget to change what it shows.",
                     style = JFFont.sans(13f),
                     color = JF.ink2,
                 )
@@ -106,7 +106,7 @@ fun SettingsScreen() {
             })
             QuietButton("Unlink this phone", { confirmUnlink = true }, destructive = true)
         }
-        Fine("jfinances ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
+        Fine("jFinances ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
     }
     if (confirmUnlink) {
         AlertDialog(

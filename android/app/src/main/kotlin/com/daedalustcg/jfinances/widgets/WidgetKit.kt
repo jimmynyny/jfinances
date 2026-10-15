@@ -245,9 +245,9 @@ fun WidgetFoot(fetchedAt: Long?, stale: Boolean) {
 @Composable
 fun WidgetEmpty(linked: Boolean, width: Dp) {
     Column(GlanceModifier.fillMaxWidth()) {
-        WidgetCaption("jfinances")
+        WidgetCaption("jFinances")
         Spacer(GlanceModifier.defaultWeight())
-        WText(if (linked) "Waiting for the first update." else "Open jfinances and sign in.", Face.SansMedium, 13f, WColor.ink2, maxWidth = width, maxLines = 3)
+        WText(if (linked) "Waiting for the first update." else "Open jFinances and sign in.", Face.SansMedium, 13f, WColor.ink2, maxWidth = width, maxLines = 3)
     }
 }
 

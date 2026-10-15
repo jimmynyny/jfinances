@@ -28,7 +28,7 @@ struct SettingsScreen: View {
                         Toggle(isOn: $model.blur) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Blur numbers").font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink)
-                                Fine("For screenshots. Also top-right on every screen.")
+                                Fine("For screenshots: every figure in the app blurs.")
                             }
                         }
                         .tint(JF.accent)
@@ -38,7 +38,7 @@ struct SettingsScreen: View {
                     }
                 }
                 Panel("widgets") {
-                    Text("Touch and hold the Home Screen or the Lock Screen, tap Edit, then Add Widget, and pick jfinances: net worth, this month, coming up, or one account.")
+                    Text("Touch and hold the Home Screen or the Lock Screen, tap Edit, then Add Widget, and pick jFinances: net worth, this month, coming up, or one account.")
                         .font(JFFont.sans(13)).foregroundStyle(JF.ink2)
                 }
                 Button("Open the dashboard") { openURL(cred.server.dashboard) }
@@ -51,7 +51,7 @@ struct SettingsScreen: View {
                         Text("Its token is revoked and the widgets go blank. Sign in again any time.")
                     }
             }
-            Fine("jfinances \(Self.version)").frame(maxWidth: .infinity).padding(.top, 8)
+            Fine("jFinances \(Self.version)").frame(maxWidth: .infinity).padding(.top, 8)
         }
     }
 

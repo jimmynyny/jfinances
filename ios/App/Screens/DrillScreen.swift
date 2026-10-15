@@ -86,7 +86,7 @@ struct DrillScreen: View {
     }
 
     var body: some View {
-        Screen(target.title) {
+        Screen(target.title, inline: true) {
             Panel("from insights") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(DrillWords.describe(target)).font(JFFont.sans(14)).foregroundStyle(JF.ink)
@@ -127,7 +127,6 @@ struct DrillScreen: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
         .task(id: TaskKey(sort: sort, token: model.refreshToken)) { await reload() }
     }
 

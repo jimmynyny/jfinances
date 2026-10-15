@@ -77,8 +77,8 @@ sealed class ApiError(message: String) : Exception(message) {
                 else -> serverMessage
             }
             is Http -> "$serverMessage (HTTP $status)"
-            is Transport -> "Couldn't reach jfinances. $detail"
-            is Decoding -> "jfinances answered in a shape this version of the app doesn't understand."
+            is Transport -> "Couldn't reach jFinances. $detail"
+            is Decoding -> "jFinances answered in a shape this version of the app doesn't understand."
         }
 }
 

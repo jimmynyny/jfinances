@@ -17,9 +17,13 @@ The five tabs read what the iPhone's read, field for field:
 | Insights | cash flow with the money-flow diagram (income → spending, saved or from savings), spending (by category, a category's kinds, merchants), subscriptions with upcoming charges and alerts, net worth by kind with homes, loan payoff (with "pay extra" chips) and cards, investing with benchmarks (offline investments "kept by hand"). Every number opens the transactions behind it, adding up to it: a row with one tap; a bar or a money-flow node with two (the first shows its numbers or lights its path). Chart legends hide and show their series | `/insights/*`, `/transactions` (Insights' `flow` and groupings), `/recurring*`, `/alerts`, `/investments/performance`, `/holdings` |
 | Settings | who and which server, blur numbers, how to add widgets, open the dashboard, unlink | `/me`, `POST /mobile/unlink` |
 
-**Blur**: the "blur" button top-right on every screen (and a switch in
-Settings) blurs every figure, radius scaled to the text, as on the web and the
-iPhone.
+**Blur**: the switch in Settings blurs every figure, radius scaled to the
+text, as on the web: for screenshots. A tab's large title sits in the top
+row (no bar beside it); pushed screens keep a bar for their back button.
+
+**Name and splash**: the app is **jFinances** on the Home Screen. Launch shows
+the app icon, then the icon with the name under it for about a second while
+the first figures load.
 
 **Widgets**, all from one `GET /glance` cached for five minutes so several
 widgets make one request; refreshed every 30 minutes (WorkManager, with a

@@ -13,7 +13,7 @@ struct LinkScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 40)
             LogoMark().frame(width: 96, height: 96)
-            Text("jfinances")
+            Text("jFinances")
                 .font(JFFont.sans(34, .semibold))
                 .foregroundStyle(JF.ink)
                 .padding(.top, 28)

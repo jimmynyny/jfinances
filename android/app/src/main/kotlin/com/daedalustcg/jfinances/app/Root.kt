@@ -1,5 +1,20 @@
 package com.daedalustcg.jfinances.app
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import com.daedalustcg.jfinances.R
+import com.daedalustcg.jfinances.kit.ui.JFFont
+import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
@@ -56,10 +71,40 @@ import com.daedalustcg.jfinances.screens.TxnDetailScreen
 @Composable
 fun RootView() {
     val model = LocalAppModel.current
+    var splash by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(1100)
+        splash = false
+    }
     Box(Modifier.fillMaxSize().background(JF.page)) {
         Crossfade(targetState = model.isLinked, animationSpec = tween(200), label = "linked") { linked ->
             if (linked) MainTabs() else LinkScreen()
         }
+        AnimatedVisibility(visible = splash, enter = fadeIn(tween(0)), exit = fadeOut(tween(350))) { SplashView() }
+    }
+}
+
+/**
+ * The first thing on screen after the system's icon: the app icon and the name,
+ * for a moment while the first glance loads behind it (iOS's SplashView).
+ */
+@Composable
+fun SplashView() {
+    Box(
+        Modifier.fillMaxSize().background(JF.page).semantics { contentDescription = "jFinances" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painterResource(R.drawable.splash_icon),
+            contentDescription = null,
+            modifier = Modifier.size(112.dp).border(1.dp, JF.line, RoundedCornerShape(25.dp)),
+        )
+        Text(
+            "jFinances",
+            style = JFFont.sans(30f, JFFont.Weight.Semibold),
+            color = JF.ink,
+            modifier = Modifier.offset(y = 92.dp),
+        )
     }
 }
 

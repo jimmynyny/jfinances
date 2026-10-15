@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">jfinances</string>
+    <string name="app_name">jFinances</string>
     <string name="widget_net_worth">Net worth</string>
     <string name="widget_net_worth_description">Net worth, its 30-day change and line.</string>
     <string name="widget_month">This month</string>

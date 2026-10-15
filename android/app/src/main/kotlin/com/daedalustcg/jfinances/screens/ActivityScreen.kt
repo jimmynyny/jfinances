@@ -158,7 +158,7 @@ fun ActivityScreen() {
     val list = rememberLazyListState()
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
     val pastTitle by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 100 } }
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarHeight
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val pull = rememberPullToRefreshState()
 
     Box(Modifier.fillMaxSize().background(JF.page)) {

@@ -2,23 +2,29 @@ import JFinancesKit
 import SwiftUI
 
 /// A tab's page: the desk-coloured background, panels in a column with the
-/// dashboard's 16pt gutter, pull to refresh, and the blur switch top-right.
+/// dashboard's 16pt gutter, and pull to refresh. A tab's root draws its own
+/// large title in the top row (no navigation bar: nothing sits beside it, so the
+/// bar's empty row would push everything down); a pushed screen (`inline`)
+/// keeps the bar for its back button. Blur lives in Settings.
 /// A plain stack, not a lazy one: a screen holds a few panels, and a lazy stack
 /// unloads a panel scrolled away, so its loader starts over at skeleton height
 /// and a tall one (an account's details) can bounce in and out of view forever.
 struct Screen<Content: View>: View {
     @Environment(AppModel.self) private var model
     let title: String
+    let inline: Bool
     let content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, inline: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.inline = inline
         self.content = content()
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if !inline { TabTitle(title) }
                 content
             }
             .padding(.horizontal, JF.gutter)
@@ -28,24 +34,36 @@ struct Screen<Content: View>: View {
         .background(JF.page)
         .refreshable { await model.pullToRefresh() }
         .navigationTitle(title)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { BlurButton() } }
+        .navigationBarTitleDisplayMode(inline ? .inline : .automatic)
+        .toolbar(inline ? .automatic : .hidden, for: .navigationBar)
+        .statusBarBackdrop(!inline)
     }
 }
 
-/// The web's top-right "blur" switch.
-struct BlurButton: View {
-    @Environment(AppModel.self) private var model
+extension View {
+    /// The page colour behind the status bar, so what scrolls under it stays
+    /// out of the clock's way on a screen without a navigation bar.
+    @ViewBuilder func statusBarBackdrop(_ on: Bool = true) -> some View {
+        if on {
+            safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear.frame(height: 0).background(JF.page.opacity(0.96).ignoresSafeArea(edges: .top))
+            }
+        } else {
+            self
+        }
+    }
+}
+
+/// A tab root's title, where the navigation bar's large title would be, one row higher.
+struct TabTitle: View {
+    let text: String
+    init(_ text: String) { self.text = text }
 
     var body: some View {
-        Button {
-            model.blur.toggle()
-        } label: {
-            Text("blur")
-                .font(JFFont.mono(13, .medium))
-                .foregroundStyle(model.blur ? JF.accent : JF.ink2)
-        }
-        .accessibilityLabel(model.blur ? "Show numbers" : "Blur numbers")
-        .accessibilityAddTraits(model.blur ? .isSelected : [])
+        Text(text)
+            .font(JFFont.sans(32, .semibold))
+            .foregroundStyle(JF.ink)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
