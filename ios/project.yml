@@ -67,6 +67,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: false
+        # The lock (Biometrics.swift): the switch in Settings, offered at sign-in.
+        NSFaceIDUsageDescription: Unlocks jFinances, so a phone left on the table doesn't show the household's money.
         UIAppFonts:
           - IBMPlexSans-Regular.ttf
           - IBMPlexSans-Medium.ttf

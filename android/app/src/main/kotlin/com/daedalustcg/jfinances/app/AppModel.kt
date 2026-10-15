@@ -89,6 +89,62 @@ class AppModel(private val context: Context) {
     var blur by mutableStateOf(Prefs.bool("jf.blur"))
         private set
 
+    // ------------------------------------------------------- the lock (Biometrics)
+
+    /** Ask for a fingerprint, face or the screen lock when the app opens or comes back. */
+    var lockEnabled by mutableStateOf(Prefs.bool("jf.lock"))
+        private set
+
+    /** The screens are covered until the owner unlocks. */
+    var locked by mutableStateOf(Prefs.bool("jf.lock") && Keychain.read() != null)
+        private set
+
+    /** Offered once, right after signing in, when the phone can ask. */
+    var offerLock by mutableStateOf(false)
+
+    /** Unlocking is in progress: don't ask twice. */
+    var unlocking by mutableStateOf(false)
+        private set
+
+    /** The app left the screen: next time it is looked at, ask. */
+    fun background() {
+        if (lockEnabled && isLinked) locked = true
+    }
+
+    /** The prompt; the cover lifts when it succeeds. */
+    suspend fun unlock(activity: android.app.Activity) {
+        if (!locked || unlocking) return
+        unlocking = true
+        try {
+            if (Biometrics.authenticate(activity, "Unlock jFinances")) locked = false
+        } finally {
+            unlocking = false
+        }
+    }
+
+    /**
+     * The switch in Settings. Turning it off asks first, so a phone left
+     * unlocked for a moment cannot have the lock quietly removed.
+     */
+    suspend fun setLock(activity: android.app.Activity, on: Boolean): Boolean {
+        if (on) {
+            lockEnabled = true
+            Prefs.setBool("jf.lock", true)
+            return true
+        }
+        if (!Biometrics.authenticate(activity, "Turn off the lock")) return false
+        lockEnabled = false
+        locked = false
+        Prefs.setBool("jf.lock", false)
+        return true
+    }
+
+    fun acceptLockOffer() {
+        offerLock = false
+        lockEnabled = true
+        Prefs.setBool("jf.lock", true)
+    }
+
     val isLinked: Boolean get() = credential != null
 
     /** Each tab's pushed screens, root excluded. */
@@ -235,6 +291,8 @@ class AppModel(private val context: Context) {
         lastError = null
         tab = AppTab.Overview
         stacks.values.forEach { it.clear() }
+        // Setup's one question: lock the app? Only where the phone can.
+        if (!lockEnabled && Biometrics.available(context)) offerLock = true
         scope.launch { refreshGlance(force = true) }
     }
 
@@ -252,6 +310,7 @@ class AppModel(private val context: Context) {
         me = null
         glance = null
         glanceFetchedAt = null
+        locked = false
         stacks.values.forEach { it.clear() }
         scope.launch { Widgets.updateAll(context) }
     }

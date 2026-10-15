@@ -26,12 +26,20 @@ struct RootView: View {
     @State private var splash = true
 
     var body: some View {
+        @Bindable var model = model
         ZStack {
             JF.page.ignoresSafeArea()
             if model.isLinked {
                 MainTabs()
             } else {
                 LinkScreen()
+            }
+            if model.locked {
+                // Over everything, the splash included: the figures stay hidden until Face ID.
+                LockScreen().transition(.opacity).zIndex(2)
+            } else if scenePhase != .active, model.lockEnabled {
+                // Leaving: the app switcher's snapshot shows the cover, not the figures.
+                SplashView().zIndex(2)
             }
             if splash {
                 SplashView().transition(.opacity).zIndex(1)
@@ -42,11 +50,53 @@ struct RootView: View {
             withAnimation(.easeOut(duration: 0.35)) { splash = false }
         }
         .animation(.easeInOut(duration: 0.2), value: model.isLinked)
+        .animation(.easeInOut(duration: 0.2), value: model.locked)
         .task { await model.refreshGlance() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.refreshGlance() } }
+            switch phase {
+            case .background: model.background()
+            case .active:
+                Task { await model.refreshGlance() }
+                if model.locked { Task { await model.unlock() } }
+            default: break
+            }
         }
         .onOpenURL { model.open($0) }
+        .alert("Lock jFinances with \(Biometrics.kind)?", isPresented: $model.offerLock) {
+            Button("Use \(Biometrics.kind)") { model.lockEnabled = true }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("The app asks for it each time it opens, so a phone left on the table doesn't show the household's money. You can change this in Settings.")
+        }
+    }
+}
+
+/// The cover while the app waits for Face ID: the mark, the name, and a way to ask again.
+struct LockScreen: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        ZStack {
+            JF.page.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image("LaunchIcon")
+                Text("jFinances").font(JFFont.sans(30, .semibold)).foregroundStyle(JF.ink)
+                Button {
+                    Task { await model.unlock() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: Biometrics.kind == "Face ID" ? "faceid" : Biometrics.kind == "Touch ID" ? "touchid" : "lock")
+                        Text("Unlock")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.horizontal, 48)
+                .padding(.top, 12)
+                .disabled(model.unlocking)
+            }
+        }
+        .task { await model.unlock() }
+        .accessibilityLabel("Locked")
     }
 }
 

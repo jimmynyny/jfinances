@@ -41,6 +41,21 @@ struct SettingsScreen: View {
                 }
                 Panel("privacy") {
                     VStack(alignment: .leading, spacing: 10) {
+                        if Biometrics.available {
+                            Toggle(isOn: Binding(get: { model.lockEnabled }, set: { on in Task { _ = await model.setLock(on) } })) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Lock with \(Biometrics.kind)").font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink)
+                                    Fine("Asked for each time the app opens or comes back.")
+                                }
+                            }
+                            .tint(JF.accent)
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Lock with Face ID").font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink3)
+                                Fine("Set a passcode on this phone first, in the iPhone's Settings.")
+                            }
+                        }
+                        Rule()
                         Toggle(isOn: $model.blur) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Blur numbers").font(JFFont.sans(15, .medium)).foregroundStyle(JF.ink)

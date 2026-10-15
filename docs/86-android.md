@@ -81,6 +81,15 @@ token signs the phone out. The name the dashboard's Settings → phones shows is
 Production's API hostname is `jfinances-api.sellingtcg.com` (docs/55); the
 sign-in screen offers production first (`DEFAULT_SERVER` in `app/build.gradle.kts`).
 
+### 2c. The lock
+
+As the iPhone's (docs/85 §2c): offered right after signing in where the phone
+has a screen lock, switched in Settings → privacy, asked for whenever the app
+opens or comes back (`app/Biometrics.kt`, the platform `BiometricPrompt` with
+`BIOMETRIC_STRONG | DEVICE_CREDENTIAL`, so a fingerprint, a face or the PIN
+will do; no library). Turning it off asks first. The home-screen widgets are
+unaffected ("Show amounts" hides their figures).
+
 ### 2b. Connecting a bank
 
 As the iPhone's (docs/85 §2b): Settings → Connections → Connect a bank asks the

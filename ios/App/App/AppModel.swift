@@ -43,6 +43,19 @@ final class AppModel {
         didSet { UserDefaults.standard.set(blur, forKey: "jf.blur") }
     }
 
+    // MARK: - the lock (Biometrics)
+
+    /// Ask for Face ID (or the passcode) when the app opens or comes back.
+    var lockEnabled: Bool {
+        didSet { UserDefaults.standard.set(lockEnabled, forKey: "jf.lock") }
+    }
+    /// The screens are covered until the owner unlocks.
+    var locked = false
+    /// Offered once, right after signing in, when the phone can ask.
+    var offerLock = false
+    /// Unlocking is in progress: don't ask twice.
+    var unlocking = false
+
     var isLinked: Bool { credential != nil }
 
     init() {
@@ -55,6 +68,8 @@ final class AppModel {
         #endif
         credential = Keychain.read()
         blur = UserDefaults.standard.bool(forKey: "jf.blur")
+        lockEnabled = UserDefaults.standard.bool(forKey: "jf.lock")
+        locked = lockEnabled && credential != nil
         if let cached = GlanceCache.load() {
             glance = cached.glance
             glanceFetchedAt = cached.fetchedAt
@@ -93,6 +108,34 @@ final class AppModel {
         showConnections = true
     }
 
+    // MARK: - the lock
+
+    /// The app left the screen: next time it is looked at, ask.
+    func background() {
+        if lockEnabled, isLinked { locked = true }
+    }
+
+    /// Face ID (or the passcode); the cover lifts when it succeeds.
+    func unlock() async {
+        guard locked, !unlocking else { return }
+        unlocking = true
+        defer { unlocking = false }
+        if await Biometrics.authenticate(reason: "Unlock jFinances") { locked = false }
+    }
+
+    /// The switch in Settings. Turning it off asks first, so a phone left
+    /// unlocked for a moment cannot have the lock quietly removed.
+    func setLock(_ on: Bool) async -> Bool {
+        if on {
+            lockEnabled = true
+            return true
+        }
+        guard await Biometrics.authenticate(reason: "Turn off the lock") else { return false }
+        lockEnabled = false
+        locked = false
+        return true
+    }
+
     /// Every screen funnels API errors here, so a dead token is handled once:
     /// forget it and go back to sign-in.
     func handle(_ error: APIError) {
@@ -111,6 +154,8 @@ final class AppModel {
         glance = nil
         lastError = nil
         tab = .overview
+        // Setup's one question: lock the app with Face ID? Only where the phone can.
+        if !lockEnabled, Biometrics.available { offerLock = true }
         Task { await refreshGlance(force: true) }
     }
 
@@ -127,6 +172,7 @@ final class AppModel {
         me = nil
         glance = nil
         glanceFetchedAt = nil
+        locked = false
         WidgetCenter.shared.reloadAllTimelines()
     }
 

@@ -49,6 +49,11 @@ class MainActivity : ComponentActivity() {
         model.onResumed()
     }
 
+    override fun onStop() {
+        super.onStop()
+        model.background()
+    }
+
     /**
      * Emulator QA against a local server (Scripts/emu-tour.sh): a token for that
      * database stands in for the Access sign-in, as iOS's JF_DEBUG_TOKEN.

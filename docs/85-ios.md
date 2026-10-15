@@ -75,6 +75,20 @@ out. Settings → phones on the dashboard lists and unlinks phones.
 Production's API hostname is `jfinances-api.sellingtcg.com` (docs/55); the
 sign-in screen offers production first (`JFDefaultServer` in project.yml).
 
+### 2c. The lock
+
+Right after signing in, the app offers to lock itself with Face ID (Touch ID,
+or the passcode where there is no biometry; nothing is offered on a phone
+without a passcode). Settings → privacy has the switch. When it is on, the
+app covers its screens with the launch mark whenever it opens or comes back
+from the background and asks (`App/App/Biometrics.swift`, LocalAuthentication's
+`deviceOwnerAuthentication`, so the passcode is the fallback); leaving the app
+shows the cover too, so the app switcher's snapshot holds no figures. Turning
+the switch off asks first. The widgets are unaffected: they already redact on
+a locked phone (`privacySensitive`) and have "Show amounts". The token stays in
+the Keychain regardless; the lock is for a phone left on the table, not a
+second credential.
+
 ### 2b. Connecting a bank
 
 Settings → Connections → Connect a bank asks what kind (bank, card or loan;

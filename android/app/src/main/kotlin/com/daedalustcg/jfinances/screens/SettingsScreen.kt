@@ -29,12 +29,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.activity.compose.LocalActivity
 import com.daedalustcg.jfinances.BuildConfig
+import com.daedalustcg.jfinances.app.Biometrics
 import com.daedalustcg.jfinances.app.LocalAppModel
 import com.daedalustcg.jfinances.app.Route
 import com.daedalustcg.jfinances.components.Fine
 import com.daedalustcg.jfinances.components.QuietButton
 import com.daedalustcg.jfinances.components.Screen
+import com.daedalustcg.jfinances.components.ToggleRow
 import com.daedalustcg.jfinances.kit.storage.Server
 import com.daedalustcg.jfinances.kit.ui.Badge
 import com.daedalustcg.jfinances.kit.ui.BadgeTone
@@ -55,6 +58,7 @@ private val linkedFormat = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a"
 fun SettingsScreen() {
     val model = LocalAppModel.current
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val scope = rememberCoroutineScope()
     var confirmUnlink by remember { mutableStateOf(false) }
     Screen("Settings") {
@@ -87,6 +91,19 @@ fun SettingsScreen() {
             }
             Panel("privacy") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (Biometrics.available(context)) {
+                        ToggleRow(
+                            "Lock with your ${Biometrics.kind(context)}", model.lockEnabled,
+                            { on -> activity?.let { a -> scope.launch { model.setLock(a, on) } } },
+                            help = "Asked for each time the app opens or comes back.",
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Lock with fingerprint or face", style = JFFont.sans(15f, JFFont.Weight.Medium), color = JF.ink3)
+                            Fine("Set a screen lock on this phone first, in Android's Settings.")
+                        }
+                    }
+                    Rule()
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Blur numbers", style = JFFont.sans(15f, JFFont.Weight.Medium), color = JF.ink)

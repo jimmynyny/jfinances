@@ -16,7 +16,14 @@ import com.daedalustcg.jfinances.R
 import com.daedalustcg.jfinances.kit.ui.JFFont
 import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.daedalustcg.jfinances.components.PrimaryButton
+import kotlinx.coroutines.launch
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -88,7 +95,56 @@ fun RootView() {
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
         ) { ToastHost(model.toastText) }
+        // Over everything, the splash included: the figures stay hidden until the owner unlocks.
+        AnimatedVisibility(visible = model.locked, enter = fadeIn(tween(0)), exit = fadeOut(tween(200))) { LockScreen() }
         AnimatedVisibility(visible = splash, enter = fadeIn(tween(0)), exit = fadeOut(tween(350))) { SplashView() }
+    }
+    if (model.offerLock) {
+        val context = LocalContext.current
+        val kind = Biometrics.kind(context)
+        AlertDialog(
+            onDismissRequest = { model.offerLock = false },
+            shape = RoundedCornerShape(4.dp),
+            containerColor = JF.panel,
+            title = { Text("Lock jFinances with your $kind?", style = JFFont.sans(17f, JFFont.Weight.Semibold), color = JF.ink) },
+            text = {
+                Text(
+                    "The app asks for it each time it opens, so a phone left on the table doesn't show the household's money. You can change this in Settings.",
+                    style = JFFont.sans(14f), color = JF.ink2,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { model.acceptLockOffer() }) { Text("Use it", style = JFFont.sans(15f, JFFont.Weight.Semibold), color = JF.accentText) }
+            },
+            dismissButton = { TextButton(onClick = { model.offerLock = false }) { Text("Not now", style = JFFont.sans(15f), color = JF.ink) } },
+        )
+    }
+}
+
+/** The cover while the app waits for the owner: the mark, the name, and a way to ask again. */
+@Composable
+fun LockScreen() {
+    val model = LocalAppModel.current
+    val activity = LocalActivity.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { activity?.let { model.unlock(it) } }
+    Column(
+        Modifier.fillMaxSize().background(JF.page).semantics { contentDescription = "Locked" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Image(
+            painterResource(R.drawable.splash_icon),
+            contentDescription = null,
+            modifier = Modifier.size(112.dp).border(1.dp, JF.line, RoundedCornerShape(25.dp)),
+        )
+        Text("jFinances", style = JFFont.sans(30f, JFFont.Weight.Semibold), color = JF.ink, modifier = Modifier.padding(top = 18.dp))
+        PrimaryButton(
+            "Unlock",
+            onClick = { activity?.let { a -> scope.launch { model.unlock(a) } } },
+            modifier = Modifier.padding(horizontal = 48.dp).padding(top = 30.dp),
+            enabled = !model.unlocking,
+        )
     }
 }
 

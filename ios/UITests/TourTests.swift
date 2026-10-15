@@ -290,6 +290,24 @@ final class TourTests: XCTestCase {
         }
     }
 
+    /// Settings → Lock with Face ID, then leave and come back: the cover. Needs
+    /// Face ID enrolled on the simulator (Features → Face ID → Enrolled).
+    func testLock() {
+        sleep(4)
+        tab("Settings")
+        snap("40-settings")
+        let lock = app.switches.matching(NSPredicate(format: "label BEGINSWITH[c] 'Lock with'")).firstMatch
+        guard lock.waitForExistence(timeout: 3) else { return }
+        if lock.value as? String == "0" { lock.tap() }
+        sleep(1)
+        snap("41-lock-on")
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        sleep(2)
+        snap("42-locked")
+    }
+
     private func tab(_ name: String) {
         app.tabBars.buttons[name].tap()
         sleep(3)
