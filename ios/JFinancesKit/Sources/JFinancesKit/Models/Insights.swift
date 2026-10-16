@@ -236,15 +236,30 @@ public struct RecurringStream: Codable, Hashable, Sendable, Identifiable {
     public let is_business: Bool?
     /// detected | confirmed | dismissed: the person's verdict.
     public let status: String
+    /// subscription | recurring (older servers send neither: recurring).
+    public let kind: String?
+    /// model | user: who sorted it; the user's choice is kept.
+    public let kind_source: String?
     /// active | lapsed: whether charges still arrive on time.
     public let state: String
     @Flex public var monthly: Double
+
+    public var isSubscription: Bool { kind == "subscription" }
+}
+
+public struct RecurringTotals: Codable, Sendable {
+    @Flex public var monthly_confirmed: Double
+    @Flex public var monthly_detected: Double
 }
 
 public struct RecurringList: Codable, Sendable {
     public let streams: [RecurringStream]
     @Flex public var monthly_confirmed: Double
     @Flex public var monthly_detected: Double
+    /// The same per kind: "subscription", "recurring".
+    public let kinds: [String: RecurringTotals]?
+    /// Whether the server sorts subscriptions (it has a model to ask).
+    public let sorting: Bool?
 }
 
 public struct UpcomingCharge: Codable, Hashable, Sendable, Identifiable {

@@ -96,6 +96,8 @@ Set per service in Railway. Never in the repo. `.env` is git-ignored.
 | `DAILY_PRICES_UTC` | | | ✓ | Default `22:30`, after US markets close |
 | `RENTCAST_API_KEY` | ✓ | ✓ | ✓ | RentCast value estimates for offline homes; only the worker calls it (header `X-Api-Key`). Optional: without it homes keep the value typed. RentCast bills every successful request past 50 a month and can't be capped on its side, so `services/valuations.py` asks at most once per home per month and at most 40 times a month in all |
 | `MARKETCHECK_API_KEY` | ✓ | ✓ | ✓ | MarketCheck Price (Base tier) and Basic VIN Decoder for offline vehicles; only the worker calls it (the key rides in the query string: never logged, never stored). Optional. At most once per vehicle per month, 400 a month in all (free plan: 500) |
+| `OPENAI_API_KEY` | ✓ | ✓ | ✓ | Sorts subscriptions from other recurring charges (`services/subscriptions.py`); the worker calls it (the web only reads the result). Only merchant names are sent (the privacy page says so). Optional: without it every recurring charge reads "recurring". Each stream is asked about once, a merchant already sorted answers for its new streams, and the user's choice is never redone |
+| `OPENAI_MODEL` | | | ✓ | Default `gpt-5.4-mini` |
 | `DAILY_VALUATIONS_UTC` | | | ✓ | Default `09:00`. The job runs daily; each asset is valued at most once a calendar month (the `valuations` table refuses a second request). Sandbox shares production's keys, so it gets 5 RentCast and 50 MarketCheck requests a month |
 
 Boot validation (`config.validate_for_boot()`): in `APP_ENV=production` the

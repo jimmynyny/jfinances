@@ -15,7 +15,7 @@ type Tab = "cashflow" | "spending" | "subscriptions" | "wealth";
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "cashflow", label: "Cash flow" },
   { value: "spending", label: "Spending" },
-  { value: "subscriptions", label: "Subscriptions" },
+  { value: "subscriptions", label: "Recurring" },
   { value: "wealth", label: "Net worth & debt" },
 ];
 const TAB_KEYS = TABS.map((t) => t.value);
@@ -23,7 +23,7 @@ const TAB_KEYS = TABS.map((t) => t.value);
 /**
  * Insights, in four tabs. Cash flow and spending share the slice controls
  * (range, period, personal or business, account); drilling into a category
- * in spending narrows its merchants, patterns and comparison. Subscriptions
+ * in spending narrows its merchants, patterns and comparison. Recurring (subscriptions and the rest)
  * and net worth & debt carry their own controls. Choices are remembered per
  * viewer.
  */
@@ -88,7 +88,10 @@ export function InsightsPage() {
       )}
       {tab === "subscriptions" && (
         <div className="mu-grid mu-grid--main">
-          <SubscriptionsView actions={<PinButton view="subscriptions" />} />
+          <div className="mu-stack">
+            <SubscriptionsView kind="subscription" actions={<PinButton view="subscriptions" />} />
+            <SubscriptionsView kind="recurring" actions={<PinButton view="recurring" />} />
+          </div>
           <div className="mu-stack">
             <UpcomingView actions={<PinButton view="upcoming" settings={{ days: 30 }} />} />
             <AlertsView actions={<PinButton view="alerts" />} />

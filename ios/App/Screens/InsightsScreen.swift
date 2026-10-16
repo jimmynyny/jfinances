@@ -353,8 +353,11 @@ struct SpendingInsights: View {
     }
 }
 
-// MARK: - subscriptions
+// MARK: - recurring: subscriptions and the rest
 
+/// Recurring charges in two panels: subscriptions (a service paid for and
+/// subscribed to, sorted by a model on the server) and everything else that
+/// repeats. Each row can be judged recurring or not, renamed, or moved across.
 struct SubscriptionInsights: View {
     @Environment(AppModel.self) private var model
     @State private var renaming: RecurringStream?
@@ -368,37 +371,9 @@ struct SubscriptionInsights: View {
             // The server lists recurring ones first, then those to review, each soonest next charge first.
             let streams = r.streams.filter { $0.state == "active" && $0.status != "dismissed" }
                 .sorted { ($0.status == "confirmed" ? 0 : 1, $0.next_date) < ($1.status == "confirmed" ? 0 : 1, $1.next_date) }
-            Panel("subscriptions", flush: true, actions: {
-                Button {
-                    Task { await look() }
-                } label: {
-                    if looking { ProgressView() } else { Text("Look for new ones") }
-                }
-                .font(JFFont.mono(12, .medium))
-                .disabled(looking)
-            }) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 12) {
-                        StatTile("recurring / month") { MoneyText(r.monthly_confirmed, cents: false, size: 18, weight: .medium) }
-                        StatTile("to review / month") { MoneyText(r.monthly_detected, cents: false, size: 18, weight: .medium) }
-                    }
-                    .padding(16)
-                    Rule()
-                    if streams.isEmpty { Fine("No recurring charges found yet.").padding(16) }
-                    RuledList(streams) { s in
-                        Menu {
-                            if s.status != "confirmed" { Button("Recurring", systemImage: "checkmark") { Task { await verdict(s, "confirmed") } } }
-                            if s.status != "detected" { Button("Not sure yet", systemImage: "questionmark") { Task { await verdict(s, "detected") } } }
-                            Button("Rename…", systemImage: "pencil") { renaming = s }
-                            Button("Not recurring", systemImage: "xmark", role: .destructive) { Task { await verdict(s, "dismissed") } }
-                        } label: {
-                            StreamRow(stream: s)
-                        }
-                        .tint(JF.ink)
-                    }
-                    Rule()
-                    Fine("Tap one to mark it recurring or not, or to name it.").padding(16)
-                }
+            VStack(spacing: 12) {
+                kindPanel(r, streams.filter(\.isSubscription), subscriptions: true)
+                kindPanel(r, streams.filter { !$0.isSubscription }, subscriptions: false)
             }
         }
         .toast($toast)
@@ -414,6 +389,69 @@ struct SubscriptionInsights: View {
             }
         }
         AlertsPanel(limit: nil)
+    }
+
+    private func kindPanel(_ r: RecurringList, _ streams: [RecurringStream], subscriptions: Bool) -> some View {
+        let totals = r.kinds?[subscriptions ? "subscription" : "recurring"]
+        return Panel(subscriptions ? "subscriptions" : "recurring", spark: subscriptions, flush: true, actions: {
+            if subscriptions {
+                Button {
+                    Task { await look() }
+                } label: {
+                    if looking { ProgressView() } else { Text("Look for new ones") }
+                }
+                .font(JFFont.mono(12, .medium))
+                .disabled(looking)
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    StatTile("\(subscriptions ? "subscriptions" : "recurring") / month") {
+                        MoneyText(totals?.monthly_confirmed ?? 0, cents: false, size: 18, weight: .medium)
+                    }
+                    StatTile("to review / month") { MoneyText(totals?.monthly_detected ?? 0, cents: false, size: 18, weight: .medium) }
+                }
+                .padding(16)
+                Rule()
+                if streams.isEmpty {
+                    Fine(subscriptions && r.sorting != true
+                         ? "Subscriptions are sorted from your recurring charges once the server has an AI key."
+                         : subscriptions ? "No subscriptions found yet." : "No other recurring charges found yet.")
+                        .padding(16)
+                }
+                RuledList(streams) { s in
+                    Menu {
+                        if s.status != "confirmed" { Button("Recurring", systemImage: "checkmark") { Task { await verdict(s, "confirmed") } } }
+                        if s.status != "detected" { Button("Not sure yet", systemImage: "questionmark") { Task { await verdict(s, "detected") } } }
+                        if s.isSubscription {
+                            Button("Not a subscription", systemImage: "arrow.down") { Task { await move(s, "recurring") } }
+                        } else {
+                            Button("Move to subscriptions", systemImage: "sparkle") { Task { await move(s, "subscription") } }
+                        }
+                        Button("Rename…", systemImage: "pencil") { renaming = s }
+                        Button("Not recurring", systemImage: "xmark", role: .destructive) { Task { await verdict(s, "dismissed") } }
+                    } label: {
+                        StreamRow(stream: s)
+                    }
+                    .tint(JF.ink)
+                }
+                Rule()
+                Fine(subscriptions
+                     ? "Sorted by AI from the merchant's name. Tap one to move it if it's wrong; your choice is kept."
+                     : "Tap one to mark it recurring or not, move it to subscriptions, or name it.").padding(16)
+            }
+        }
+    }
+
+    private func move(_ s: RecurringStream, _ kind: String) async {
+        do {
+            _ = try await APIClient.shared.patchRecurring(id: s.id, JSONBody(["kind": .string(kind)]))
+            model.changed()
+            toast = kind == "subscription" ? "Moved to subscriptions" : "Moved to recurring"
+        } catch let e as APIError {
+            model.handle(e)
+            toast = e.errorDescription
+        } catch {}
     }
 
     private func verdict(_ s: RecurringStream, _ status: String) async {

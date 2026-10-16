@@ -5,12 +5,23 @@ import SwiftUI
 /// A mono caption led by the accent square: `■ net worth`.
 public struct Caption: View {
     let text: String
-    public init(_ text: String) { self.text = text }
+    /// A spark after the words: a model sorted what this panel shows.
+    let spark: Bool
+    public init(_ text: String, spark: Bool = false) {
+        self.text = text
+        self.spark = spark
+    }
 
     public var body: some View {
         HStack(spacing: 8) {
             Rectangle().fill(JF.accent).frame(width: 6, height: 6)
-            Text(text).font(JFFont.mono(12, relativeTo: .caption)).foregroundStyle(JF.ink2)
+            HStack(spacing: 5) {
+                Text(text).font(JFFont.mono(12, relativeTo: .caption)).foregroundStyle(JF.ink2)
+                if spark {
+                    Image(systemName: "sparkle").font(.system(size: 10, weight: .semibold)).foregroundStyle(JF.accent)
+                        .accessibilityLabel("sorted by AI")
+                }
+            }
         }
     }
 }
@@ -18,13 +29,15 @@ public struct Caption: View {
 /// A panel: square corners, a 1px rule, a caption row with its own rule.
 public struct Panel<Content: View, Actions: View>: View {
     let caption: String?
+    let spark: Bool
     let flush: Bool
     let actions: Actions
     let content: Content
 
-    public init(_ caption: String? = nil, flush: Bool = false, @ViewBuilder actions: () -> Actions,
+    public init(_ caption: String? = nil, spark: Bool = false, flush: Bool = false, @ViewBuilder actions: () -> Actions,
                 @ViewBuilder content: () -> Content) {
         self.caption = caption
+        self.spark = spark
         self.flush = flush
         self.actions = actions()
         self.content = content()
@@ -34,7 +47,7 @@ public struct Panel<Content: View, Actions: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             if let caption {
                 HStack(spacing: 12) {
-                    Caption(caption)
+                    Caption(caption, spark: spark)
                     Spacer(minLength: 0)
                     actions
                 }
@@ -52,8 +65,8 @@ public struct Panel<Content: View, Actions: View>: View {
 }
 
 public extension Panel where Actions == EmptyView {
-    init(_ caption: String? = nil, flush: Bool = false, @ViewBuilder content: () -> Content) {
-        self.init(caption, flush: flush, actions: { EmptyView() }, content: content)
+    init(_ caption: String? = nil, spark: Bool = false, flush: Bool = false, @ViewBuilder content: () -> Content) {
+        self.init(caption, spark: spark, flush: flush, actions: { EmptyView() }, content: content)
     }
 }
 

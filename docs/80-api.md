@@ -517,30 +517,39 @@ utilization}], charges[{month, interest, fees}], totals{interest, fees}}`: utili
 against today's limits; interest and fees from `BANK_FEES_*` transactions.
 
 ## Subscriptions and alerts
-Found in transactions after every sync (docs/20 `recurring_streams`).
+Found in transactions after every sync (docs/20 `recurring_streams`). Each stream is then sorted
+as a `subscription` (a service paid for and subscribed to: streaming, news, apps, Uber One) or
+`recurring` (a mortgage, insurance, utilities, membership dues, bank fees): the worker sends the
+merchant names it hasn't sorted to OpenAI (`services/subscriptions.py`, `OPENAI_API_KEY`). A
+merchant already sorted answers for its new streams; the user's move (`kind_source: "user"`) is
+never redone. The apps show the two as "subscriptions ✦" and "recurring" under Insights → Recurring.
 
 ### GET /recurring
 `{"streams":[{id, merchant, name, label, cadence, interval_days, amount, last_amount,
 previous_amount, price_changed_on, first_date, last_date, next_date, charge_count,
-category, account_id, account_name, account_mask, is_business, status, state, monthly}],
-"monthly_confirmed", "monthly_detected"}`. `state` is `active` or `lapsed`;
-`monthly` is the amount per month; the totals add up active streams per status.
+category, account_id, account_name, account_mask, is_business, status, kind, kind_source, state,
+monthly}], "monthly_confirmed", "monthly_detected", "kinds": {"subscription"|"recurring":
+{monthly_confirmed, monthly_detected}}, "sorting"}`. `state` is `active` or `lapsed`;
+`monthly` is the amount per month; the totals add up active streams per status (and per
+`kind` in `kinds`). `kind` is `subscription` or `recurring` (unsorted reads `recurring`);
+`kind_source` is `model`, `user` or null. `sorting` says whether the server has a key to sort with.
 Recurring ones (`confirmed`) come first, then those to review (`detected`), each soonest
 `next_date` first. Ones marked not recurring (`dismissed`), and ones two of their own periods
 without a charge (a monthly one quiet for two months: it stopped), are left out; `?all=true`
 lists everything.
 
 ### PATCH /recurring/{id}
-Body: `{"status"?: "detected"|"confirmed"|"dismissed", "name"?: str|null}` → stream.
-The verdict and name survive detection.
+Body: `{"status"?: "detected"|"confirmed"|"dismissed", "name"?: str|null,
+"kind"?: "subscription"|"recurring"}` → stream. The verdict, name and kind survive detection;
+a `kind` set here is the user's and is never redone.
 
 ### GET /recurring/upcoming?days=30
 Expected charges from active, non-dismissed streams: `{from, to, items[{stream_id,
-label, date, overdue, amount, cadence, status, category, account_name, is_business}],
+label, date, overdue, amount, cadence, status, kind, category, account_name, is_business}],
 total}`. A weekly stream appears once per week.
 
 ### POST /recurring/detect
-Runs detection now: `{"found": n}`.
+Runs detection now and queues the sorting for the worker: `{"found": n}`.
 
 ### GET /alerts?days=60
 `{"days", "alerts":[{key, kind, date, merchant, amount, ...}]}`: `price` (with
@@ -567,7 +576,7 @@ dashboard stays empty until reset.
 Body: `{"view": "<key>", "settings"?: {…}, "size"?: "narrow"|"wide"|"full"}` → widget,
 appended. `view` is one of `api/dashboard.py` VIEWS: the sections above plus
 `cashflow`, `money_flow`, `income_sources`, `spending`, `merchants`, `patterns`,
-`compare`, `subscriptions`, `networth_classes`, `homes`, `loans`, `cards`,
+`compare`, `subscriptions`, `recurring`, `networth_classes`, `homes`, `loans`, `cards`,
 `performance`. `settings` (≤ 2 KB JSON) is what the view showed when pinned:
 for Insights views `{range, grain, scope, accountId?, category?}` (ranges are
 presets, so a pinned "12m" keeps rolling); for performance `{range, benchmarks,

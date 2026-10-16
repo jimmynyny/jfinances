@@ -31,8 +31,8 @@ VIEWS: dict[str, Size] = {
     "accounts": "full",
     # Insights
     "cashflow": "full", "money_flow": "wide", "income_sources": "narrow", "spending": "full", "merchants": "full",
-    "patterns": "wide", "compare": "narrow", "subscriptions": "wide", "networth_classes": "full", "homes": "narrow",
-    "loans": "narrow", "cards": "wide", "performance": "full",
+    "patterns": "wide", "compare": "narrow", "subscriptions": "wide", "recurring": "wide", "networth_classes": "full",
+    "homes": "narrow", "loans": "narrow", "cards": "wide", "performance": "full",
 }
 DEFAULTS = ["networth", "split", "upcoming", "alerts", "calendar", "accounts"]
 MAX_WIDGETS = 40

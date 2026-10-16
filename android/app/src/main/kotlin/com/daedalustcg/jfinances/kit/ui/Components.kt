@@ -20,6 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,10 +48,14 @@ import kotlin.math.abs
 
 /** A mono caption led by the accent square: `■ net worth`. */
 @Composable
-fun Caption(text: String, modifier: Modifier = Modifier) {
+fun Caption(text: String, modifier: Modifier = Modifier, spark: Boolean = false) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(6.dp).background(JF.accent))
-        Text(text, style = JFFont.mono(12f), color = JF.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = JFFont.mono(12f), color = JF.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // A model sorted what this panel shows.
+            if (spark) Icon(Icons.Filled.AutoAwesome, contentDescription = "sorted by AI", tint = JF.accent, modifier = Modifier.size(12.dp))
+        }
     }
 }
 
@@ -58,6 +65,7 @@ fun Caption(text: String, modifier: Modifier = Modifier) {
 fun Panel(
     caption: String? = null,
     modifier: Modifier = Modifier,
+    spark: Boolean = false,
     flush: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
@@ -74,7 +82,7 @@ fun Panel(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Caption(caption, Modifier.weight(1f))
+                Caption(caption, Modifier.weight(1f), spark = spark)
                 actions()
             }
             Rule()

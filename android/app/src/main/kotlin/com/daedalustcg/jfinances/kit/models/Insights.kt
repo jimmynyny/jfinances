@@ -261,9 +261,21 @@ data class RecurringStream(
     val is_business: Boolean? = null,
     /** detected | confirmed | dismissed: the person's verdict. */
     val status: String,
+    /** subscription | recurring (older servers send neither: recurring). */
+    val kind: String? = null,
+    /** model | user: who sorted it; the user's choice is kept. */
+    val kind_source: String? = null,
     /** active | lapsed: whether charges still arrive on time. */
     val state: String,
     val monthly: Flex = 0.0,
+) {
+    val isSubscription: Boolean get() = kind == "subscription"
+}
+
+@Serializable
+data class RecurringTotals(
+    val monthly_confirmed: Flex = 0.0,
+    val monthly_detected: Flex = 0.0,
 )
 
 @Serializable
@@ -271,6 +283,10 @@ data class RecurringList(
     val streams: List<RecurringStream> = emptyList(),
     val monthly_confirmed: Flex = 0.0,
     val monthly_detected: Flex = 0.0,
+    /** The same per kind: "subscription", "recurring". */
+    val kinds: Map<String, RecurringTotals> = emptyMap(),
+    /** Whether the server sorts subscriptions (it has a model to ask). */
+    val sorting: Boolean = false,
 )
 
 @Serializable

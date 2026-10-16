@@ -34,7 +34,7 @@ enum class AppTab(val title: String) { Overview("Overview"), Accounts("Accounts"
 enum class InsightsSection(val key: String, val title: String) {
     Cashflow("cashflow", "Cash flow"),
     Spending("spending", "Spending"),
-    Subscriptions("subscriptions", "Subscriptions"),
+    Subscriptions("subscriptions", "Recurring"),
     NetWorth("networth", "Net worth & debt"),
     Investing("investing", "Investing"),
 }

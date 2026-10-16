@@ -18,3 +18,15 @@ export function RefreshIcon() {
     </svg>
   );
 }
+
+/** A four-point spark: this was sorted by a model (subscriptions). */
+export function SparkIcon({ title = "Sorted by AI" }: { title?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" role="img" aria-label={title} focusable="false"
+      style={{ verticalAlign: "-1px", color: "var(--mu-accent)" }}>
+      <title>{title}</title>
+      <path d="M8 1c.4 3.2 1.8 4.6 5 5-3.2.4-4.6 1.8-5 5-.4-3.2-1.8-4.6-5-5 3.2-.4 4.6-1.8 5-5z" />
+      <path d="M13 10.5c.15 1.2.7 1.75 2 1.9-1.3.15-1.85.7-2 2-.15-1.3-.7-1.85-2-2 1.3-.15 1.85-.7 2-1.9z" />
+    </svg>
+  );
+}

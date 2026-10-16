@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     marketcheck_api_key: str = ""
     refresh_min_interval_seconds: int = 600
 
+    # --- subscriptions or other recurring charges (services/subscriptions.py) -
+    #: Unset: nothing is sorted and every recurring charge reads "recurring".
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.4-mini"
+
     @field_validator("plaid_products", "plaid_country_codes", mode="before")
     @classmethod
     def _split_csv(cls, v):

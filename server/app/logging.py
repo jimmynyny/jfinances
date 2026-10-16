@@ -24,6 +24,7 @@ _REDACT = [
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{16,}"),
     re.compile(r"(?i)\btoken\s+[A-Za-z0-9]{20,}"),  # Tiingo's Authorization header
     re.compile(r"(?i)(?:api_key|token)=[A-Za-z0-9]{16,}"),  # FRED takes its key in the query string
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),  # OpenAI
 ]
 
 

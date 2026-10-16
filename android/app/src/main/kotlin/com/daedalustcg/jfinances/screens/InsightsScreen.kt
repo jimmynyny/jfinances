@@ -388,8 +388,13 @@ private fun SpendingInsights() {
     }
 }
 
-// ------------------------------------------------------------- subscriptions
+// --------------------------------------------- recurring: subscriptions and the rest
 
+/**
+ * Recurring charges in two panels: subscriptions (a service paid for and
+ * subscribed to, sorted by a model on the server) and everything else that
+ * repeats. Each row can be judged recurring or not, renamed, or moved across.
+ */
 @Composable
 private fun SubscriptionInsights() {
     val model = LocalAppModel.current
@@ -397,12 +402,12 @@ private fun SubscriptionInsights() {
     var renaming by remember { mutableStateOf<RecurringStream?>(null) }
     var looking by remember { mutableStateOf(false) }
 
-    fun verdict(s: RecurringStream, status: String) {
+    fun patch(s: RecurringStream, field: String, value: String, done: String) {
         scope.launch {
             try {
-                ApiClient.patchRecurring(s.id, JSONBody(mapOf("status" to JSONBody.str(status))))
+                ApiClient.patchRecurring(s.id, JSONBody(mapOf(field to JSONBody.str(value))))
                 model.changed()
-                model.toast(when (status) { "confirmed" -> "Marked recurring"; "dismissed" -> "Marked not recurring"; else -> "Back to review" })
+                model.toast(done)
             } catch (e: ApiError) {
                 model.handle(e)
                 model.toast(e.description)
@@ -410,52 +415,88 @@ private fun SubscriptionInsights() {
         }
     }
 
+    fun verdict(s: RecurringStream, status: String) =
+        patch(s, "status", status, when (status) { "confirmed" -> "Marked recurring"; "dismissed" -> "Marked not recurring"; else -> "Back to review" })
+
+    fun move(s: RecurringStream, kind: String) =
+        patch(s, "kind", kind, if (kind == "subscription") "Moved to subscriptions" else "Moved to recurring")
+
     Loader(height = 300.dp, load = { ApiClient.recurring() }) { r ->
         // The server lists recurring ones first, then those to review, each soonest next charge first.
         val streams = r.streams.filter { it.state == "active" && it.status != "dismissed" }
             .sortedWith(compareBy<RecurringStream>({ if (it.status == "confirmed") 0 else 1 }, { it.next_date }))
-        Panel("subscriptions", flush = true, actions = {
-            LinkText(if (looking) "Looking…" else "Look for new ones", {
-                scope.launch {
-                    looking = true
-                    try {
-                        val n = ApiClient.detectRecurring()
-                        model.changed()
-                        model.toast(if (n == 0) "Nothing new found" else "Found $n new")
-                    } catch (e: ApiError) {
-                        model.handle(e)
-                        model.toast(e.description)
-                    } finally {
-                        looking = false
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (subs in listOf(true, false)) {
+                val shown = streams.filter { it.isSubscription == subs }
+                val totals = r.kinds[if (subs) "subscription" else "recurring"]
+                Panel(if (subs) "subscriptions" else "recurring", spark = subs, flush = true, actions = {
+                    if (subs) {
+                        LinkText(if (looking) "Looking…" else "Look for new ones", {
+                            scope.launch {
+                                looking = true
+                                try {
+                                    val n = ApiClient.detectRecurring()
+                                    model.changed()
+                                    model.toast(if (n == 0) "Nothing new found" else "Found $n new")
+                                } catch (e: ApiError) {
+                                    model.handle(e)
+                                    model.toast(e.description)
+                                } finally {
+                                    looking = false
+                                }
+                            }
+                        }, enabled = !looking)
                     }
-                }
-            }, enabled = !looking)
-        }) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatTile("recurring / month", Modifier.weight(1f)) { MoneyText(r.monthly_confirmed, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
-                StatTile("to review / month", Modifier.weight(1f)) { MoneyText(r.monthly_detected, cents = false, size = 18f, weight = JFFont.Weight.Medium) }
-            }
-            Rule()
-            if (streams.isEmpty()) Fine("No recurring charges found yet.", Modifier.padding(16.dp))
-            streams.forEachIndexed { i, s ->
-                var open by remember(s.id) { mutableStateOf(false) }
-                Box(Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp)) {
-                    StreamRow(s)
-                    DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = JF.panel, shape = RoundedCornerShape(8.dp)) {
-                        if (s.status != "confirmed") {
-                            DropdownMenuItem(text = { Text("Recurring", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "confirmed") })
+                }) {
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StatTile(if (subs) "subscriptions / month" else "recurring / month", Modifier.weight(1f)) {
+                            MoneyText(totals?.monthly_confirmed ?: 0.0, cents = false, size = 18f, weight = JFFont.Weight.Medium)
                         }
-                        if (s.status != "detected") {
-                            DropdownMenuItem(text = { Text("Not sure yet", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "detected") })
+                        StatTile("to review / month", Modifier.weight(1f)) {
+                            MoneyText(totals?.monthly_detected ?: 0.0, cents = false, size = 18f, weight = JFFont.Weight.Medium)
                         }
-                        DropdownMenuItem(text = { Text("Rename…", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; renaming = s })
-                        DropdownMenuItem(text = { Text("Not recurring", style = JFFont.sans(15f), color = JF.neg) }, onClick = { open = false; verdict(s, "dismissed") })
                     }
+                    Rule()
+                    if (shown.isEmpty()) {
+                        Fine(
+                            when {
+                                subs && !r.sorting -> "Subscriptions are sorted from your recurring charges once the server has an AI key."
+                                subs -> "No subscriptions found yet."
+                                else -> "No other recurring charges found yet."
+                            },
+                            Modifier.padding(16.dp),
+                        )
+                    }
+                    shown.forEachIndexed { i, s ->
+                        var open by remember(s.id) { mutableStateOf(false) }
+                        Box(Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp)) {
+                            StreamRow(s)
+                            DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = JF.panel, shape = RoundedCornerShape(8.dp)) {
+                                if (s.status != "confirmed") {
+                                    DropdownMenuItem(text = { Text("Recurring", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "confirmed") })
+                                }
+                                if (s.status != "detected") {
+                                    DropdownMenuItem(text = { Text("Not sure yet", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; verdict(s, "detected") })
+                                }
+                                if (s.isSubscription) {
+                                    DropdownMenuItem(text = { Text("Not a subscription", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; move(s, "recurring") })
+                                } else {
+                                    DropdownMenuItem(text = { Text("Move to subscriptions", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; move(s, "subscription") })
+                                }
+                                DropdownMenuItem(text = { Text("Rename…", style = JFFont.sans(15f), color = JF.ink) }, onClick = { open = false; renaming = s })
+                                DropdownMenuItem(text = { Text("Not recurring", style = JFFont.sans(15f), color = JF.neg) }, onClick = { open = false; verdict(s, "dismissed") })
+                            }
+                        }
+                        if (i < shown.size - 1) Rule(Modifier.padding(start = 16.dp))
+                    }
+                    Rule()
+                    Fine(
+                        if (subs) "Sorted by AI from the merchant's name. Tap one to move it if it's wrong; your choice is kept."
+                        else "Tap one to mark it recurring or not, move it to subscriptions, or name it.",
+                        Modifier.padding(16.dp),
+                    )
                 }
-                if (i < streams.size - 1) Rule(Modifier.padding(start = 16.dp))
             }
-            Rule()
-            Fine("Tap one to mark it recurring or not, or to name it.", Modifier.padding(16.dp))
         }
     }
     renaming?.let { s -> RenameStreamSheet(s, onDismiss = { renaming = null }, onSaved = { model.toast("Renamed") }) }

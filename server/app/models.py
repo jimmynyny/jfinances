@@ -504,12 +504,16 @@ class Valuation(Base):
 # Subscriptions and alerts (services/recurring.py, services/alerts.py)
 # ---------------------------------------------------------------------------
 RECURRING_STATUSES = ("detected", "confirmed", "dismissed")
+#: A subscription is a service paid for and subscribed to (streaming, news, apps,
+#: Uber One); everything else that repeats (a mortgage, insurance, a bank fee) is
+#: "recurring". services/subscriptions.py sorts them; the user's choice wins.
+RECURRING_KINDS = ("subscription", "recurring")
 
 
 class RecurringStream(TimestampMixin, Base):
     """A charge that repeats on a schedule, found in transactions (never Plaid's
     paid Recurring product). Detection refreshes the numbers; the user's
-    verdict (`status`: detected, confirmed, dismissed) and `name` survive it."""
+    verdict (`status`: detected, confirmed, dismissed), `name` and `kind` survive it."""
     __tablename__ = "recurring_streams"
     __table_args__ = (Index("ix_recurring_merchant", "merchant"),)
 
@@ -532,6 +536,10 @@ class RecurringStream(TimestampMixin, Base):
     account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="detected")
     status_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: subscription | recurring; null until sorted (reads as recurring).
+    kind: Mapped[str | None] = mapped_column(String(12))
+    #: Who sorted it: "model" (services/subscriptions.py) or "user", whose choice is never redone.
+    kind_source: Mapped[str | None] = mapped_column(String(8))
     #: The last detection run that still found it.
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

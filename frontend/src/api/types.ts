@@ -488,15 +488,25 @@ export interface RecurringStream {
   account_mask: string | null;
   is_business: boolean;
   status: RecurringStatus;
+  /** A subscription (a service paid for and subscribed to) or another recurring charge. */
+  kind: RecurringKind;
+  /** Who sorted it: the model, the user (whose choice is kept), or nobody yet. */
+  kind_source: "model" | "user" | null;
   state: "active" | "lapsed";
   /** Amount per month, whatever the cadence. */
   monthly: number;
 }
 
+export type RecurringKind = "subscription" | "recurring";
+
 export interface RecurringList {
   streams: RecurringStream[];
   monthly_confirmed: number;
   monthly_detected: number;
+  /** The same totals per kind. */
+  kinds: Record<RecurringKind, { monthly_confirmed: number; monthly_detected: number }>;
+  /** Whether subscriptions are being sorted (the server has a model to ask). */
+  sorting: boolean;
 }
 
 export interface UpcomingCharge {

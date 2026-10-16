@@ -18,8 +18,10 @@ from sqlalchemy.orm import Session
 
 from ..auth.deps import current_user
 from ..auth.human import Principal
+from ..config import settings
 from ..db import get_session
-from ..models import Account, DismissedAlert, RecurringStream
+from ..jobs.queue import enqueue
+from ..models import RECURRING_KINDS, Account, DismissedAlert, RecurringStream
 from ..services import alerts, recurring
 from ._common import ApiError, money, parse_uuid, plain, ts
 
@@ -46,7 +48,8 @@ def stream_json(r: RecurringStream, today: date, accounts: dict[uuid.UUID, Accou
         "account_id": str(r.account_id) if r.account_id else None,
         "account_name": acct.name if acct else None, "account_mask": acct.mask if acct else None,
         "is_business": bool(acct and acct.is_business),
-        "status": r.status, "state": "lapsed" if recurring.is_lapsed(r.next_date, r.cadence, today) else "active",
+        "status": r.status, "kind": r.kind or "recurring", "kind_source": r.kind_source,
+        "state": "lapsed" if recurring.is_lapsed(r.next_date, r.cadence, today) else "active",
         "monthly": money(recurring.monthly_cost(r.amount, r.cadence)),
     }
 
@@ -56,7 +59,7 @@ def list_streams(all: bool = False, _: Principal = Depends(current_user), sess: 
     """The streams worth a look: recurring ones (confirmed) first, then those to review,
     each soonest next charge first. Ones marked not recurring, and ones two of their own
     periods without a charge, are left out (`all=true` lists them too). `monthly_*` add
-    up the active ones per verdict."""
+    up the active ones per verdict; `kinds` the same per kind (subscription, recurring)."""
     today = _today()
     accounts = _accounts(sess)
     rows = sess.execute(select(RecurringStream)).scalars().all()
@@ -66,16 +69,21 @@ def list_streams(all: bool = False, _: Principal = Depends(current_user), sess: 
     rows = sorted(rows, key=lambda r: (rank.get(r.status, 1), r.next_date, (r.name or r.merchant).lower()))
     items = [stream_json(r, today, accounts) for r in rows]
 
-    def monthly(status: str) -> str | None:
-        return money(sum((Decimal(x["monthly"]) for x in items if x["status"] == status and x["state"] == "active"),
-                         Decimal(0)))
-    return {"streams": items, "monthly_confirmed": monthly("confirmed"), "monthly_detected": monthly("detected")}
+    def monthly(status: str, kind: str | None = None) -> str | None:
+        return money(sum((Decimal(x["monthly"]) for x in items if x["status"] == status and x["state"] == "active"
+                          and (kind is None or x["kind"] == kind)), Decimal(0)))
+    return {"streams": items, "monthly_confirmed": monthly("confirmed"), "monthly_detected": monthly("detected"),
+            "kinds": {k: {"monthly_confirmed": monthly("confirmed", k), "monthly_detected": monthly("detected", k)}
+                      for k in RECURRING_KINDS},
+            "sorting": bool(settings().openai_api_key)}
 
 
 class StreamPatch(BaseModel):
     status: Literal["detected", "confirmed", "dismissed"] | None = None
     #: The user's name for it; empty or null goes back to the merchant's.
     name: str | None = Field(default=None, max_length=200)
+    #: Moved to or from subscriptions by the user, which the model never redoes.
+    kind: Literal["subscription", "recurring"] | None = None
 
 
 @router.patch("/recurring/{stream_id}")
@@ -87,6 +95,8 @@ def patch_stream(stream_id: str, body: StreamPatch, _: Principal = Depends(curre
     if body.status is not None:
         r.status = body.status
         r.status_set_at = datetime.now(UTC)
+    if body.kind is not None:
+        r.kind, r.kind_source = body.kind, "user"
     if "name" in body.model_fields_set:
         r.name = (body.name or "").strip() or None
     sess.flush()
@@ -112,6 +122,7 @@ def upcoming(days: int = Query(default=30, ge=1, le=120), _: Principal = Depends
             acct = accounts.get(r.account_id) if r.account_id else None
             items.append({"stream_id": str(r.id), "label": r.name or r.merchant, "date": max(d, today),
                           "overdue": d < today, "amount": r.amount, "cadence": r.cadence, "status": r.status,
+                          "kind": r.kind or "recurring",
                           "category": r.category, "account_name": acct.name if acct else None,
                           "is_business": bool(acct and acct.is_business)})
             d = recurring.next_after(d, cadence)
@@ -122,8 +133,10 @@ def upcoming(days: int = Query(default=30, ge=1, le=120), _: Principal = Depends
 
 @router.post("/recurring/detect")
 def detect_now(_: Principal = Depends(current_user), sess: Session = Depends(get_session)):
-    """Run detection now instead of waiting for the next sync."""
-    return {"found": recurring.sync_streams(sess)}
+    """Run detection now instead of waiting for the next sync; the worker sorts what it found."""
+    found = recurring.sync_streams(sess)
+    enqueue(sess, "sort_subscriptions", {})
+    return {"found": found}
 
 
 @router.get("/alerts")

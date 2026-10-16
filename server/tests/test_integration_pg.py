@@ -1631,6 +1631,96 @@ def test_subscriptions_are_found_flagged_and_alerted(client):
     assert client.post("/api/v1/alerts/dismiss-all").json() == {"dismissed": 0}
 
 
+
+def test_subscriptions_are_sorted_from_other_recurring_charges(client, monkeypatch):
+    import json as _json
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    import httpx
+
+    from server.app.models import Account, RecurringStream, Transaction
+    from server.app.services import subscriptions
+    from server.app.services.recurring import add_months
+
+    today = datetime.now(UTC).date()
+    rows = [(add_months(today - timedelta(days=4), -k), amt, m) for k in range(6)
+            for m, amt in (("Uber One", "9.99"), ("Chase Mtge", "1148.94"), ("Monthly Service Fee", "15.00"))]
+    with db.session() as sess:
+        card = Account(kind="plaid", name="Sort card", type="credit", subtype="credit card", is_liability=True)
+        sess.add(card)
+        sess.flush()
+        for i, (d, amt, merchant) in enumerate(rows):
+            sess.add(Transaction(account_id=card.id, plaid_transaction_id=f"sort-{i}", date=d, amount=Decimal(amt),
+                                 name=merchant.upper(), merchant_name=merchant, pending=False,
+                                 category_primary="GENERAL_SERVICES"))
+
+    # No key: nothing is sent and every charge reads "recurring".
+    client.post("/api/v1/recurring/detect")
+    with db.session() as sess:
+        assert subscriptions.sort_streams(sess) == 0
+    r = client.get("/api/v1/recurring").json()
+    assert r["sorting"] is False
+    assert {s["kind"] for s in r["streams"] if s["merchant"] in ("Uber One", "Chase Mtge")} == {"recurring"}
+
+    sent = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        body = _json.loads(req.content)
+        names = _json.loads(body["messages"][1]["content"])
+        sent.append(names)
+        assert req.headers["authorization"] == "Bearer sk-test-not-a-real-key-000000"
+        out = {"results": [{"name": n, "subscription": n == "Uber One"} for n in names]}
+        return httpx.Response(200, json={"choices": [{"message": {"content": _json.dumps(out)}}]})
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key-000000")
+    reset_settings_cache()
+    try:
+        with db.session() as sess, httpx.Client(transport=httpx.MockTransport(answer)) as http:
+            assert subscriptions.sort_streams(sess, http) >= 3
+        # Only merchant names leave the app.
+        assert {"Uber One", "Chase Mtge", "Monthly Service Fee"} <= set(sent[0])
+        assert all(isinstance(n, str) for n in sent[0])
+        r = client.get("/api/v1/recurring").json()
+        kinds = {s["merchant"]: (s["kind"], s["kind_source"]) for s in r["streams"]}
+        assert kinds["Uber One"] == ("subscription", "model") and kinds["Chase Mtge"] == ("recurring", "model")
+        assert r["kinds"]["subscription"]["monthly_detected"] == "9.99"
+
+        # Moved by the user: kept, never asked about again.
+        fee = next(s for s in r["streams"] if s["merchant"] == "Monthly Service Fee")
+        moved = client.patch(f"/api/v1/recurring/{fee['id']}", json={"kind": "subscription"}).json()
+        assert moved["kind"] == "subscription" and moved["kind_source"] == "user"
+        # A new stream of a merchant already sorted takes its answer without asking.
+        with db.session() as sess:
+            old = sess.get(RecurringStream, __import__("uuid").UUID(fee["id"]))
+            twin = RecurringStream(**{c: getattr(old, c) for c in (
+                "merchant", "cadence", "interval_days", "amount", "last_amount", "first_date", "last_date",
+                "next_date", "charge_count", "category", "account_id", "seen_at")}, status="detected")
+            twin.amount = Decimal("25.00")
+            sess.add(twin)
+            sess.flush()
+            calls = len(sent)
+            with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+                assert subscriptions.sort_streams(sess, http) == 1
+            assert len(sent) == calls and (twin.kind, twin.kind_source) == ("subscription", "user")
+        client.post("/api/v1/recurring/detect")
+        with db.session() as sess, httpx.Client(transport=httpx.MockTransport(answer)) as http:
+            subscriptions.sort_streams(sess, http)
+        assert client.get("/api/v1/recurring").json()["sorting"] is True
+        after = {s["id"]: s for s in client.get("/api/v1/recurring").json()["streams"]}
+        assert after[fee["id"]]["kind"] == "subscription"
+
+        # A failed call sorts nothing and raises nothing; the next run tries again.
+        with db.session() as sess:
+            sess.execute(__import__("sqlalchemy").update(RecurringStream)
+                         .where(RecurringStream.kind_source == "model").values(kind=None, kind_source=None))
+            with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(500))) as http:
+                assert subscriptions.sort_streams(sess, http) == 0
+    finally:
+        monkeypatch.delenv("OPENAI_API_KEY")
+        reset_settings_cache()
+
+
 def test_dashboard_is_per_person_seeded_pinned_and_arranged(client):
     from server.app.models import DashboardWidget, User
 

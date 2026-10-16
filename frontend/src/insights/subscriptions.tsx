@@ -5,14 +5,17 @@ import {
 } from "@mooney/ui";
 import { ApiError } from "../api/client";
 import { useAlerts, useDetectRecurring, useDismissAlert, useDismissAllAlerts, useRecurring, useUpcoming, useUpdateRecurring } from "../api/hooks";
-import type { Alert, RecurringStatus, RecurringStream } from "../api/types";
+import type { Alert, RecurringKind, RecurringStatus, RecurringStream } from "../api/types";
 import { ErrorNote } from "../components/ErrorNote";
+import { SparkIcon } from "../components/Icons";
 import { categoryLabel } from "./settings";
 
 /**
- * Subscriptions found in transactions (GET /recurring), the user's verdict on
- * each, alerts, and the charges coming up. Detection runs after every sync;
- * Settings has the full list.
+ * Recurring charges found in transactions (GET /recurring), split into
+ * subscriptions (sorted by a model on the server, services/subscriptions.py)
+ * and the rest; the user's verdict on each, a move between the two, alerts, and
+ * the charges coming up. Detection runs after every sync; Settings has the full
+ * list.
  */
 
 const CADENCE: Record<RecurringStream["cadence"], string> = {
@@ -26,6 +29,21 @@ function useVerdict() {
     update.mutate({ id, patch: { status } }, { onError: (e) => error(e instanceof ApiError ? e.message : "Could not save. Try again.") });
 }
 
+function useMove() {
+  const update = useUpdateRecurring();
+  const { toast, error } = useToast();
+  return (s: RecurringStream, kind: RecurringKind) =>
+    update.mutate({ id: s.id, patch: { kind } }, {
+      onSuccess: () => toast(kind === "subscription" ? `${s.label} moved to subscriptions` : `${s.label} moved to recurring`),
+      onError: (e) => error(e instanceof ApiError ? e.message : "Could not save. Try again."),
+    });
+}
+
+/** "subscriptions ✦": the spark says a model sorted them. */
+export function SubscriptionsCaption() {
+  return <>subscriptions <SparkIcon /></>;
+}
+
 function PriceStep({ s }: { s: RecurringStream }) {
   if (s.previous_amount == null || !s.price_changed_on) return null;
   const up = s.amount > s.previous_amount;
@@ -35,6 +53,11 @@ function PriceStep({ s }: { s: RecurringStream }) {
     </Badge>
   );
 }
+
+const KINDS: Array<{ value: RecurringKind; label: string }> = [
+  { value: "subscription", label: "subscription" },
+  { value: "recurring", label: "other" },
+];
 
 const VERDICTS: Array<{ value: RecurringStatus; label: string }> = [
   { value: "confirmed", label: "recurring" },
@@ -49,7 +72,9 @@ function Verdict({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: string,
   );
 }
 
-function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: string, st: RecurringStatus) => void }) {
+function StreamRow({ s, onVerdict, onMove }: {
+  s: RecurringStream; onVerdict: (id: string, st: RecurringStatus) => void; onMove: (s: RecurringStream, k: RecurringKind) => void;
+}) {
   return (
     <div className="mu-listrow">
       <div className="mu-listrow__main">
@@ -65,33 +90,44 @@ function StreamRow({ s, onVerdict }: { s: RecurringStream; onVerdict: (id: strin
       </div>
       <div className="mu-listrow__actions">
         <Verdict s={s} onVerdict={onVerdict} />
+        <Button size="sm" variant="quiet" onClick={() => onMove(s, s.kind === "subscription" ? "recurring" : "subscription")}>
+          {s.kind === "subscription" ? "Not a subscription" : "Subscription"}
+        </Button>
       </div>
     </div>
   );
 }
 
-export function SubscriptionsView({ actions }: { actions?: ReactNode }) {
+/** One kind of recurring charge: subscriptions, or everything else that repeats. */
+export function SubscriptionsView({ kind = "subscription", actions }: { kind?: RecurringKind; actions?: ReactNode }) {
   const q = useRecurring();
   const verdict = useVerdict();
+  const move = useMove();
   // The server lists recurring ones first, then those to review, each soonest next charge first.
-  const active = (q.data?.streams ?? []).filter((s) => s.state === "active" && s.status !== "dismissed");
+  const active = (q.data?.streams ?? []).filter((s) => s.state === "active" && s.status !== "dismissed" && s.kind === kind);
   const review = active.filter((s) => s.status === "detected");
   const confirmed = active.filter((s) => s.status === "confirmed");
+  const totals = q.data?.kinds[kind];
+  const subs = kind === "subscription";
   return (
-    <Panel caption="subscriptions" actions={actions}>
-      {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : !q.data ? <Skeleton height={200} /> : active.length === 0 ? (
-        <EmptyState glyph="↻" title="No subscriptions found yet" description="They're found in your transactions after each sync. Settings → Subscriptions can look again now." />
+    <Panel caption={subs ? <SubscriptionsCaption /> : "recurring"} actions={actions}>
+      {q.error ? <ErrorNote error={q.error} retry={() => q.refetch()} /> : !q.data || !totals ? <Skeleton height={200} /> : active.length === 0 ? (
+        <EmptyState glyph="↻" title={subs ? "No subscriptions found yet" : "No other recurring charges found yet"}
+          description={subs && !q.data.sorting
+            ? "Subscriptions are sorted from your recurring charges once the server has an AI key; until then they're all under recurring."
+            : "They're found in your transactions after each sync. Settings can look again now."} />
       ) : (
         <div className="mu-stack">
+          {subs && <span className="mu-caption">Sorted by AI from the merchant's name. Move one if it's wrong; your choice is kept.</span>}
           <div className="jf-cats__head">
-            <span>recurring, per month</span>
-            <Money value={q.data.monthly_confirmed} cents={false} />
+            <span>{subs ? "subscriptions" : "recurring"}, per month</span>
+            <Money value={totals.monthly_confirmed} cents={false} />
           </div>
-          {confirmed.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} />)}
+          {confirmed.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} onMove={move} />)}
           {review.length > 0 && (
             <>
-              <span className="mu-caption">to review: recurring or not? ({review.length}, <Money value={q.data.monthly_detected} cents={false} /> / mo)</span>
-              {review.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} />)}
+              <span className="mu-caption">to review: recurring or not? ({review.length}, <Money value={totals.monthly_detected} cents={false} /> / mo)</span>
+              {review.map((s) => <StreamRow key={s.id} s={s} onVerdict={verdict} onMove={move} />)}
             </>
           )}
         </div>
@@ -210,6 +246,7 @@ export function UpcomingView({ days = 30, actions }: { days?: number; actions?: 
 export function SubscriptionSettings() {
   const q = useRecurring();
   const verdict = useVerdict();
+  const move = useMove();
   const detect = useDetectRecurring();
   const update = useUpdateRecurring();
   const { toast, error } = useToast();
@@ -217,7 +254,7 @@ export function SubscriptionSettings() {
   const [name, setName] = useState("");
   const cols: Column<RecurringStream>[] = [
     {
-      key: "name", header: "Subscription", wrap: true, mobile: "primary",
+      key: "name", header: "Charge", wrap: true, mobile: "primary",
       cell: (s) => (
         <div className="jf-cell-account">
           <div>{s.label}{s.is_business && <BusinessMark />}</div>
@@ -237,16 +274,22 @@ export function SubscriptionSettings() {
       sortValue: (s) => s.next_date,
     },
     { key: "status", header: "Recurring?", mobile: "full", cell: (s) => <Verdict s={s} onVerdict={verdict} /> },
+    {
+      key: "kind", header: "Subscription?", mobile: "full",
+      cell: (s) => <Segmented size="sm" options={KINDS} value={s.kind} aria-label={`${s.label}: subscription?`}
+        onChange={(k) => k !== s.kind && move(s, k)} />,
+      sortValue: (s) => s.kind,
+    },
     { key: "rename", header: "", mobile: "full", cell: (s) => <Button size="sm" variant="quiet" onClick={() => { setRenaming(s); setName(s.name ?? ""); }}>Rename</Button> },
   ];
   return (
     <Panel
       flush
-      caption="subscriptions"
+      caption="recurring charges"
       actions={
         <Button size="sm" variant="quiet" loading={detect.isPending}
           onClick={() => detect.mutate(undefined, {
-            onSuccess: (r) => toast(`Found ${r.found} subscription${r.found === 1 ? "" : "s"}`),
+            onSuccess: (r) => toast(`Found ${r.found} recurring charge${r.found === 1 ? "" : "s"}`),
             onError: (e) => error(e instanceof ApiError ? e.message : "Could not look. Try again."),
           })}>
           Look for new ones

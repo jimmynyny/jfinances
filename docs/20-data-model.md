@@ -241,7 +241,10 @@ since any price step), `last_amount`, `previous_amount` + `price_changed_on`
 `status` (`detected` → `confirmed` | `dismissed`) and `name` are never
 changed by detection; a found stream updates the row for the same merchant
 whose amount is close (same cadence preferred). Overdue by more than the
-cadence's tolerance = lapsed (computed, not stored).
+cadence's tolerance = lapsed (computed, not stored). `kind` (`subscription` |
+`recurring`, null until sorted) and `kind_source` (`model` | `user`):
+`services/subscriptions.py` sorts each stream once by its merchant name
+(`sort_subscriptions` job, after detection); the user's choice is kept.
 
 ## dashboard_widgets
 Each person's Overview (`api/dashboard.py`): `user_id`, `view` (a key in VIEWS),

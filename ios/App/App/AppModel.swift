@@ -13,7 +13,7 @@ enum InsightsSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .cashflow: return "Cash flow"
         case .spending: return "Spending"
-        case .subscriptions: return "Subscriptions"
+        case .subscriptions: return "Recurring"
         case .networth: return "Net worth & debt"
         case .investing: return "Investing"
         }

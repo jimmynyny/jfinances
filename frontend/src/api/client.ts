@@ -1,7 +1,7 @@
 import type {
   Account, AccountDetails, AccountHistoryPoint, ApiErrorBody, ApiToken, CashflowInsight, Change, CompareInsight, Grain, Holding, Holdings,
   InsightSlice, InvestmentTransaction, Item, Job, MerchantInsight, PatternsInsight, SpendingInsight,
-  Alert, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
+  Alert, RecurringKind, RecurringList, RecurringStatus, RecurringStream, Upcoming, PerfRange, Performance,
   CardsInsight, Home, LoanPayoff, NetWorthByClass, Dashboard, DashboardWidget, WidgetSize,
   Liabilities, LiabilityDetail, LinkConfig, LinkConfirm, LinkKind, LinkSession, LinkToken, ManualCategory, Me, NetWorthHistory,
   Overview, OverviewGroup, Range, Summary, SummaryQuery, SyncStatus, TermsValues, Transaction, TransactionQuery, TransactionsPage,
@@ -76,6 +76,8 @@ function recurringStream(r: Raw): RecurringStream {
     first_date: String(r.first_date), last_date: String(r.last_date), next_date: String(r.next_date), charge_count: n0(r.charge_count),
     category: str(r.category), account_name: str(r.account_name), account_mask: str(r.account_mask), is_business: bool(r.is_business),
     status: r.status as RecurringStatus, state: r.state === "lapsed" ? "lapsed" : "active", monthly: n0(r.monthly),
+    kind: r.kind === "subscription" ? "subscription" : "recurring",
+    kind_source: r.kind_source === "model" || r.kind_source === "user" ? r.kind_source : null,
   };
 }
 
@@ -517,9 +519,14 @@ export const api = {
     })),
   recurring: async (): Promise<RecurringList> => {
     const r = await request("GET", "/recurring");
-    return { streams: list(r.streams, recurringStream), monthly_confirmed: n0(r.monthly_confirmed), monthly_detected: n0(r.monthly_detected) };
+    const kinds = (r.kinds ?? {}) as Record<string, Raw | undefined>;
+    const kind = (k: string) => ({ monthly_confirmed: n0(kinds[k]?.monthly_confirmed), monthly_detected: n0(kinds[k]?.monthly_detected) });
+    return {
+      streams: list(r.streams, recurringStream), monthly_confirmed: n0(r.monthly_confirmed), monthly_detected: n0(r.monthly_detected),
+      kinds: { subscription: kind("subscription"), recurring: kind("recurring") }, sorting: bool(r.sorting),
+    };
   },
-  updateRecurring: async (id: string, patch: { status?: RecurringStatus; name?: string | null }): Promise<RecurringStream> =>
+  updateRecurring: async (id: string, patch: { status?: RecurringStatus; name?: string | null; kind?: RecurringKind }): Promise<RecurringStream> =>
     recurringStream(await request("PATCH", `/recurring/${id}`, patch)),
   detectRecurring: async (): Promise<{ found: number }> => ({ found: n0((await request("POST", "/recurring/detect")).found) }),
   upcoming: async (days = 30): Promise<Upcoming> => {
