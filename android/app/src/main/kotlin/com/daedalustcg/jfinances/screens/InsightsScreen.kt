@@ -138,13 +138,15 @@ fun InsightsScreen() {
 
 // ------------------------------------------------------------------ the slice
 
-private val SLICE_RANGES = listOf("6m" to "6m", "12m" to "12m", "ytd" to "ytd", "ly" to "last yr", "24m" to "24m")
+private val SLICE_RANGES = listOf("mtd" to "mtd", "3m" to "3m", "6m" to "6m", "12m" to "12m", "ytd" to "ytd", "ly" to "last yr", "24m" to "24m")
 private val SLICE_SCOPES = listOf("personal" to "personal", "business" to "business", "all" to "all")
 
 fun slicePreset(range: String, scope: String, today: LocalDate = Fmt.today()): Slice {
     val monthStart = today.withDayOfMonth(1)
     fun monthsBack(n: Long) = monthStart.minusMonths(n)
     return when (range) {
+        "mtd" -> Slice(Fmt.isoDay(monthStart), Fmt.isoDay(today), scope)
+        "3m" -> Slice(Fmt.isoDay(monthsBack(2)), Fmt.isoDay(today), scope)
         "6m" -> Slice(Fmt.isoDay(monthsBack(5)), Fmt.isoDay(today), scope)
         "ytd" -> Slice(Fmt.isoDay(today.withDayOfYear(1)), Fmt.isoDay(today), scope)
         "ly" -> Slice(Fmt.isoDay(LocalDate.of(today.year - 1, 1, 1)), Fmt.isoDay(LocalDate.of(today.year - 1, 12, 31)), scope)

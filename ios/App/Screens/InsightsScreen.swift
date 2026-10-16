@@ -48,7 +48,7 @@ struct InsightsScreen: View {
 // MARK: - the slice
 
 enum SlicePreset {
-    static let ranges: [(String, String)] = [("6m", "6m"), ("12m", "12m"), ("ytd", "ytd"), ("ly", "last yr"), ("24m", "24m")]
+    static let ranges: [(String, String)] = [("mtd", "mtd"), ("3m", "3m"), ("6m", "6m"), ("12m", "12m"), ("ytd", "ytd"), ("ly", "last yr"), ("24m", "24m")]
     static let scopes: [(String, String)] = [("personal", "personal"), ("business", "business"), ("all", "all")]
 
     static func slice(_ range: String, _ scope: String) -> Slice {
@@ -59,6 +59,8 @@ enum SlicePreset {
         let year = cal.component(.year, from: today)
         let jan1 = cal.date(from: DateComponents(year: year, month: 1, day: 1))!
         switch range {
+        case "mtd": return Slice(from: Fmt.isoDay(monthStart), to: Fmt.isoDay(today), scope: scope)
+        case "3m": return Slice(from: Fmt.isoDay(monthsBack(2)), to: Fmt.isoDay(today), scope: scope)
         case "6m": return Slice(from: Fmt.isoDay(monthsBack(5)), to: Fmt.isoDay(today), scope: scope)
         case "ytd": return Slice(from: Fmt.isoDay(jan1), to: Fmt.isoDay(today), scope: scope)
         case "ly":

@@ -3,9 +3,10 @@ import type { Grain, InsightScope, InsightSlice } from "../api/types";
 
 /** Ranges are kept as presets and resolved when a view renders, so a saved
  *  "last 12 months" keeps rolling forward instead of freezing on its dates. */
-export type RangePreset = "3m" | "6m" | "12m" | "24m" | "ytd" | "last_year";
+export type RangePreset = "mtd" | "3m" | "6m" | "12m" | "24m" | "ytd" | "last_year";
 
 export const RANGES: Array<{ value: RangePreset; label: string }> = [
+  { value: "mtd", label: "mtd" },
   { value: "3m", label: "3m" },
   { value: "6m", label: "6m" },
   { value: "12m", label: "12m" },
@@ -46,6 +47,7 @@ export function presetDates(p: RangePreset, today = new Date()): { from: string;
   const first = (yy: number, mm: number) => toISODate(new Date(yy, mm, 1)); // Date rolls negative months back a year
   const now = toISODate(today);
   switch (p) {
+    case "mtd": return { from: first(y, m), to: now };
     case "3m": return { from: first(y, m - 2), to: now };
     case "6m": return { from: first(y, m - 5), to: now };
     case "12m": return { from: first(y, m - 11), to: now };

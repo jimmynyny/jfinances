@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.daedalustcg.jfinances.app.AppTab
+import com.daedalustcg.jfinances.app.DrillTarget
+import com.daedalustcg.jfinances.app.Route
 import com.daedalustcg.jfinances.app.InsightsSection
 import com.daedalustcg.jfinances.app.LocalAppModel
 import com.daedalustcg.jfinances.components.AlertsPanel
@@ -40,6 +43,8 @@ import com.daedalustcg.jfinances.components.Skeleton
 import com.daedalustcg.jfinances.components.TrendChart
 import com.daedalustcg.jfinances.components.UpcomingRow
 import com.daedalustcg.jfinances.kit.api.ApiClient
+import com.daedalustcg.jfinances.kit.api.Drill
+import com.daedalustcg.jfinances.kit.api.Slice
 import com.daedalustcg.jfinances.kit.models.Attention
 import com.daedalustcg.jfinances.kit.models.Glance
 import com.daedalustcg.jfinances.kit.storage.rememberPref
@@ -118,22 +123,38 @@ private fun NetWorthPanel(g: Glance) {
     }
 }
 
+/** Each number opens the transactions it adds up to, as Insights' cash flow does. */
 @Composable
 private fun MonthPanel(g: Glance) {
     val model = LocalAppModel.current
     val m = g.month
     val total = m.categories.sumOf { it.amount }
+    val slice = Slice(m.from, m.to, "personal")
+    val named = m.categories.filter { it.key != "OTHER" }.map { it.key }
+    fun open(d: Drill, title: String) = model.push(Route.Drill(DrillTarget(slice, d, title)))
     Panel("this month", actions = { Fine("personal") }) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatTile("money in", Modifier.weight(1f)) { MoneyText(m.income, cents = false, size = 16f, weight = JFFont.Weight.Medium) }
-                StatTile("money out", Modifier.weight(1f)) { MoneyText(m.spending, cents = false, size = 16f, weight = JFFont.Weight.Medium) }
-                StatTile("net", Modifier.weight(1f)) { MoneyText(m.net, cents = false, style = MoneyStyle.Signed, size = 16f, weight = JFFont.Weight.Medium) }
+                StatTile("money in", Modifier.weight(1f).clickable { open(Drill("income"), "Money in") }) {
+                    MoneyText(m.income, cents = false, size = 16f, weight = JFFont.Weight.Medium)
+                }
+                StatTile("money out", Modifier.weight(1f).clickable { open(Drill("spending"), "Money out") }) {
+                    MoneyText(m.spending, cents = false, size = 16f, weight = JFFont.Weight.Medium)
+                }
+                StatTile("net", Modifier.weight(1f).clickable { open(Drill("all"), "Income and spending") }) {
+                    MoneyText(m.net, cents = false, style = MoneyStyle.Signed, size = 16f, weight = JFFont.Weight.Medium)
+                }
             }
             if (total > 0) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     m.categories.take(5).forEachIndexed { i, c ->
-                        ShareRow(Category.label(c.key), c.amount, c.amount / total, series = i)
+                        val label = Category.label(c.key)
+                        Box(Modifier.clickable {
+                            open(
+                                if (c.key == "OTHER") Drill("spending", notCategory = named) else Drill("spending", category = c.key),
+                                label.replaceFirstChar { it.uppercase() },
+                            )
+                        }) { ShareRow(label, c.amount, c.amount / total, series = i) }
                     }
                 }
             }
@@ -164,7 +185,7 @@ private fun UpcomingPanel(g: Glance) {
 @Composable
 private fun GroupsPanel(g: Glance) {
     val model = LocalAppModel.current
-    Panel("where it sits", flush = true) {
+    Panel("account snapshot", flush = true) {
         val shown = g.groups.filter { it.total != 0.0 }
         shown.forEachIndexed { i, grp ->
             Row(

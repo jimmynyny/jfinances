@@ -6,6 +6,7 @@ import SwiftUI
 struct OverviewScreen: View {
     @Environment(AppModel.self) private var model
     @AppStorage("jf.overview.range") private var range = "6m"
+    @State private var drill: DrillTarget?
 
     var body: some View {
         Screen("Overview") {
@@ -29,6 +30,7 @@ struct OverviewScreen: View {
                 Skeleton(height: 160)
             }
         }
+        .navigationDestination(item: $drill) { DrillScreen(target: $0) }
     }
 
     private func netWorth(_ g: Glance) -> some View {
@@ -55,20 +57,38 @@ struct OverviewScreen: View {
         }
     }
 
+    /// Each number opens the transactions it adds up to, as Insights' cash flow does.
     private func month(_ g: Glance) -> some View {
         let m = g.month
         let total = m.categories.reduce(0) { $0 + $1.amount }
+        let slice = Slice(from: m.from, to: m.to, scope: "personal")
+        let named = m.categories.filter { $0.key != "OTHER" }.map(\.key)
+        func open(_ d: Drill, _ title: String) { drill = DrillTarget(slice: slice, drill: d, title: title) }
         return Panel("this month", actions: { Fine("personal") }) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    StatTile("money in") { MoneyText(m.income, cents: false, size: 16, weight: .medium) }
-                    StatTile("money out") { MoneyText(m.spending, cents: false, size: 16, weight: .medium) }
-                    StatTile("net") { MoneyText(m.net, cents: false, style: .signed, size: 16, weight: .medium) }
+                    Button { open(Drill(flow: "income"), "Money in") } label: {
+                        StatTile("money in") { MoneyText(m.income, cents: false, size: 16, weight: .medium) }.contentShape(Rectangle())
+                    }
+                    Button { open(Drill(flow: "spending"), "Money out") } label: {
+                        StatTile("money out") { MoneyText(m.spending, cents: false, size: 16, weight: .medium) }.contentShape(Rectangle())
+                    }
+                    Button { open(Drill(flow: "all"), "Income and spending") } label: {
+                        StatTile("net") { MoneyText(m.net, cents: false, style: .signed, size: 16, weight: .medium) }.contentShape(Rectangle())
+                    }
                 }
+                .buttonStyle(.plain)
                 if total > 0 {
                     VStack(spacing: 6) {
                         ForEach(Array(m.categories.prefix(5).enumerated()), id: \.element.id) { i, c in
-                            ShareRow(label: Category.label(c.key), amount: c.amount, share: c.amount / total, tone: .series(i))
+                            Button {
+                                open(c.key == "OTHER" ? Drill(flow: "spending", notCategory: named) : Drill(flow: "spending", category: c.key),
+                                     Category.label(c.key).capitalizedFirst)
+                            } label: {
+                                ShareRow(label: Category.label(c.key), amount: c.amount, share: c.amount / total, tone: .series(i))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -98,7 +118,7 @@ struct OverviewScreen: View {
     }
 
     private func groups(_ g: Glance) -> some View {
-        Panel("where it sits", flush: true) {
+        Panel("account snapshot", flush: true) {
             VStack(spacing: 0) {
                 let shown = g.groups.filter { $0.total != 0 }
                 ForEach(Array(shown.enumerated()), id: \.element.id) { i, grp in

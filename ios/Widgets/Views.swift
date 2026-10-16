@@ -107,7 +107,7 @@ struct NetWorthView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 case .systemLarge:
-                    // The medium one's figures over a tall line, then where it sits.
+                    // The medium one's figures over a tall line, then the account snapshot.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             WidgetCaption(text: "net worth")

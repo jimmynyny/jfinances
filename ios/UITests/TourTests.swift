@@ -17,6 +17,26 @@ final class TourTests: XCTestCase {
         sleep(5)
         snap("01-overview")
         scroll(2, prefix: "01-overview")
+        // This month's numbers open their transactions: a category, then money in.
+        app.swipeDown(); app.swipeDown()
+        let category = app.buttons.matching(NSPredicate(format: "label CONTAINS '%'")).firstMatch
+        if category.waitForExistence(timeout: 3) {
+            if !category.isHittable { app.swipeUp() }
+            category.tap()
+            sleep(3)
+            snap("01-overview-category")
+            app.navigationBars.buttons.firstMatch.tap()
+            sleep(1)
+        }
+        let moneyIn = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'money in'")).firstMatch
+        if moneyIn.waitForExistence(timeout: 3) {
+            if !moneyIn.isHittable { app.swipeUp() }
+            moneyIn.tap()
+            sleep(3)
+            snap("01-overview-money-in")
+            app.navigationBars.buttons.firstMatch.tap()
+            sleep(1)
+        }
 
         tab("Accounts")
         snap("02-accounts")
